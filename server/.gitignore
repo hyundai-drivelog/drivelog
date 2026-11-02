@@ -1,0 +1,15 @@
+/.gradle/
+/build/
+/.idea/
+*.iml
+/.classpath
+/.project
+/.settings/
+/.env
+/.env.*
+!/.env.example
+*.log
+*.pid
+/logs/
+/secrets/
+/src/main/resources/application-*-private.yml

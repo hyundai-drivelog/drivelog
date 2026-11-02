@@ -1,0 +1,219 @@
+{"at":"2026-11-02T12:04:15.959091Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE_SEARCH"}
+{"at":"2026-11-02T12:04:15.939471Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_DRIVE"}
+{"at":"2026-11-02T12:04:16.201132Z","message":"아직 요청하지 않음","status":"UNAVAILABLE","target":"vehicle.init"}
+{"at":"2026-11-02T12:04:16.208278Z","message":"아직 요청하지 않음","status":"UNAVAILABLE","target":"location.support"}
+{"at":"2026-11-02T12:04:15.942438Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_ENERGY"}
+{"at":"2026-11-02T12:04:15.970213Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_CUSTOM_MAP"}
+{"at":"2026-11-02T12:04:15.911428Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_INFO"}
+{"at":"2026-11-02T12:04:16.205358Z","message":"아직 요청하지 않음","status":"UNAVAILABLE","target":"navi.init"}
+{"at":"2026-11-02T12:04:15.948443Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE"}
+{"at":"2026-11-02T12:04:15.944350Z","message":"권한 미허용","status":"PERMISSION_DENIED","target":"permission.FUSED_LOCATION"}
+{"at":"2026-11-02T12:05:46.105690Z","message":"실제 SDK 호출 시작","status":"UNAVAILABLE","target":"vehicle.request"}
+{"at":"2026-11-02T12:05:46.388400Z","message":"initialize 호출 반환 · 서비스 응답 확인 중","status":"UNAVAILABLE","target":"vehicle.init"}
+{"at":"2026-11-02T12:05:50.512006Z","code":"kotlinx.coroutines.TimeoutCancellationException","message":"호출 실패 · TimeoutCancellationException","status":"UNAVAILABLE","target":"vehicle.info"}
+{"at":"2026-11-02T12:05:50.983321Z","code":"ai.pleos.playground.vehicle.callback.exception.a","message":"호출 실패 · a","status":"ERROR","target":"vehicle.drivingMode"}
+{"at":"2026-11-02T12:05:52.184538Z","message":"원시 주행거리: 0.0 · 단위/세션 기준 별도 검증","status":"SUCCESS","target":"vehicle.odometer"}
+{"at":"2026-11-02T12:05:52.661157Z","code":"ai.pleos.playground.vehicle.callback.exception.a","message":"호출 실패 · a","status":"ERROR","target":"vehicle.fuel"}
+{"at":"2026-11-02T12:05:53.617333Z","message":"배터리 SOC 원시값: 100","status":"SUCCESS","target":"vehicle.battery"}
+{"at":"2026-11-02T12:05:53.778120Z","code":"ai.pleos.playground.vehicle.callback.exception.a","message":"호출 실패 · a","status":"ERROR","target":"vehicle.fuelEfficiency"}
+{"at":"2026-11-02T12:05:53.954246Z","code":"ai.pleos.playground.vehicle.callback.exception.a","message":"호출 실패 · a","status":"ERROR","target":"vehicle.evEfficiency"}
+{"at":"2026-11-02T12:05:53.957867Z","message":"실제 SDK 응답 수신","status":"SUCCESS","target":"vehicle.init"}
+{"at":"2026-11-02T12:05:53.956690Z","message":"검증된 현재 속도 accessor 없음 · 크루즈 목표 속도로 대체하지 않음","status":"UNSUPPORTED","target":"vehicle.speed"}
+{"at":"2026-11-02T12:05:53.985308Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_INFO"}
+{"at":"2026-11-02T12:05:53.987319Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_DRIVE"}
+{"at":"2026-11-02T12:05:54.025412Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_ENERGY"}
+{"at":"2026-11-02T12:05:54.031184Z","message":"권한 미허용","status":"PERMISSION_DENIED","target":"permission.FUSED_LOCATION"}
+{"at":"2026-11-02T12:05:54.038038Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE_SEARCH"}
+{"at":"2026-11-02T12:05:54.041588Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_CUSTOM_MAP"}
+{"at":"2026-11-02T12:05:54.035488Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE"}
+{"at":"2026-11-02T12:06:48.339895Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_INFO"}
+{"at":"2026-11-02T12:06:48.341976Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_DRIVE"}
+{"at":"2026-11-02T12:06:48.347793Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_ENERGY"}
+{"at":"2026-11-02T12:06:48.350534Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE"}
+{"at":"2026-11-02T12:06:48.349644Z","message":"허용됨","status":"SUCCESS","target":"permission.FUSED_LOCATION"}
+{"at":"2026-11-02T12:06:48.396503Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_CUSTOM_MAP"}
+{"at":"2026-11-02T12:06:48.392007Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE_SEARCH"}
+{"at":"2026-11-02T12:06:52.669289Z","message":"실제 SDK 호출 시작","status":"UNAVAILABLE","target":"location.request"}
+{"at":"2026-11-02T12:06:53.476457Z","message":"39.237255, -123.15003166666666 · confidence\u003d5.0 (정확도 m로 해석하지 않음) · timestamp\u003d1793621212735","status":"SUCCESS","target":"location.current"}
+{"at":"2026-11-02T12:06:53.482822Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_INFO"}
+{"at":"2026-11-02T12:06:53.483589Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_DRIVE"}
+{"at":"2026-11-02T12:06:53.487368Z","message":"허용됨","status":"SUCCESS","target":"permission.FUSED_LOCATION"}
+{"at":"2026-11-02T12:06:53.486002Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_ENERGY"}
+{"at":"2026-11-02T12:06:53.490998Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE_SEARCH"}
+{"at":"2026-11-02T12:06:53.500295Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_CUSTOM_MAP"}
+{"at":"2026-11-02T12:06:53.488158Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE"}
+{"at":"2026-11-02T12:06:56.994584Z","message":"실제 SDK 호출 시작","status":"UNAVAILABLE","target":"navi.STATE.request"}
+{"at":"2026-11-02T12:06:57.456999Z","message":"onConnected callback 수신","status":"SUCCESS","target":"navi.init"}
+{"at":"2026-11-02T12:06:57.457919Z","message":"별도 capability API 없음 · 권한과 실제 응답으로 확인","status":"UNSUPPORTED","target":"navi.capability"}
+{"at":"2026-11-02T12:06:58.522684Z","message":"mode\u003dSAFE_GUIDING, routing\u003dfalse, terms\u003dtrue","status":"SUCCESS","target":"navi.state"}
+{"at":"2026-11-02T12:06:58.731517Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_INFO"}
+{"at":"2026-11-02T12:06:58.768761Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_DRIVE"}
+{"at":"2026-11-02T12:06:58.771286Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_ENERGY"}
+{"at":"2026-11-02T12:06:58.777385Z","message":"허용됨","status":"SUCCESS","target":"permission.FUSED_LOCATION"}
+{"at":"2026-11-02T12:06:58.784175Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE"}
+{"at":"2026-11-02T12:06:58.788650Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE_SEARCH"}
+{"at":"2026-11-02T12:06:58.795434Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_CUSTOM_MAP"}
+{"at":"2026-11-02T12:06:58.456995Z","message":"mode\u003dSAFE_GUIDING, routing\u003dfalse, terms\u003dtrue","status":"SUCCESS","target":"navi.state.event"}
+{"at":"2026-11-02T12:07:48.803362Z","message":"실제 SDK 호출 시작","status":"UNAVAILABLE","target":"navi.ROUTE.request"}
+{"at":"2026-11-02T12:08:00.878723Z","code":"kotlinx.coroutines.TimeoutCancellationException","message":"호출 실패 · TimeoutCancellationException","status":"UNAVAILABLE","target":"navi.ROUTE"}
+{"at":"2026-11-02T12:08:00.885198Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_INFO"}
+{"at":"2026-11-02T12:08:00.890770Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_DRIVE"}
+{"at":"2026-11-02T12:08:00.893672Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_ENERGY"}
+{"at":"2026-11-02T12:08:00.900211Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE"}
+{"at":"2026-11-02T12:08:00.896291Z","message":"허용됨","status":"SUCCESS","target":"permission.FUSED_LOCATION"}
+{"at":"2026-11-02T12:08:00.909824Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE_SEARCH"}
+{"at":"2026-11-02T12:08:00.914776Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_CUSTOM_MAP"}
+{"at":"2026-11-02T12:08:01.577243Z","message":"mode\u003dROUTE_GUIDING, routing\u003dfalse, terms\u003dtrue","status":"SUCCESS","target":"navi.state.event"}
+{"at":"2026-11-02T12:14:43.200106Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_DRIVE"}
+{"at":"2026-11-02T12:14:43.686508Z","message":"아직 요청하지 않음","status":"UNAVAILABLE","target":"location.support"}
+{"at":"2026-11-02T12:14:43.202923Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_ENERGY"}
+{"at":"2026-11-02T12:14:43.294556Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_CUSTOM_MAP"}
+{"at":"2026-11-02T12:14:43.189347Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_INFO"}
+{"at":"2026-11-02T12:14:43.208226Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE"}
+{"at":"2026-11-02T12:14:43.217035Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE_SEARCH"}
+{"at":"2026-11-02T12:14:43.679361Z","message":"아직 요청하지 않음","status":"UNAVAILABLE","target":"vehicle.init"}
+{"at":"2026-11-02T12:14:43.684420Z","message":"아직 요청하지 않음","status":"UNAVAILABLE","target":"navi.init"}
+{"at":"2026-11-02T12:14:43.205407Z","message":"허용됨","status":"SUCCESS","target":"permission.FUSED_LOCATION"}
+{"at":"2026-11-02T12:17:26.949889Z","message":"실제 SDK 호출 시작","status":"UNAVAILABLE","target":"vehicle.request"}
+{"at":"2026-11-02T12:17:27.371409Z","message":"initialize 호출 반환 · 서비스 응답 확인 중","status":"UNAVAILABLE","target":"vehicle.init"}
+{"at":"2026-11-02T12:17:31.513989Z","code":"kotlinx.coroutines.TimeoutCancellationException","message":"호출 실패 · TimeoutCancellationException","status":"UNAVAILABLE","target":"vehicle.info"}
+{"at":"2026-11-02T12:17:32.699518Z","code":"ERROR_NOT_SUPPORTED_PROPERTY","message":"호출 실패 · ERROR_NOT_SUPPORTED_PROPERTY","status":"UNSUPPORTED","target":"vehicle.drivingMode"}
+{"at":"2026-11-02T12:17:33.678405Z","message":"원시 주행거리: 0.0 · 단위/세션 기준 별도 검증","status":"SUCCESS","target":"vehicle.odometer"}
+{"at":"2026-11-02T12:17:34.214613Z","code":"ERROR_NOT_SUPPORTED_PROPERTY","message":"호출 실패 · ERROR_NOT_SUPPORTED_PROPERTY","status":"UNSUPPORTED","target":"vehicle.fuel"}
+{"at":"2026-11-02T12:17:35.093718Z","message":"배터리 SOC 원시값: 100","status":"SUCCESS","target":"vehicle.battery"}
+{"at":"2026-11-02T12:17:35.395928Z","code":"ERROR_NOT_SUPPORTED_PROPERTY","message":"호출 실패 · ERROR_NOT_SUPPORTED_PROPERTY","status":"UNSUPPORTED","target":"vehicle.fuelEfficiency"}
+{"at":"2026-11-02T12:17:35.611052Z","code":"ERROR_NOT_SUPPORTED_PROPERTY","message":"호출 실패 · ERROR_NOT_SUPPORTED_PROPERTY","status":"UNSUPPORTED","target":"vehicle.evEfficiency"}
+{"at":"2026-11-02T12:17:35.628024Z","message":"검증된 현재 속도 accessor 없음 · 크루즈 목표 속도로 대체하지 않음","status":"UNSUPPORTED","target":"vehicle.speed"}
+{"at":"2026-11-02T12:17:35.629948Z","message":"실제 SDK 응답 수신","status":"SUCCESS","target":"vehicle.init"}
+{"at":"2026-11-02T12:17:35.648792Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_INFO"}
+{"at":"2026-11-02T12:17:35.650739Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_DRIVE"}
+{"at":"2026-11-02T12:17:35.662301Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE"}
+{"at":"2026-11-02T12:17:35.666954Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_CUSTOM_MAP"}
+{"at":"2026-11-02T12:17:35.665115Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE_SEARCH"}
+{"at":"2026-11-02T12:17:35.651508Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_ENERGY"}
+{"at":"2026-11-02T12:17:35.656099Z","message":"허용됨","status":"SUCCESS","target":"permission.FUSED_LOCATION"}
+{"at":"2026-11-02T12:18:08.758768Z","message":"실제 SDK 호출 시작","status":"UNAVAILABLE","target":"location.request"}
+{"at":"2026-11-02T12:18:08.815011Z","message":"FusedLocation.isSupported\u003dtrue","status":"SUCCESS","target":"location.support"}
+{"at":"2026-11-02T12:18:10.338572Z","message":"39.237255, -123.15003166666666 · confidence\u003d5.0 (정확도 m로 해석하지 않음) · timestamp\u003d1793621889523","status":"SUCCESS","target":"location.current"}
+{"at":"2026-11-02T12:18:10.365839Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_ENERGY"}
+{"at":"2026-11-02T12:18:10.350673Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_DRIVE"}
+{"at":"2026-11-02T12:18:10.347321Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_INFO"}
+{"at":"2026-11-02T12:18:10.374805Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE"}
+{"at":"2026-11-02T12:18:10.372370Z","message":"허용됨","status":"SUCCESS","target":"permission.FUSED_LOCATION"}
+{"at":"2026-11-02T12:18:10.465884Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_CUSTOM_MAP"}
+{"at":"2026-11-02T12:18:10.457261Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE_SEARCH"}
+{"at":"2026-11-02T12:18:17.115733Z","message":"실제 SDK 호출 시작","status":"UNAVAILABLE","target":"navi.ROUTE.request"}
+{"at":"2026-11-02T12:18:18.047822Z","message":"onConnected callback 수신","status":"SUCCESS","target":"navi.init"}
+{"at":"2026-11-02T12:18:29.341702Z","message":"현재 목적지:  · 요청 좌표 일치\u003dfalse","status":"SUCCESS","target":"navi.destination.info"}
+{"at":"2026-11-02T12:18:29.475468Z","message":"mode\u003dSAFE_GUIDING, routing\u003dfalse, terms\u003dtrue","status":"SUCCESS","target":"navi.state.event"}
+{"at":"2026-11-02T12:18:41.510447Z","message":"mode\u003dROUTE_GUIDING, routing\u003dfalse, terms\u003dtrue","status":"SUCCESS","target":"navi.state.event"}
+{"at":"2026-11-02T12:18:43.074812Z","message":"현재 목적지: 42dot · 요청 좌표 일치\u003dfalse","status":"SUCCESS","target":"navi.destination.info"}
+{"at":"2026-11-02T12:18:49.050384Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_INFO"}
+{"at":"2026-11-02T12:18:49.059611Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_ENERGY"}
+{"at":"2026-11-02T12:18:49.056368Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_DRIVE"}
+{"at":"2026-11-02T12:18:49.071586Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE"}
+{"at":"2026-11-02T12:18:48.826525Z","code":"kotlinx.coroutines.TimeoutCancellationException","message":"호출 실패 · TimeoutCancellationException","status":"UNAVAILABLE","target":"navi.route"}
+{"at":"2026-11-02T12:18:49.086446Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE_SEARCH"}
+{"at":"2026-11-02T12:18:49.067819Z","message":"허용됨","status":"SUCCESS","target":"permission.FUSED_LOCATION"}
+{"at":"2026-11-02T12:18:49.150210Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_CUSTOM_MAP"}
+{"at":"2026-11-02T12:19:28.684753Z","message":"FusedLocation.isSupported\u003dtrue","status":"SUCCESS","target":"location.support"}
+{"at":"2026-11-02T12:19:28.695418Z","message":"등록 완료 · 실제 좌표 callback 대기","status":"UNAVAILABLE","target":"location.stream"}
+{"at":"2026-11-02T12:19:29.500353Z","message":"실제 SDK 좌표 · 첫 수신 · timestamp\u003d1793621969442 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:31.474494Z","message":"실제 SDK 좌표 · 관측 간격 1977 ms · timestamp\u003d1793621971449 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:32.472931Z","message":"실제 SDK 좌표 · 관측 간격 999 ms · timestamp\u003d1793621972460 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:33.475963Z","message":"실제 SDK 좌표 · 관측 간격 1003 ms · timestamp\u003d1793621973460 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:34.474077Z","message":"실제 SDK 좌표 · 관측 간격 998 ms · timestamp\u003d1793621974462 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:35.482908Z","message":"실제 SDK 좌표 · 관측 간격 1009 ms · timestamp\u003d1793621975465 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:36.482072Z","message":"실제 SDK 좌표 · 관측 간격 999 ms · timestamp\u003d1793621976465 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:37.498132Z","message":"실제 SDK 좌표 · 관측 간격 1015 ms · timestamp\u003d1793621977477 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:39.518752Z","message":"실제 SDK 좌표 · 관측 간격 2022 ms · timestamp\u003d1793621979482 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:41.495906Z","message":"실제 SDK 좌표 · 관측 간격 1976 ms · timestamp\u003d1793621981482 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:42.509011Z","message":"실제 SDK 좌표 · 관측 간격 1011 ms · timestamp\u003d1793621982485 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:43.506926Z","message":"실제 SDK 좌표 · 관측 간격 1001 ms · timestamp\u003d1793621983491 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:45.511218Z","message":"실제 SDK 좌표 · 관측 간격 2003 ms · timestamp\u003d1793621985489 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:47.506332Z","message":"실제 SDK 좌표 · 관측 간격 1996 ms · timestamp\u003d1793621987490 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:48.525653Z","message":"실제 SDK 좌표 · 관측 간격 1019 ms · timestamp\u003d1793621988498 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:49.535051Z","message":"실제 SDK 좌표 · 관측 간격 1010 ms · timestamp\u003d1793621989510 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:51.527404Z","message":"실제 SDK 좌표 · 관측 간격 1992 ms · timestamp\u003d1793621991507 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:53.535847Z","message":"실제 SDK 좌표 · 관측 간격 2009 ms · timestamp\u003d1793621993508 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:54.526745Z","message":"실제 SDK 좌표 · 관측 간격 990 ms · timestamp\u003d1793621994510 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:55.527745Z","message":"실제 SDK 좌표 · 관측 간격 1002 ms · timestamp\u003d1793621995512 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:56.532096Z","message":"실제 SDK 좌표 · 관측 간격 1004 ms · timestamp\u003d1793621996513 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:57.525784Z","message":"실제 SDK 좌표 · 관측 간격 993 ms · timestamp\u003d1793621997513 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:58.548204Z","message":"실제 SDK 좌표 · 관측 간격 1023 ms · timestamp\u003d1793621998531 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:19:59.549761Z","message":"실제 SDK 좌표 · 관측 간격 1002 ms · timestamp\u003d1793621999535 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:00.560023Z","message":"실제 SDK 좌표 · 관측 간격 1010 ms · timestamp\u003d1793622000539 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:02.579639Z","message":"실제 SDK 좌표 · 관측 간격 2019 ms · timestamp\u003d1793622002549 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:03.565253Z","message":"실제 SDK 좌표 · 관측 간격 985 ms · timestamp\u003d1793622003550 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:04.585727Z","message":"실제 SDK 좌표 · 관측 간격 1021 ms · timestamp\u003d1793622004550 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:05.591111Z","message":"실제 SDK 좌표 · 관측 간격 1006 ms · timestamp\u003d1793622005553 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:06.575369Z","message":"실제 SDK 좌표 · 관측 간격 983 ms · timestamp\u003d1793622006554 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:07.573918Z","message":"실제 SDK 좌표 · 관측 간격 998 ms · timestamp\u003d1793622007555 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:08.583225Z","message":"실제 SDK 좌표 · 관측 간격 1011 ms · timestamp\u003d1793622008556 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:09.583924Z","message":"실제 SDK 좌표 · 관측 간격 1001 ms · timestamp\u003d1793622009558 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:10.602214Z","message":"실제 SDK 좌표 · 관측 간격 1018 ms · timestamp\u003d1793622010570 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:12.624002Z","message":"실제 SDK 좌표 · 관측 간격 2020 ms · timestamp\u003d1793622012568 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:13.590499Z","message":"실제 SDK 좌표 · 관측 간격 968 ms · timestamp\u003d1793622013571 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:14.617918Z","message":"실제 SDK 좌표 · 관측 간격 1027 ms · timestamp\u003d1793622014588 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:15.623474Z","message":"실제 SDK 좌표 · 관측 간격 1007 ms · timestamp\u003d1793622015607 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:16.622728Z","message":"실제 SDK 좌표 · 관측 간격 998 ms · timestamp\u003d1793622016607 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:17.674778Z","message":"실제 SDK 좌표 · 관측 간격 1053 ms · timestamp\u003d1793622017608 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:20:18.636835Z","message":"실제 SDK 좌표 · 관측 간격 962 ms · timestamp\u003d1793622018608 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:22:44.470339Z","message":"실제 SDK 호출 시작","status":"UNAVAILABLE","target":"navi.FOREGROUND.request"}
+{"at":"2026-11-02T12:22:44.622764Z","message":"전환 요청 메서드 반환 · 실제 화면 표시는 별도 시각 검증 필요","status":"SUCCESS","target":"navi.foreground"}
+{"at":"2026-11-02T12:22:44.644409Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE"}
+{"at":"2026-11-02T12:22:44.638035Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_DRIVE"}
+{"at":"2026-11-02T12:22:44.632895Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_INFO"}
+{"at":"2026-11-02T12:22:44.655588Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_CUSTOM_MAP"}
+{"at":"2026-11-02T12:22:44.645787Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE_SEARCH"}
+{"at":"2026-11-02T12:22:44.640243Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_ENERGY"}
+{"at":"2026-11-02T12:22:44.642481Z","message":"허용됨","status":"SUCCESS","target":"permission.FUSED_LOCATION"}
+{"at":"2026-11-02T12:28:39.352650Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_ENERGY"}
+{"at":"2026-11-02T12:28:39.350074Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_DRIVE"}
+{"at":"2026-11-02T12:28:39.339739Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_INFO"}
+{"at":"2026-11-02T12:28:39.354605Z","message":"허용됨","status":"SUCCESS","target":"permission.FUSED_LOCATION"}
+{"at":"2026-11-02T12:28:39.681942Z","message":"아직 요청하지 않음","status":"UNAVAILABLE","target":"navi.init"}
+{"at":"2026-11-02T12:28:39.677969Z","message":"아직 요청하지 않음","status":"UNAVAILABLE","target":"vehicle.init"}
+{"at":"2026-11-02T12:28:39.360167Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_CUSTOM_MAP"}
+{"at":"2026-11-02T12:28:39.358539Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE_SEARCH"}
+{"at":"2026-11-02T12:28:39.719056Z","message":"아직 요청하지 않음","status":"UNAVAILABLE","target":"location.support"}
+{"at":"2026-11-02T12:28:39.356242Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE"}
+{"at":"2026-11-02T12:28:52.784278Z","message":"실제 SDK 호출 시작","status":"UNAVAILABLE","target":"navi.ROUTE.request"}
+{"at":"2026-11-02T12:28:53.358933Z","message":"onConnected callback 수신","status":"SUCCESS","target":"navi.init"}
+{"at":"2026-11-02T12:28:58.810106Z","message":"현재 목적지:  · 0.0, 0.0 · 요청 좌표 일치\u003dfalse","status":"SUCCESS","target":"navi.destination.info"}
+{"at":"2026-11-02T12:28:59.206249Z","message":"mode\u003dSAFE_GUIDING, routing\u003dfalse, terms\u003dtrue","status":"SUCCESS","target":"navi.state.event"}
+{"at":"2026-11-02T12:29:06.858275Z","message":"mode\u003dROUTE_GUIDING, routing\u003dfalse, terms\u003dtrue","status":"SUCCESS","target":"navi.state.event"}
+{"at":"2026-11-02T12:29:07.972608Z","message":"현재 목적지: 42dot · 37.41289678, 127.09383464 · 요청 좌표 일치\u003dfalse","status":"SUCCESS","target":"navi.destination.info"}
+{"at":"2026-11-02T12:29:25.452377Z","code":"kotlinx.coroutines.TimeoutCancellationException","message":"호출 실패 · TimeoutCancellationException","status":"UNAVAILABLE","target":"navi.route"}
+{"at":"2026-11-02T12:29:25.456125Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_INFO"}
+{"at":"2026-11-02T12:29:25.467100Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_ENERGY"}
+{"at":"2026-11-02T12:29:25.459363Z","message":"허용됨","status":"SUCCESS","target":"permission.CAR_DRIVE"}
+{"at":"2026-11-02T12:29:25.479127Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_CUSTOM_MAP"}
+{"at":"2026-11-02T12:29:25.471833Z","message":"허용됨","status":"SUCCESS","target":"permission.FUSED_LOCATION"}
+{"at":"2026-11-02T12:29:25.476073Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE_SEARCH"}
+{"at":"2026-11-02T12:29:25.474211Z","message":"허용됨","status":"SUCCESS","target":"permission.NAVI_ROUTE"}
+{"at":"2026-11-02T12:29:33.775510Z","message":"FusedLocation.isSupported\u003dtrue","status":"SUCCESS","target":"location.support"}
+{"at":"2026-11-02T12:29:33.819783Z","message":"등록 완료 · 실제 좌표 callback 대기","status":"UNAVAILABLE","target":"location.stream"}
+{"at":"2026-11-02T12:29:34.369046Z","message":"실제 SDK 좌표 · 첫 수신 · timestamp\u003d1793622574285 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:36.305628Z","message":"실제 SDK 좌표 · 관측 간격 1945 ms · timestamp\u003d1793622576287 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:38.320084Z","message":"실제 SDK 좌표 · 관측 간격 2014 ms · timestamp\u003d1793622578299 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:39.335636Z","message":"실제 SDK 좌표 · 관측 간격 1015 ms · timestamp\u003d1793622579306 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:40.355577Z","message":"실제 SDK 좌표 · 관측 간격 1021 ms · timestamp\u003d1793622580338 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:42.381496Z","message":"실제 SDK 좌표 · 관측 간격 2024 ms · timestamp\u003d1793622582341 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:43.360019Z","message":"실제 SDK 좌표 · 관측 간격 980 ms · timestamp\u003d1793622583345 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:44.375705Z","message":"실제 SDK 좌표 · 관측 간격 1015 ms · timestamp\u003d1793622584361 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:45.379408Z","message":"실제 SDK 좌표 · 관측 간격 1004 ms · timestamp\u003d1793622585365 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:46.391646Z","message":"실제 SDK 좌표 · 관측 간격 1012 ms · timestamp\u003d1793622586366 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:47.385153Z","message":"실제 SDK 좌표 · 관측 간격 994 ms · timestamp\u003d1793622587367 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:48.387793Z","message":"실제 SDK 좌표 · 관측 간격 1003 ms · timestamp\u003d1793622588369 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:49.430298Z","message":"실제 SDK 좌표 · 관측 간격 1042 ms · timestamp\u003d1793622589398 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:51.457260Z","message":"실제 SDK 좌표 · 관측 간격 2026 ms · timestamp\u003d1793622591414 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:53.427712Z","message":"실제 SDK 좌표 · 관측 간격 1971 ms · timestamp\u003d1793622593412 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:54.506873Z","message":"실제 SDK 좌표 · 관측 간격 1021 ms · timestamp\u003d1793622594413 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:55.451384Z","message":"실제 SDK 좌표 · 관측 간격 1002 ms · timestamp\u003d1793622595436 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:57.465854Z","message":"실제 SDK 좌표 · 관측 간격 2015 ms · timestamp\u003d1793622597450 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:58.477985Z","message":"실제 SDK 좌표 · 관측 간격 1012 ms · timestamp\u003d1793622598465 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:29:59.483113Z","message":"실제 SDK 좌표 · 관측 간격 1006 ms · timestamp\u003d1793622599466 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:30:00.630881Z","message":"실제 SDK 좌표 · 관측 간격 1148 ms · timestamp\u003d1793622600604 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:30:02.504099Z","message":"실제 SDK 좌표 · 관측 간격 1871 ms · timestamp\u003d1793622602478 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}
+{"at":"2026-11-02T12:30:03.498400Z","message":"실제 SDK 좌표 · 관측 간격 992 ms · timestamp\u003d1793622603485 · 정확도 m 미제공","status":"SUCCESS","target":"location.stream"}

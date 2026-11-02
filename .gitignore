@@ -1,0 +1,29 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Local environment files; keep shareable templates.
+.env
+.env.*
+!.env.example
+
+# Personal run configurations may contain VM options and credentials.
+/.idea/runConfigurations/
+.run/
+
+# Kotlin caches and private signing keys.
+.kotlin/
+*.jks
+*.keystore
