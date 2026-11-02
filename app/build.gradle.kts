@@ -59,6 +59,7 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.gson)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.kotlinx.coroutines.android)
     // The SDK-specific source directory is excluded in the SDK-free build.
     // -PpleosSdkEnabled=false also removes the Pleos repository from settings.

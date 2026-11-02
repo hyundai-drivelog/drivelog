@@ -6,41 +6,45 @@ Pleos Connect 기반 차량용 주행 기록·드라이브 카드 앱입니다.
 - `server/`: 독립적인 Spring Boot 백엔드
 - `docs/`: 개발 및 검증 기록
 
-## 오늘 작업 — 2026.11.02
+## 문서
 
-- Pleos 전용 에뮬레이터 설치 및 앱 실행 확인
-- Vehicle·FusedLocation·NaviHelper SDK의 실제 호출 결과를 확인하는 **SDK 진단 화면** 구현
-- **MOCK / PLEOS 모드를 구분한 주행 시작·종료 및 요약 화면** 구현
-- 주행 기록과 사진을 연결하는 **카드 템플릿 2종 및 PNG 저장** 구현
-- 일반 Android 및 Pleos 에뮬레이터에서 주행 → 종료 → 카드 생성 흐름 확인
-- SDK 포함·제외 빌드 성공, 단위 테스트 4개 통과
+- [Pleos 설계 원칙](docs/guides/PLEOS_DESIGN_PRINCIPLES.md): 설계 기준, PRD에서 바뀐 결정, 미결 사항
+- [Pleos API 연동](docs/guides/PLEOS_API_INTEGRATION.md): API 선택 규칙, 퍼미션, 연동 방법, 검증 결과
 
-### 현재 SDK 상태
+## 사용 흐름
 
-| SDK | 확인 결과 |
-|---|---|
-| Vehicle | 주행거리 원시값·배터리 SOC 수신. 연료·연비·전비는 현재 환경에서 미지원 |
-| FusedLocation | 위치 조회 및 연속 위치 수신 확인 |
-| NaviHelper | 초기화·안내 상태 조회·기본 내비 화면 전환 확인. 경로 요청은 추가 검증 필요 |
+1. 차량에서 정차 중 내비 즐겨찾기·최근·현재 목적지로 장소 3곳을 골라 목표를 만든다.
+2. 장소를 선택해 기록을 시작한다. 내비 안내는 원할 때만 따로 요청한다.
+3. 정차하면 기록을 끝내고 방문을 직접 확인한다.
+4. 휴대폰을 연결하면 기록이 올라가고, 모바일 웹에서 사진 카드를 만들어 저장·공유한다.
 
-실제 SDK 호출은 **Pleos 에뮬레이터 기준**이며 실차 검증은 아직 진행하지 않았습니다. Mock 데이터는 화면과 카드에 별도로 표시합니다.
+## 실행
 
-## 실행 및 간단한 테스트
+서버와 모바일 웹. PostgreSQL 없이 실행하는 `demo` 프로필이다.
 
-1. Android Studio에서 저장소 루트를 열고 Gradle Sync를 진행합니다.
-2. Pleos 에뮬레이터 또는 일반 Android 에뮬레이터를 선택하고 `app`을 실행합니다.
-3. `주행 기록` → `MOCK 데모` → `주행 시작` → 잠시 대기 → `주행 기록 종료`를 누릅니다.
-4. `사진 카드 만들기` → 템플릿 선택 → PNG 저장을 확인합니다.
+```powershell
+cd server
+$env:SPRING_PROFILES_ACTIVE="demo"
+$env:DRIVELOG_WEB_URL="http://<PC의 IP>:8080/m/"   # 차량 연결 화면에 표시할 주소
+.\gradlew.bat bootRun
+```
 
-Pleos에서는 정차 상태에서 테스트하고, 실제 위치 기능을 사용할 때는 `SDK 진단`에서 위치 권한을 허용합니다. 현재 로컬 데모는 백엔드를 실행하지 않아도 사용할 수 있습니다.
+차량 앱. 실제 Pleos 이미지(`android-34/pleos_car_emulator`)로 만든 AVD에서 실행한다. 프로젝트 경로에 한글이 있어 테스트가 클래스를 찾지 못하면 build 디렉터리를 ASCII 경로로 옮긴다.
+
+```powershell
+.\gradlew.bat :app:assembleDebug
+adb install -r app\build\outputs\apk\debug\app-debug.apk
+```
+
+- 디버그 빌드에서 `여정` 제목을 길게 누르면 SDK 진단 화면이 열리고, 여기서 시뮬레이션을 켤 수 있다. 시뮬레이션 데이터는 화면과 카드에 표시된다.
+- 테스트: `.\gradlew.bat :app:testDebugUnitTest`, `cd server; .\gradlew.bat test`
 
 ## 남은 작업
 
-- 내비 목적지 좌표 불일치·완료 이벤트 및 지도 미표시 문제 확인
-- 내비 화면으로 이동한 동안의 안정적인 백그라운드 주행 기록
-- 기록 영속화 및 실차 환경 검증
-- 일반 Android 16KB 환경에서 나타나는 네이티브 라이브러리 호환성 경고 확인
+- 저장된 즐겨찾기, `onDestinationArrived`, Odometer 값, 실제 분할 화면, CPU 사용량 검증
+- 앱 카테고리와 주행 중 화면 유지 허용 범위 확인 (DO 선언은 심사 대상)
+- 목표 사진은 목업에서 잘라낸 저해상도 데모 이미지이므로 교체 필요
+- 지도 배경은 장식이고 경로선만 실제 데이터다. 지도 공급자 선정 필요
+- 실차 검증
 
-현재 주행 기록은 메모리 기반이며 앱 프로세스 종료 후 복원되지 않습니다. 이번 작업에서 백엔드는 변경하지 않았습니다.
-
-상세 결과와 화면은 [Pleos 런타임·MVP 검증 기록](docs/PLEOS_RUNTIME_MVP.md), 백엔드 실행 방법은 [Server README](server/README.md)를 참고하세요.
+서버 상세는 [Server README](server/README.md), 이전 검증 기록은 [Pleos 런타임·MVP 검증](docs/PLEOS_RUNTIME_MVP.md)을 참고한다.

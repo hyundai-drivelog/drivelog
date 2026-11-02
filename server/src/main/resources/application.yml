@@ -25,6 +25,11 @@ springdoc:
 server:
   port: ${SERVER_PORT:8080}
 
+drivelog:
+  upload-dir: ${DRIVELOG_DATA_DIR:./data}/uploads
+  # Address phones use to reach the mobile web; shown on the car's pairing screen.
+  web-url: ${DRIVELOG_WEB_URL:}
+
 management:
   endpoints:
     web:
