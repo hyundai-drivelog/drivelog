@@ -27,3 +27,7 @@ local.properties
 .kotlin/
 *.jks
 *.keystore
+
+# Local demo database and uploaded photos
+/server/data/
+/data/

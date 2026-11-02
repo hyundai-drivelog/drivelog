@@ -30,6 +30,9 @@ data class DriveDestination(val name: String, val latitude: Double, val longitud
 val demoDestinations = listOf(
     DriveDestination("42dot · 공식 예제", 37.48544722, 127.03636666, "36khp37hh8gqcm5nqhe5", "서울시 강남구 남부순환로 2621"),
     DriveDestination("서울숲 · 데모 목적지", 37.5445, 127.0374, "", "서울숲 데모 좌표"),
+    DriveDestination("광안리 해수욕장", 35.1532, 129.1186, "", "부산 수영구"),
+    DriveDestination("송정 해수욕장", 35.1786, 129.1996, "", "부산 해운대구"),
+    DriveDestination("다대포 해수욕장", 35.0466, 128.9662, "", "부산 사하구"),
 )
 
 interface RuntimeDataSource {

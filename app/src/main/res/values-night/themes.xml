@@ -1,11 +1,6 @@
 <resources>
-    <style name="Theme.DRIVELOG" parent="android:style/Theme.Material.Light.NoActionBar">
-        <item name="android:fontFamily">sans</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:statusBarColor">#F5F8FC</item>
-        <item name="android:navigationBarColor">#F5F8FC</item>
-        <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:windowBackground">#F5F8FC</item>
-        <item name="android:colorAccent">#245FE5</item>
+    <style name="Theme.DRIVELOG" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#0E0E0F</item>
+        <item name="android:colorAccent">#FFFFFF</item>
     </style>
 </resources>
