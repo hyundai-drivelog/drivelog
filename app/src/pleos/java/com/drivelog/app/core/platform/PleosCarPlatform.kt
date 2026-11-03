@@ -17,6 +17,8 @@ import ai.pleos.playground.navi.data.RouteInfo
 import ai.pleos.playground.navi.data.RouteStartInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
+import ai.pleos.playground.stt.SpeechToText
+import ai.pleos.playground.stt.listener.ResultListener
 import ai.pleos.playground.tts.TextToSpeech
 import ai.pleos.playground.tts.constant.ErrorType
 import ai.pleos.playground.tts.constant.Mode
@@ -44,6 +46,9 @@ class PleosCarPlatform(context: Context) : CarPlatform {
     private val context = context.applicationContext
     private val mutableNavi = MutableStateFlow(NaviState())
     override val navi: StateFlow<NaviState> = mutableNavi
+    private val mutableSpeech = MutableStateFlow(SpeechState())
+    override val speech: StateFlow<SpeechState> = mutableSpeech
+    private var stt: SpeechToText? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private var vehicle: Vehicle? = null
@@ -64,6 +69,9 @@ class PleosCarPlatform(context: Context) : CarPlatform {
     private val speechFocus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
         .setAudioAttributes(speechAttributes)
         .build()
+    private val listenFocus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+        .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+        .build()
 
     private val naviListener = object : NaviHelperEventListener {
         override fun onBookmarkInfo(bookmarkInfo: List<BookmarkInfo>) {
@@ -77,8 +85,15 @@ class PleosCarPlatform(context: Context) : CarPlatform {
         }
         override fun onBookMarkChanged() { runCatching { helper?.getBookmarkInfo() } }
         override fun onDestinationChanged() { runCatching { helper?.getDestinationInfo() } }
-        override fun onRouteStarted(routeStartInfo: RouteStartInfo) { route("내비에서 경로를 찾고 있어요") }
-        override fun onRoutingCompleted() { route("내비 안내를 시작했어요") }
+        // Side by side the app never returns to the foreground, and the navigation app was seen sending only these.
+        override fun onRouteStarted(routeStartInfo: RouteStartInfo) {
+            route("내비에서 경로를 찾고 있어요")
+            runCatching { helper?.getDestinationInfo() }
+        }
+        override fun onRoutingCompleted() {
+            route("내비 안내를 시작했어요")
+            runCatching { helper?.getDestinationInfo() }
+        }
         override fun onRouteCancelled() {
             mutableNavi.update { state -> state.copy(currentDestination = null, routeMessage = null) }
         }
@@ -141,6 +156,101 @@ class PleosCarPlatform(context: Context) : CarPlatform {
                 tts = engine
             }.onFailure { Log.w(TAG, "tts unavailable: ${it.javaClass.simpleName}") }
         }
+        if (stt == null && serviceExists(SPEECH_ACTION)) {
+            runCatching {
+                val engine = SpeechToText(context, ai.pleos.playground.stt.constant.Mode.ON_DEVICE)
+                engine.initialize(object : ai.pleos.playground.stt.listener.OnInitializeListener {
+                    override fun onSuccess() {
+                        runCatching {
+                            engine.setLocale(Locale.KOREA)
+                            engine.addListener(sttListener)
+                            mutableSpeech.update { it.copy(available = true) }
+                        }.onFailure { Log.w(TAG, "stt setup failed: ${it.javaClass.simpleName}") }
+                    }
+                    override fun onFailure(errorType: ai.pleos.playground.stt.constant.ErrorType) { Log.w(TAG, "stt init failed: $errorType") }
+                })
+                stt = engine
+            }.onFailure { Log.w(TAG, "stt unavailable: ${it.javaClass.simpleName}") }
+        }
+    }
+
+    private val sttListener = object : ResultListener {
+        override fun onReady() {}
+        override fun onStartedRecognition() {}
+        override fun onUpdatedEpdData(on: Long, off: Long) {}
+        override fun onUpdatedRms(rms: Double) {}
+        override fun onUpdated(stt: String, completed: Boolean) {
+            if (completed && stt.isNotBlank()) handler.removeCallbacks(listenTimeout)
+            mutableSpeech.update { state ->
+                if (completed && stt.isNotBlank()) state.copy(listening = false, partial = "", heard = stt.trim())
+                else state.copy(partial = stt)
+            }
+        }
+        override fun onEndedRecognition() {
+            handler.removeCallbacks(listenTimeout)
+            audioManager.abandonAudioFocusRequest(listenFocus)
+            mutableSpeech.update { state ->
+                if (!state.listening) return@update state // Already consumed, or stopped by the driver.
+                // The docs do not promise a completed result before the end, so the last partial still counts.
+                val text = state.partial.trim().ifEmpty { null }
+                state.copy(listening = false, partial = "", heard = text, message = if (text == null) "잘 듣지 못했어요. 다시 말씀해 주세요" else null)
+            }
+        }
+        override fun onError(errorType: ai.pleos.playground.stt.constant.ErrorType) {
+            Log.w(TAG, "stt error: $errorType")
+            handler.removeCallbacks(listenTimeout)
+            audioManager.abandonAudioFocusRequest(listenFocus)
+            mutableSpeech.update { it.copy(listening = false, partial = "", message = "음성을 인식하지 못했어요. 직접 입력해 주세요") }
+        }
+    }
+
+    /** The microphone must not stay open when the engine never decides the phrase has ended. */
+    private val listenTimeout = Runnable {
+        val partial = mutableSpeech.value.partial.trim()
+        stopListening()
+        mutableSpeech.update { if (partial.isNotEmpty()) it.copy(heard = partial) else it.copy(message = "잘 듣지 못했어요. 다시 말씀해 주세요") }
+    }
+
+    override fun startListening() {
+        val engine = stt?.takeIf { mutableSpeech.value.available } ?: return
+        if (audioManager.requestAudioFocus(listenFocus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            mutableSpeech.update { it.copy(message = "다른 오디오가 사용 중이에요. 잠시 후 다시 시도해 주세요") }
+            return
+        }
+        mutableSpeech.update { it.copy(listening = true, partial = "", heard = null, message = null) }
+        handler.postDelayed(listenTimeout, LISTEN_TIMEOUT_MS)
+        runCatching { engine.request() }.onFailure {
+            handler.removeCallbacks(listenTimeout)
+            Log.w(TAG, "stt request failed: ${it.javaClass.simpleName}")
+            audioManager.abandonAudioFocusRequest(listenFocus)
+            mutableSpeech.update { state -> state.copy(listening = false, message = "음성을 인식하지 못했어요. 직접 입력해 주세요") }
+        }
+    }
+
+    override fun stopListening() {
+        handler.removeCallbacks(listenTimeout)
+        if (!mutableSpeech.value.listening) return
+        runCatching { stt?.stop() }
+        audioManager.abandonAudioFocusRequest(listenFocus)
+        mutableSpeech.update { it.copy(listening = false, partial = "") }
+    }
+
+    override fun clearSpeech() = mutableSpeech.update { it.copy(heard = null, message = null) }
+
+    override fun cancelRoute() {
+        val sdk = helper?.takeIf { naviConnected } ?: return
+        runCatching { sdk.cancelRoute() }.onFailure {
+            Log.w(TAG, "route cancel failed: ${it.javaClass.simpleName}")
+            route("안내를 끄지 못했어요")
+        }
+    }
+
+    override fun searchPlace(keyword: String) {
+        val sdk = helper?.takeIf { naviConnected } ?: run { route("내비게이션에 연결할 수 없어요"); return }
+        runCatching { sdk.requestNavigationScreen(NavigationScreenRequest.SearchPlace(keyword)) }.onFailure {
+            Log.w(TAG, "navi search failed: ${it.javaClass.simpleName}")
+            route("내비 검색을 열지 못했어요")
+        }
     }
 
     override fun close() {
@@ -152,8 +262,12 @@ class PleosCarPlatform(context: Context) : CarPlatform {
         runCatching { helper?.release() }
         runCatching { tts?.removeEventListener(speechEvents) }
         runCatching { tts?.release() }
+        runCatching { stt?.removeListener(sttListener) }
+        runCatching { stt?.release() }
         audioManager.abandonAudioFocusRequest(speechFocus)
-        vehicle = null; fused = null; helper = null; tts = null; ttsReady = false; naviConnected = false
+        audioManager.abandonAudioFocusRequest(listenFocus)
+        vehicle = null; fused = null; helper = null; tts = null; ttsReady = false; naviConnected = false; stt = null
+        mutableSpeech.value = SpeechState()
     }
 
     override suspend fun odometerRaw(): Float? {
@@ -296,6 +410,7 @@ class PleosCarPlatform(context: Context) : CarPlatform {
         const val NAVI_ACTION = "ai.pleos.playground.intent.action.NAVI_START"
         const val SPEECH_ACTION = "ai.pleos.playground.caas.intent.action.SPEECH_START"
         const val SPEECH_LEAD_IN_MS = 150L
+        const val LISTEN_TIMEOUT_MS = 10_000L
     }
 }
 

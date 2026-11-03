@@ -49,6 +49,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         (application as DrivelogApp).store.foreground = false
+        model.onBackground()
         super.onStop()
     }
 }

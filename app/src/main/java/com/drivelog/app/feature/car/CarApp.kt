@@ -25,14 +25,17 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
     val store by model.store.state.collectAsState()
     val recording by model.recorder.state.collectAsState()
     val navi by model.platform.navi.collectAsState()
-    val goal = store.journey.activeGoal
+    val speech by model.platform.speech.collectAsState()
     val parked = model.parked
+    val canSearch = navi.available || model.simulation
+    val searchActions = remember(model) {
+        SearchActions({ model.searchQuery = it }, model::searchPlace, model::toggleListening, { model.searchQuery = "" })
+    }
     BoxWithConstraints(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).semantics { testTagsAsResourceId = true }) {
         val dimens = remember(maxWidth, maxHeight) { carDimensFor(maxWidth.value, maxHeight.value) }
         CompositionLocalProvider(LocalCarDimens provides dimens) {
             Box(Modifier.fillMaxSize()) {
                 val active = recording
-                val hold = { model.go(Screen.DIAGNOSTICS) }
                 when {
                     active != null && model.screen == Screen.STOP && parked ->
                         StopConfirmScreen(active, model::endRecording, model::keepRecording)
@@ -40,46 +43,42 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                         active, parked, model.gear, BuildConfig.DEBUG && active.simulated, navi.available, navi.routeMessage,
                         model::askToStop, model::changeSimGear, model::openNavigation,
                     )
-                    !parked -> DrivingLockScreen(goal)
+                    !parked -> DrivingLockScreen()
                     else -> when (model.screen) {
                         Screen.DIAGNOSTICS -> DiagnosticsRoute(model.simulation, model::toggleSimulation, { model.home() })
                         Screen.RECOVERY -> model.recoveredRecord?.let { record ->
                             RecoveryScreen(record, model.recoveredPlace?.let { MapPoint(it.latitude, it.longitude) }, model::keepPartial, model::deletePartial)
                         }
-                        Screen.GOAL_NEW -> GoalNewScreen(
-                            navi, model.simulation, model.goalName, model.goalPlaces, { model.goalName = it },
-                            model::toggleGoalPlace, model::createGoal, model::openNavigation, model::home,
-                        )
-                        Screen.GOAL_EDIT_PLACE -> PlaceEditScreen(
-                            navi, model.simulation, goal?.places?.firstOrNull { it.id == model.editingPlaceId }?.name.orEmpty(),
-                            model::replaceEditingPlace, model::openNavigation, { model.goBack() },
+                        Screen.PLACE -> model.selectedPlace?.let { place ->
+                            PlaceConfirmScreen(
+                                place, model.searchQuery, speech, canSearch, model.simulation, navi.available,
+                                navi.currentDestination?.sameLocation(place) == true, store.savedPlaces.any { it.toNaviPlace().sameLocation(place) },
+                                model.message ?: navi.routeMessage, model.currentLocation, searchActions,
+                                model::toggleSaved, onStartPressed, model::cancelRoute, model::home,
+                            )
+                        }
+                        Screen.HISTORY -> HistoryScreen(model.store, model.routeMaps, store.journey.records, model::openRecord, model::home)
+                        Screen.RECORD -> RecordSavedScreen(
+                            model.routeMaps, store.journey.records.firstOrNull { it.id == model.openedRecordId }, "드라이브 기록",
+                            { model.goBack() }, null, model::deleteOpenedRecord,
                         )
                         Screen.SYNCING -> SyncingScreen()
-                        Screen.PICKER -> if (goal != null) PlacePickerScreen(
-                            goal, model.selectedPlaceId, model.simulation, model.message ?: navi.routeMessage, model::home, model::select,
-                            onStartPressed, model::requestRoute, showNavigate = navi.available, model::editPlace,
-                        ) else model.home()
-                        Screen.VISIT -> model.finishedRecord?.let { record ->
-                            VisitConfirmScreen(goal, record, model::confirmVisit, model::continueAfterRecord)
-                        }
                         Screen.LINK -> PhoneLinkScreen(
                             model.linkCode?.code, model.linkCode?.expiresAtMillis ?: 0, model.linkCode?.webUrl, model.linkError,
                             model::leaveLink, model::startLink,
                         )
-                        Screen.DONE -> ContinueOnPhoneScreen(model.finishedRecord, model::home)
+                        Screen.DONE -> if (BuildConfig.PHONE_LINK_ENABLED) ContinueOnPhoneScreen(model.finishedRecord, model::home)
+                        else RecordSavedScreen(model.routeMaps, model.finishedRecord, "드라이브를 기록했어요", model::home, model::openHistory, null)
                         Screen.OFFLINE -> {
                             val record = model.finishedRecord
-                            val place = goal?.places?.firstOrNull { it.id == record?.placeId }
-                            OfflineSavedScreen(
-                                record, place?.let { MapPoint(it.latitude, it.longitude) }, store.token != null, model.syncing,
-                                model::retrySync, model::home,
-                            )
+                            OfflineSavedScreen(record, record?.destinationPoint(), store.token != null, model.syncing, model::retrySync, model::home)
                         }
-                        Screen.COMPLETE -> if (goal != null) GoalCompleteScreen(
-                            model.store, goal, store.journey.records, model.syncing, model::continueAfterRecord, model::home,
-                        ) else model.home()
-                        else -> if (goal == null) WelcomeScreen(store.token != null, model::startNewGoal, model::openLink, model::unlink, hold)
-                        else GoalHomeScreen(goal, store.token != null, store.outbox.isNotEmpty(), { model.onHomeAction(goal) }, model::openLink, model::unlink, hold)
+                        else -> HomeScreen(
+                            model.searchQuery, speech, canSearch, model.simulation, navi.routeMessage,
+                            remember(store.recentPlaces, navi) { model.recentPlaces() }, remember(store.savedPlaces, navi) { model.savedPlaces() },
+                            model.currentLocation, searchActions, model::selectPlace, model::openHistory, { model.go(Screen.DIAGNOSTICS) },
+                            if (BuildConfig.PHONE_LINK_ENABLED) ({ LinkControl(store.token != null, model::openLink, model::unlink) }) else null,
+                        )
                     }
                 }
             }

@@ -3,14 +3,13 @@ package com.drivelog.app.feature.car
 import android.app.Application
 import android.content.pm.PackageManager
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.drivelog.app.BuildConfig
 import com.drivelog.app.DrivelogApp
-import com.drivelog.app.core.journey.GoalV
 import com.drivelog.app.core.journey.LinkCodeV
 import com.drivelog.app.core.journey.PlaceV
 import com.drivelog.app.core.journey.RecordV
@@ -24,7 +23,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-enum class Screen { HOME, GOAL_NEW, GOAL_EDIT_PLACE, PICKER, STOP, VISIT, SYNCING, LINK, DONE, OFFLINE, RECOVERY, COMPLETE, DIAGNOSTICS }
+enum class Screen { HOME, PLACE, HISTORY, RECORD, STOP, SYNCING, LINK, DONE, OFFLINE, RECOVERY, DIAGNOSTICS }
 
 fun NaviPlace.toPlace() = PlaceV("", 0, name, address, latitude, longitude, poiId, poiSubId, poiProvider)
 fun PlaceV.toNaviPlace() = NaviPlace(name, address, latitude, longitude, poiId, poiSubId, poiProvider)
@@ -34,22 +33,34 @@ val simulatedNaviPlaces = listOf(
     NaviPlace("광안리 해수욕장", "부산 수영구", 35.1532, 129.1186),
     NaviPlace("송정 해수욕장", "부산 해운대구", 35.1786, 129.1996),
     NaviPlace("다대포 해수욕장", "부산 사하구", 35.0466, 128.9662),
-    NaviPlace("해운대 해수욕장", "부산 해운대구", 35.1587, 129.1604),
 )
 
-val goalNamePresets = listOf("올해 가보고 싶은 부산 바다", "올해 가보고 싶은 곳", "다음 드라이브 코스")
+/** Unset destinations and bookmark slots arrive without a name or coordinates; they are not places. */
+fun NaviPlace.isUsablePlace() = name.isNotBlank() && (latitude != 0.0 || longitude != 0.0)
+fun NaviPlace.sameLocation(other: NaviPlace) = latitude == other.latitude && longitude == other.longitude
+
+/** Earlier lists win, so this app's own history keeps its order ahead of what the navigation app reports. */
+fun mergePlaces(vararg lists: List<NaviPlace>): List<NaviPlace> =
+    // The navigation app reports slightly different coordinates for one place across its lists, so names count too.
+    lists.flatMap { it }.filter { it.isUsablePlace() }.distinctBy { it.latitude to it.longitude }.distinctBy { it.name }
+
+/** True once the navigation app holds a destination the driver did not already have when the search began. */
+fun isNewDestination(current: NaviPlace?, before: NaviPlace?) =
+    current != null && current.isUsablePlace() && (before == null || !current.sameLocation(before))
 
 class CarViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as DrivelogApp
     val store = app.store
     val recorder = app.recorder
     val platform = app.platform
+    val routeMaps = app.routeMaps
+    private var mapJob: Job? = null
 
     var screen by mutableStateOf(Screen.HOME)
         private set
-    var selectedPlaceId by mutableStateOf<String?>(null)
+    var selectedPlace by mutableStateOf<NaviPlace?>(null)
         private set
-    var editingPlaceId by mutableStateOf<String?>(null)
+    var openedRecordId by mutableStateOf<String?>(null)
         private set
     var finishedRecord by mutableStateOf<RecordV?>(null)
         private set
@@ -65,8 +76,11 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     var syncing by mutableStateOf(false)
         private set
 
-    var goalName by mutableStateOf(goalNamePresets.first())
-    val goalPlaces = mutableStateListOf<NaviPlace>()
+    var searchQuery by mutableStateOf("")
+    var currentLocation by mutableStateOf<MapPoint?>(null)
+        private set
+    private var awaitingNavi by mutableStateOf(false)
+    private var destinationBeforeSearch: NaviPlace? = null
 
     /** Debug switch; forced on where FusedLocation is absent, since nothing real can be recorded there. */
     var simulationRequested by mutableStateOf(false)
@@ -103,6 +117,29 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             recoveredPlace = recorder.recoveredPlace()
             if (recoveredRecord != null) screen = Screen.RECOVERY
         }
+        // The process is frozen behind the navigation app, so this usually fires when the driver comes back.
+        viewModelScope.launch {
+            platform.navi.collect { state ->
+                val destination = state.currentDestination
+                if (awaitingNavi && destination != null && isNewDestination(destination, destinationBeforeSearch)) selectPlace(destination)
+            }
+        }
+        viewModelScope.launch {
+            platform.speech.collect { state ->
+                val heard = state.heard ?: return@collect
+                platform.clearSpeech()
+                searchQuery = heard
+                searchPlace()
+            }
+        }
+        viewModelScope.launch {
+            snapshotFlow { parked }.collect { isParked ->
+                if (isParked) fillRouteMaps() else {
+                    platform.stopListening()
+                    mapJob?.cancel() // Nothing is requested from the map service while moving.
+                }
+            }
+        }
         viewModelScope.launch {
             // Moving into P mid-drive offers the end-of-drive screen, as the driver has just stopped.
             var previous = gear
@@ -117,13 +154,41 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun onForeground() { platform.refreshNaviPlaces() }
+    fun onForeground() {
+        platform.refreshNaviPlaces()
+        refreshLocation()
+        fillRouteMaps()
+    }
+
+    /** Parked and not recording only. A failure simply leaves the map-free card until the next attempt. */
+    private fun fillRouteMaps() {
+        if (!parked || recorder.state.value != null || mapJob?.isActive == true) return
+        mapJob = viewModelScope.launch { routeMaps.fill(store.state.value.journey.records) }
+    }
+
+    /** The map's position request must not outlive the screen when no fix has arrived yet. */
+    fun onBackground() {
+        if (recorder.state.value == null) platform.stopLocation()
+    }
 
     fun changeSimGear(value: CarGear) { app.simulatedGear.value = value }
     fun toggleSimulation() { if (recorder.state.value == null) simulationRequested = !simulationRequested }
 
-    fun go(target: Screen) { message = null; platform.clearRouteMessage(); screen = target }
-    fun home() { finishedRecord = null; editingPlaceId = null; go(Screen.HOME) }
+    fun go(target: Screen) {
+        message = null
+        awaitingNavi = false
+        platform.stopListening()
+        platform.clearSpeech()
+        platform.clearRouteMessage()
+        screen = target
+    }
+
+    fun home() {
+        finishedRecord = null
+        selectedPlace = null
+        searchQuery = ""
+        go(Screen.HOME)
+    }
 
     /** False means this is the top screen, and the activity hides itself rather than finishing. */
     fun goBack(): Boolean {
@@ -133,57 +198,74 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         }
         when (screen) {
             Screen.HOME, Screen.RECOVERY, Screen.SYNCING -> return false
-            Screen.VISIT -> continueAfterRecord()
             Screen.LINK -> leaveLink()
-            Screen.GOAL_EDIT_PLACE -> { editingPlaceId = null; go(Screen.PICKER) }
+            Screen.RECORD -> go(Screen.HISTORY)
             else -> home()
         }
         return true
     }
 
-    // --- Goal setup: places come from the navigation app, not typed search ------------------------
+    // --- Places: speech and typing only produce a keyword; the navigation app finds the place ------
 
-    /** Picks survive a trip to the navigation app, so places can be added one search at a time. */
-    fun startNewGoal() {
-        platform.refreshNaviPlaces()
-        go(Screen.GOAL_NEW)
+    /** One position for the map, only when permission is already held. It never prompts on the home screen. */
+    private fun refreshLocation() {
+        if (simulation || !locationSupported || recorder.state.value != null) return
+        val context = getApplication<Application>()
+        if (platform.locationPermissions().any { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }) return
+        platform.startLocation(
+            onPoint = { latitude, longitude ->
+                viewModelScope.launch {
+                    currentLocation = MapPoint(latitude, longitude)
+                    if (recorder.state.value == null) platform.stopLocation()
+                }
+            },
+            onError = {},
+        )
     }
 
-    fun toggleGoalPlace(place: NaviPlace) {
-        val index = goalPlaces.indexOfFirst { it.latitude == place.latitude && it.longitude == place.longitude }
-        if (index >= 0) goalPlaces.removeAt(index) else if (goalPlaces.size < GOAL_PLACE_COUNT) goalPlaces.add(place)
-    }
-
-    fun createGoal() {
-        if (!parked || goalPlaces.size != GOAL_PLACE_COUNT) return
-        store.createGoal(goalName, goalPlaces.map { it.toPlace() })
-        goalPlaces.clear()
-        home()
-        viewModelScope.launch { store.sync() }
-    }
-
-    fun editPlace(placeId: String) {
-        editingPlaceId = placeId
-        platform.refreshNaviPlaces()
-        go(Screen.GOAL_EDIT_PLACE)
-    }
-
-    fun replaceEditingPlace(place: NaviPlace) {
-        val id = editingPlaceId ?: return
+    fun toggleListening() {
         if (!parked) return
-        store.replacePlace(id, place.toPlace())
-        editingPlaceId = null
-        go(Screen.PICKER)
-        viewModelScope.launch { store.sync() }
+        if (platform.speech.value.listening) platform.stopListening() else {
+            searchQuery = ""
+            platform.startListening()
+        }
     }
 
-    fun onHomeAction(goal: GoalV) {
-        if (goal.achieved) { go(Screen.COMPLETE); return }
-        selectedPlaceId = goal.nextPlace?.id
-        go(Screen.PICKER)
+    /** Explicit action only: typed text or a finished phrase. */
+    fun searchPlace() {
+        val keyword = searchQuery.trim()
+        if (!parked || keyword.isEmpty()) return
+        val navi = platform.navi.value
+        if (!navi.available) {
+            // Debug stand-in for emulators without navigation; the screen carries the simulation badge.
+            if (simulation) selectPlace(simulatedNaviPlaces.firstOrNull { it.name.contains(keyword) } ?: simulatedNaviPlaces.first())
+            return
+        }
+        destinationBeforeSearch = navi.currentDestination
+        awaitingNavi = true
+        platform.searchPlace(keyword)
     }
 
-    fun select(place: PlaceV) { selectedPlaceId = place.id }
+    fun selectPlace(place: NaviPlace) {
+        if (!parked || recorder.state.value != null) return
+        selectedPlace = place
+        searchQuery = place.name
+        store.addRecentPlace(place.toPlace())
+        go(Screen.PLACE)
+    }
+
+    fun recentPlaces(): List<NaviPlace> {
+        val navi = platform.navi.value
+        val own = store.state.value.recentPlaces.map { it.toNaviPlace() }
+        val merged = mergePlaces(listOfNotNull(navi.currentDestination), own, navi.recents)
+        return if (merged.isEmpty() && simulation && !navi.available) simulatedNaviPlaces else merged
+    }
+
+    fun savedPlaces(): List<NaviPlace> = mergePlaces(store.state.value.savedPlaces.map { it.toNaviPlace() }, platform.navi.value.bookmarks)
+
+    fun isSaved(place: NaviPlace) = store.state.value.savedPlaces.any { it.toNaviPlace().sameLocation(place) }
+
+    fun toggleSaved() { selectedPlace?.let { store.toggleSavedPlace(it.toPlace()) } }
 
     // --- Recording --------------------------------------------------------------------------------
 
@@ -193,28 +275,27 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         return platform.locationPermissions().filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
     }
 
+    /** The driver pressed "길 안내 및 기록 시작", so this is the one explicit route request. */
     fun startRecording() {
         if (!parked) return
-        val goal = store.state.value.journey.activeGoal ?: return
-        val place = goal.places.firstOrNull { it.id == selectedPlaceId } ?: return
+        val place = selectedPlace ?: return
         if (!recordingAvailable) { message = "이 차량에서는 위치를 수집할 수 없어 기록할 수 없어요."; return }
-        if (!recorder.start(goal.id, place, simulation)) {
-            message = "위치 권한을 허용하면 기록할 수 있어요. 경로는 사진 카드를 만드는 데 쓰여요."
+        if (!recorder.start(null, place.toPlace(), simulation)) {
+            message = "위치 권한을 허용하면 기록할 수 있어요. 경로는 드라이브 카드를 만드는 데 쓰여요."
             return
         }
+        val navi = platform.navi.value
+        val guiding = navi.currentDestination?.sameLocation(place) == true
         go(Screen.HOME)
         if (!simulation) RecordingService.startIfAllowed(getApplication())
         platform.speak("${place.name} 기록을 시작했어요.")
-    }
-
-    /** Explicit tap only: recording never starts guidance, and only one navigation app may hold the route. */
-    fun requestRoute() {
-        val goal = store.state.value.journey.activeGoal ?: return
-        val place = goal.places.firstOrNull { it.id == selectedPlaceId } ?: return
-        platform.requestRoute(place.toNaviPlace())
+        if (navi.available) {
+            if (guiding) platform.openNavigation() else platform.requestRoute(place)
+        }
     }
 
     fun openNavigation() = platform.openNavigation()
+    fun cancelRoute() = platform.cancelRoute()
 
     fun askToStop() { if (parked) go(Screen.STOP) }
     fun keepRecording() { go(Screen.HOME) }
@@ -226,22 +307,14 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             RecordingService.stop(getApplication())
             store.addRecord(record)
             finishedRecord = record
-            go(Screen.VISIT)
+            fillRouteMaps()
+            continueAfterRecord()
         }
-    }
-
-    fun confirmVisit() {
-        val record = finishedRecord ?: return
-        store.confirmVisit(record)
-        val goal = store.state.value.journey.activeGoal
-        if (goal?.achieved == true) {
-            go(Screen.COMPLETE)
-            viewModelScope.launch { store.sync() }
-        } else continueAfterRecord()
     }
 
     /** Outcome of the upload decides what the driver is told; "arrived" is never claimed in advance. */
     fun continueAfterRecord() {
+        if (!BuildConfig.PHONE_LINK_ENABLED) { go(Screen.DONE); return }
         if (store.state.value.token == null) {
             returnAfterLink = Screen.DONE
             startLink()
@@ -265,6 +338,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         recoveredRecord = null
         recoveredPlace = null
         finishedRecord = record
+        fillRouteMaps()
         continueAfterRecord()
     }
 
@@ -273,6 +347,28 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         recoveredRecord = null
         recoveredPlace = null
         home()
+    }
+
+    // --- 내 기록 ----------------------------------------------------------------------------------
+
+    fun openHistory() {
+        finishedRecord = null
+        fillRouteMaps()
+        go(Screen.HISTORY)
+    }
+
+    fun openRecord(record: RecordV) {
+        openedRecordId = record.id
+        go(Screen.RECORD)
+    }
+
+    fun deleteOpenedRecord() {
+        openedRecordId?.let {
+            store.deleteRecord(it)
+            routeMaps.delete(it)
+        }
+        openedRecordId = null
+        go(Screen.HISTORY)
     }
 
     // --- Phone link -------------------------------------------------------------------------------
@@ -312,6 +408,4 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         linkCode = null
         if (returnAfterLink == Screen.DONE) go(Screen.OFFLINE) else home()
     }
-
-    private companion object { const val GOAL_PLACE_COUNT = 3 }
 }

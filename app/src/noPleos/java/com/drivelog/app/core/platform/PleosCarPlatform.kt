@@ -7,6 +7,12 @@ import kotlinx.coroutines.flow.StateFlow
 /** SDK-free build: no navigation or location, so only the labelled simulation can record. */
 private class NoPleosCarPlatform : CarPlatform {
     override val navi: StateFlow<NaviState> = MutableStateFlow(NaviState())
+    override val speech: StateFlow<SpeechState> = MutableStateFlow(SpeechState())
+    override fun searchPlace(keyword: String) {}
+    override fun cancelRoute() {}
+    override fun startListening() {}
+    override fun stopListening() {}
+    override fun clearSpeech() {}
     override fun connect() {}
     override fun close() {}
     override suspend fun odometerRaw(): Float? = null

@@ -1,13 +1,18 @@
 package com.drivelog.app
 
 import com.drivelog.app.core.journey.DistanceSource
-import com.drivelog.app.core.journey.GoalV
-import com.drivelog.app.core.journey.JourneyV
 import com.drivelog.app.core.journey.PlaceV
-import com.drivelog.app.core.journey.RecordStatus
-import com.drivelog.app.core.journey.RecordV
-import com.drivelog.app.core.journey.withReplacedPlace
-import com.drivelog.app.core.journey.withVisit
+import com.drivelog.app.core.journey.withRecent
+import com.drivelog.app.core.journey.withSavedToggled
+import com.drivelog.app.core.platform.NaviPlace
+import com.drivelog.app.feature.car.MapPoint
+import com.drivelog.app.feature.car.destinationFitsFrame
+import com.drivelog.app.feature.car.isNewDestination
+import com.drivelog.app.feature.car.routeBounds
+import com.drivelog.app.feature.car.splitAtGaps
+import com.drivelog.app.feature.car.withoutSymbolLayers
+import com.drivelog.app.feature.car.thinnedForDrawing
+import com.drivelog.app.feature.car.mergePlaces
 import com.drivelog.app.core.recording.resolveDistance
 import com.drivelog.app.feature.car.CarLayoutMode
 import com.drivelog.app.feature.car.carDimensFor
@@ -17,35 +22,67 @@ import org.junit.Test
 
 class JourneyRulesTest {
     private fun place(id: String) = PlaceV(id, 0, id, "", 35.0, 129.0)
-    private val goal = GoalV("g", "목표", "ACTIVE", listOf(place("a"), place("b"), place("c")))
-    private fun record(id: String, placeId: String) = RecordV(id, "g", placeId, placeId, 0, 0, 0, null, DistanceSource.NONE, RecordStatus.COMPLETE, false, emptyList())
 
-    @Test fun confirmingAPlaceTwiceCountsOnce() {
-        val once = JourneyV(goal).withVisit(record("r1", "a"), 1)
-        val twice = once.withVisit(record("r2", "a"), 2)
-        assertEquals(1, twice.activeGoal!!.visitedCount)
-        assertEquals("r1", twice.activeGoal!!.places[0].visitRecordId)
+    @Test fun recentPlaceMovesToTheTopInsteadOfRepeating() {
+        val a = place("a").copy(latitude = 1.0)
+        val b = place("b").copy(latitude = 2.0)
+        assertEquals(listOf("a", "b"), listOf(b, a).withRecent(a).map { it.id })
+        assertEquals(20, (1..30).fold(emptyList<PlaceV>()) { list, i -> list.withRecent(place("p$i").copy(latitude = i.toDouble())) }.size)
     }
 
-    @Test fun thirdPlaceAchievesTheGoal() {
-        val journey = listOf("a", "b", "c").fold(JourneyV(goal)) { state, id -> state.withVisit(record("r$id", id), 1) }
-        assertTrue(journey.activeGoal!!.achieved)
-        assertEquals("ACHIEVED", journey.activeGoal!!.status)
+    @Test fun savingAPlaceTwiceRemovesIt() {
+        val a = place("a")
+        assertEquals(1, emptyList<PlaceV>().withSavedToggled(a).size)
+        assertEquals(0, listOf(a).withSavedToggled(a).size)
     }
 
-    @Test fun onlyUnvisitedPlacesCanBeReplaced() {
-        val visited = JourneyV(goal).withVisit(record("r1", "a"), 1)
-        val replacement = place("new").copy(name = "새 장소")
-        val locked = visited.withReplacedPlace("a", replacement).activeGoal!!.places
-        assertEquals("a", locked[0].name)
-        val changed = visited.withReplacedPlace("b", replacement).activeGoal!!.places
-        assertEquals("새 장소", changed[1].name)
-        assertEquals("b", changed[1].id)
+    @Test fun mergedPlacesDropEmptySlotsAndRepeats() {
+        val own = NaviPlace("광안리", "", 35.15, 129.11)
+        val navi = NaviPlace("광안리 해수욕장", "", 35.15, 129.11)
+        val empty = NaviPlace("", "", 0.0, 0.0)
+        assertEquals(listOf("광안리"), mergePlaces(listOf(own), listOf(navi, empty)).map { it.name })
     }
 
-    @Test fun recordFromAnotherGoalDoesNotChangeProgress() {
-        val other = record("r", "a").copy(goalId = "other")
-        assertEquals(0, JourneyV(goal).withVisit(other, 1).activeGoal!!.visitedCount)
+    @Test fun mapStyleLosesItsTextLayersOnly() {
+        val cleaned = withoutSymbolLayers("""{"version":8,"layers":[{"id":"road","type":"line"},{"id":"name","type":"symbol"}]}""")
+        assertTrue(cleaned.contains("road"))
+        assertFalse(cleaned.contains("symbol"))
+    }
+
+    @Test fun routeBoundsLeaveRoomAroundEvenAVeryShortDrive() {
+        val box = routeBounds(listOf(MapPoint(37.55, 126.97), MapPoint(37.5501, 126.9701)))
+        assertTrue(box[2] - box[0] >= 0.012)
+        assertTrue(box[3] - box[1] >= 0.012)
+        assertTrue(box[0] < 37.55 && box[2] > 37.5501)
+    }
+
+    @Test fun recordingGapsAreNotDrawnAsDriving() {
+        val points = listOf(MapPoint(35.0, 129.0, 0), MapPoint(35.1, 129.0, 1_000), MapPoint(35.2, 129.0, 120_000))
+        assertEquals(listOf(2, 1), splitAtGaps(points).map { it.size })
+    }
+
+    @Test fun thinningKeepsBothEndsOfTheDrive() {
+        val thinned = (0..999).toList().thinnedForDrawing(240)
+        assertEquals(240, thinned.size)
+        assertEquals(0, thinned.first())
+        assertEquals(999, thinned.last())
+    }
+
+    @Test fun aFarDestinationStaysOutOfTheFrame() {
+        val drive = listOf(MapPoint(37.55, 126.97), MapPoint(37.56, 126.98))
+        assertTrue(destinationFitsFrame(drive, MapPoint(37.561, 126.981)))
+        assertFalse(destinationFitsFrame(drive, MapPoint(35.15, 129.11)))
+    }
+
+    @Test fun onlyADestinationSetAfterTheSearchCounts() {
+        val before = NaviPlace("집", "", 37.0, 127.0)
+        val picked = NaviPlace("광안리해수욕장", "", 35.15, 129.11)
+        assertTrue(isNewDestination(picked, null))
+        assertTrue(isNewDestination(picked, before))
+        assertFalse(isNewDestination(before, before))
+        assertFalse(isNewDestination(null, before))
+        // The navigation app answers with an empty destination when none is set.
+        assertFalse(isNewDestination(NaviPlace("", "", 0.0, 0.0), before))
     }
 
     @Test fun distanceIsEstimatedUnlessVehicleAgreesWithTrack() {
@@ -65,6 +102,7 @@ class JourneyRulesTest {
         assertEquals("광안리로", withDirectionParticle("광안리"))
         assertEquals("다대포로", withDirectionParticle("다대포"))
         assertEquals("서울로", withDirectionParticle("서울"))
+        assertEquals("수서역 SRT(으)로", withDirectionParticle("수서역 SRT"))
     }
 
     @Test fun windowShapeSelectsLayout() {

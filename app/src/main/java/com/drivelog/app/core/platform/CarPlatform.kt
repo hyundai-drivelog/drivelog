@@ -23,9 +23,19 @@ data class NaviState(
     val routeMessage: String? = null,
 )
 
+/** On-device speech recognition. [heard] holds a finished phrase until it is consumed with [CarPlatform.clearSpeech]. */
+data class SpeechState(
+    val available: Boolean = false,
+    val listening: Boolean = false,
+    val partial: String = "",
+    val heard: String? = null,
+    val message: String? = null,
+)
+
 /** Pleos SDK surface used by the app. The noPleos build supplies a stub that reports everything unavailable. */
 interface CarPlatform {
     val navi: StateFlow<NaviState>
+    val speech: StateFlow<SpeechState>
 
     fun connect()
     fun close()
@@ -49,6 +59,17 @@ interface CarPlatform {
     fun requestRoute(place: NaviPlace)
     fun openNavigation()
     fun clearRouteMessage()
+
+    /** Opens the navigation app's own search with this keyword. The SDK offers no search that returns results. */
+    fun searchPlace(keyword: String)
+
+    /** Sent only on an explicit user action, like [requestRoute]. */
+    fun cancelRoute()
+
+    /** Started only by an explicit tap. The result arrives through [SpeechState.heard]. */
+    fun startListening()
+    fun stopListening()
+    fun clearSpeech()
 
     /** Gleo AI on-device TTS. A short spoken cue keeps the driver's eyes on the road; failure is silent. */
     fun speak(text: String)

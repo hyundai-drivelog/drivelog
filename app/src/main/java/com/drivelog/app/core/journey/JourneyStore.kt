@@ -5,7 +5,6 @@ import android.util.Log
 import com.google.gson.Gson
 import java.io.File
 import java.io.IOException
-import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -22,30 +21,22 @@ data class StoreState(
     val journey: JourneyV = JourneyV(),
     val outbox: List<OutboxOp> = emptyList(),
     val lastSyncFailed: Boolean = false,
+    val recentPlaces: List<PlaceV> = emptyList(),
+    val savedPlaces: List<PlaceV> = emptyList(),
     // Held in memory only; persisted separately through TokenVault.
     @Transient val token: String? = null,
 )
 
-/** Pure rule shared by online and offline paths: one place counts once, however often it is confirmed. */
-fun JourneyV.withVisit(record: RecordV, now: Long): JourneyV {
-    val goal = activeGoal ?: return this
-    if (goal.id != record.goalId) return this
-    val places = goal.places.map { place ->
-        if (place.id == record.placeId && place.visitRecordId == null)
-            place.copy(visitRecordId = record.id, visitedAtMillis = now)
-        else place
-    }
-    val updated = goal.copy(places = places)
-    return copy(activeGoal = updated.copy(status = if (updated.achieved) "ACHIEVED" else goal.status))
-}
+private const val MAX_RECENT_PLACES = 20
 
-/** Only an unvisited place of the active goal can change; a confirmed visit stays attached to its place. */
-fun JourneyV.withReplacedPlace(placeId: String, replacement: PlaceV): JourneyV {
-    val goal = activeGoal ?: return this
-    return copy(activeGoal = goal.copy(places = goal.places.map { place ->
-        if (place.id == placeId && place.visitRecordId == null) replacement.copy(id = place.id, position = place.position) else place
-    }))
-}
+private fun PlaceV.sameLocation(other: PlaceV) = latitude == other.latitude && longitude == other.longitude
+
+/** Most recent first, and a place returns to the top rather than appearing twice. */
+fun List<PlaceV>.withRecent(place: PlaceV): List<PlaceV> =
+    (listOf(place) + filterNot { it.sameLocation(place) }).take(MAX_RECENT_PLACES)
+
+fun List<PlaceV>.withSavedToggled(place: PlaceV): List<PlaceV> =
+    if (any { it.sameLocation(place) }) filterNot { it.sameLocation(place) } else listOf(place) + this
 
 /**
  * Offline-first store: goals, records and queued writes survive process death in one atomically replaced
@@ -110,24 +101,9 @@ class JourneyStore(context: Context, baseUrl: String, private val scope: Corouti
         update { it.copy(token = null, lastSyncFailed = false) }
     }
 
-    fun createGoal(name: String, places: List<PlaceV>): GoalV {
-        val goal = GoalV(UUID.randomUUID().toString(), name, "ACTIVE", places.mapIndexed { index, place ->
-            place.copy(id = UUID.randomUUID().toString(), position = index)
-        })
-        update { state ->
-            state.copy(journey = state.journey.copy(activeGoal = goal), outbox = state.outbox + OutboxOp(OutboxOp.GOAL, goal = goal))
-        }
-        return goal
-    }
+    fun addRecentPlace(place: PlaceV) = update { it.copy(recentPlaces = it.recentPlaces.withRecent(place)) }
 
-    fun replacePlace(placeId: String, replacement: PlaceV) = update { state ->
-        val goalId = state.journey.activeGoal?.id
-        state.copy(
-            journey = state.journey.withReplacedPlace(placeId, replacement),
-            outbox = state.outbox + OutboxOp(OutboxOp.PLACE, goal = state.journey.activeGoal?.takeIf { it.id == goalId },
-                place = replacement.copy(id = placeId)),
-        )
-    }
+    fun toggleSavedPlace(place: PlaceV) = update { it.copy(savedPlaces = it.savedPlaces.withSavedToggled(place)) }
 
     fun addRecord(record: RecordV) = update { state ->
         state.copy(
@@ -136,10 +112,10 @@ class JourneyStore(context: Context, baseUrl: String, private val scope: Corouti
         )
     }
 
-    fun confirmVisit(record: RecordV) = update { state ->
+    fun deleteRecord(id: String) = update { state ->
         state.copy(
-            journey = state.journey.withVisit(record, System.currentTimeMillis()),
-            outbox = state.outbox + OutboxOp(OutboxOp.VISIT, record.id),
+            journey = state.journey.copy(records = state.journey.records.filterNot { it.id == id }),
+            outbox = state.outbox.filterNot { it.recordId == id } + OutboxOp(OutboxOp.DELETE_RECORD, id),
         )
     }
 
@@ -154,6 +130,8 @@ class JourneyStore(context: Context, baseUrl: String, private val scope: Corouti
                         OutboxOp.PLACE -> api.putPlace(checkNotNull(op.goal).id, checkNotNull(op.place).id, op.place)
                         OutboxOp.RECORD -> api.putRecord(op.recordId, checkNotNull(op.record))
                         OutboxOp.VISIT -> api.confirmVisit(op.recordId)
+                        OutboxOp.ARCHIVE -> api.archiveGoal(checkNotNull(op.goal).id)
+                        OutboxOp.DELETE_RECORD -> api.deleteRecord(op.recordId)
                     }
                 } catch (error: HttpException) {
                     // A definite rejection (e.g. the goal was deleted on the phone) will never succeed on
