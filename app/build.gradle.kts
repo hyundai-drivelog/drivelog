@@ -5,6 +5,9 @@ plugins {
 
 val pleosSdkEnabled = providers.gradleProperty("pleosSdkEnabled")
     .orElse("true").get().toBooleanStrict()
+// The vehicle-only submission leaves the phone hand-off out. -PphoneLinkEnabled=true brings it back.
+val phoneLinkEnabled = providers.gradleProperty("phoneLinkEnabled")
+    .orElse("false").get().toBooleanStrict()
 val releaseApiBaseUrl = providers.gradleProperty("releaseApiBaseUrl").orElse("").get()
 require(releaseApiBaseUrl.isBlank() ||
     (releaseApiBaseUrl.startsWith("https://") && releaseApiBaseUrl.endsWith("/") && !releaseApiBaseUrl.contains('"'))) {
@@ -27,7 +30,10 @@ android {
         versionCode = 1
         versionName = "1.0"
         buildConfigField("boolean", "PLEOS_SDK_INCLUDED", pleosSdkEnabled.toString())
+        buildConfigField("boolean", "PHONE_LINK_ENABLED", phoneLinkEnabled.toString())
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // The map library is native. Only vehicle hardware and the emulator image are packaged.
+        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
     buildTypes {
         debug {
@@ -56,6 +62,7 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material3)
+    implementation(libs.maplibre)
     implementation(libs.retrofit)
     implementation(libs.retrofit.gson)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
@@ -68,6 +75,7 @@ dependencies {
         implementation(libs.pleos.fused.location)
         implementation(libs.pleos.navi.helper)
         implementation(libs.pleos.text.to.speech)
+        implementation(libs.pleos.speech.to.text)
     }
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

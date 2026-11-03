@@ -37,7 +37,7 @@ fun List<List<Double>>.toMapPoints() = map { MapPoint(it[0], it[1], it.getOrNull
 @Composable
 fun RouteMap(
     points: List<MapPoint>, destination: MapPoint?, destinationLabel: String?, modifier: Modifier = Modifier,
-    unfinished: Boolean = false, seed: Int = 7,
+    unfinished: Boolean = false, seed: Int = 7, startLabel: String? = null,
 ) {
     val d = LocalCarDimens.current
     val colors = MaterialTheme.colorScheme
@@ -90,6 +90,10 @@ fun RouteMap(
                 val at = project(first)
                 drawCircle(ink, routeWidth * 2f, at)
                 drawCircle(surface, routeWidth * 0.9f, at)
+                if (startLabel != null) {
+                    val layout = measurer.measure(startLabel, labelStyle)
+                    drawText(layout, topLeft = Offset((at.x - layout.size.width / 2).coerceIn(2f, (size.width - layout.size.width - 2f).coerceAtLeast(2f)), (at.y - layout.size.height - routeWidth * 3f).coerceAtLeast(2f)))
+                }
             }
             if (destination != null) {
                 val tip = project(destination)

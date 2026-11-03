@@ -13,6 +13,8 @@
 | 위치 | FusedLocation SDK | `isSupported` 확인 필수 |
 | 장소 출처, 경로 요청, 도착 | NaviHelper SDK | 내비 탑재 차량만 |
 | 음성 안내 | TextToSpeech SDK | 오디오 포커스 선행 |
+| 음성 입력 | SpeechToText SDK | `ON_DEVICE`, 오디오 포커스 선행, 탭할 때만 |
+| 장소 검색 | NaviHelper `SearchPlace` | 결과를 앱이 받지 않고 내비 화면에서 고른다 |
 
 공식 정책: 표준 데이터는 AAOS, 제조사 특화 기능은 Pleos SDK. SDK 전용 기능이 AAOS로 편입되어도 최소 2개 메이저 버전은 호환이 유지된다.
 
@@ -24,7 +26,7 @@
 // settings.gradle.kts
 maven { url = uri("https://nexus-playground.pleos.ai/repository/maven-releases/") }
 // libs.versions.toml
-// Vehicle 2.3.2 / FusedLocation 1.1.3 / NaviHelper 3.0.5 / TextToSpeech 3.3.1
+// Vehicle 2.3.2 / FusedLocation 1.1.3 / NaviHelper 3.0.5 / TextToSpeech 3.3.1 / SpeechToText 3.3.1
 ```
 
 ## 3. 프로젝트와 사용 신청
@@ -47,6 +49,7 @@ maven { url = uri("https://nexus-playground.pleos.ai/repository/maven-releases/"
 | `pleos.car.permission.NAVI_ROUTE_SEARCH` | `requestRoute()` 등 | 문서 |
 | `pleos.car.permission.NAVI_CUSTOM_MAP` | `requestNavigationScreen()` | 문서 |
 | `pleos.car.permission.TTS_SERVICE` | TTS | 공개 샘플에서 확인, 공식 표 확인 필요 |
+| `pleos.car.permission.STT_SERVICE` | STT | 문서. 앱에 `RECORD_AUDIO` 없이 녹음 시작 확인 |
 
 진단 전용 `CAR_INFO`, `CAR_ENERGY`는 debug 매니페스트에만 둔다. 쓰지 않는 퍼미션은 반려 사유다.
 
@@ -73,10 +76,12 @@ helper.initialize(onConnected = { helper.addListener(listener) }, onFailed = { /
 
 | 목적 | 호출 | 결과 콜백 |
 |---|---|---|
-| 목표 장소 후보: 즐겨찾기 | `getBookmarkInfo()` | `onBookmarkInfo(List<BookmarkInfo>)`, 변경 시 `onBookMarkChanged()` |
-| 목표 장소 후보: 최근 | `getRecentDestinationInfo()` | `onRecentDestinationInfo(List<RecentDestinationInfo>)` |
-| 목표 장소 후보: 현재 목적지 | `getDestinationInfo()` | `onDestinationInfo(DestinationInfo)` |
+| 즐겨찾기 | `getBookmarkInfo()` | `onBookmarkInfo(List<BookmarkInfo>)`, 변경 시 `onBookMarkChanged()` |
+| 최근 목적지 | `getRecentDestinationInfo()` | `onRecentDestinationInfo(List<RecentDestinationInfo>)` |
+| 장소 검색 | `requestNavigationScreen(NavigationScreenRequest.SearchPlace(keyword))` | 없음. 결과는 내비 화면에 표시 |
+| 목적지 받기 | `getDestinationInfo()` | `onDestinationInfo(DestinationInfo)` |
 | 경로 요청 | `requestRoute(RouteInfo)` | `onRouteStarted`, `onRoutingCompleted`, `onError` |
+| 안내 종료 | `cancelRoute()` | `onRouteCancelled` |
 | 내비 화면 열기 | `requestNavigationScreen(NavigationScreenRequest.Foreground)` | 없음 |
 | 도착 | - | `onDestinationArrived(DestinationArrivedInfo)` |
 | 안내 상태 | `getRouteStateInfo()` | `onRouteStateInfo` (`naviMode`, `isRouting`) |
@@ -162,5 +167,23 @@ onBackPressedDispatcher.addCallback(this) {
 | Odometer | 호출 코드만 검증. 기록은 모두 `GPS_ESTIMATED`로 저장됨 |
 | 주행 중 잠금, 정차 시 종료 화면, 강제 종료 후 복구, 오프라인 재전송 | 통과 |
 | 메모리 | 약 107MB (기준 400MB). **CPU는 미측정** |
+| `SearchPlace` | 통과. 검색 결과가 내비에 표시됨. 안내 중에는 처음에 자동완성과 키보드가 함께 나올 수 있음 |
+| 검색 후 장소 받기 | 통과. 결과에서 목적지를 정하면 안내가 바로 시작되고, 앱이 앞으로 돌아올 때 `onDestinationInfo`로 이름·좌표를 받음 |
+| 앱이 뒤에 있을 때 콜백 | 내비가 앞에 있는 동안 전달되지 않고 복귀 시 몰아서 옴. **콜백 즉시 수신을 전제로 하지 않는다** |
+| `cancelRoute` | 통과. `onRouteCancelled` 수신 |
+| STT `ON_DEVICE` | 초기화와 녹음 시작까지 통과. **실제 음성의 인식 결과는 미검증** |
+| PiP | `android.software.picture_in_picture`가 `false`. Pleos 문서에도 언급 없음 |
+| 2분할 (내비와 나란히) | 창 바 조작으로 통과. 검색 결과가 내비 창에 뜨고 앱은 그대로 보이며, 안내가 시작되면 앱에 바로 반영됨. 앱이 분할을 요청하는 방법은 문서에 없음 |
+| 2분할일 때 콜백 | `onDestinationChanged` 없이 `onRouteStarted`만 관찰됨. 앱이 복귀하지 않으므로 이때 `getDestinationInfo()`를 호출한다 |
+| `cancelRoute` 후 화면 | 내비가 앞으로 나옴 |
+| 주행 중 잠금 | Virtual Console로 D 전환 시 홈 대신 `주행 중이에요` 표시. 세션을 1초 간격으로 유지해야 기어가 바뀜 |
+| 내비 경로선 | NaviHelper 3.0.5에 경로 좌표 API 없음(AAR 확인). `TripInfo`도 경유지·충전소 지점만 제공. 카드의 선은 앱이 기록한 GPS 경로 |
+| 카드 지도 | MapLibre 13.7.1 `MapSnapshotter` + OpenFreeMap `dark` 스타일(글자 레이어 제거). 온라인에서 생성, 저장 후 오프라인 표시, 네트워크 없으면 지도 없는 카드로 대체 후 다음 기회에 재시도 통과. `RouteMapCache.kt` |
+| 지도 라이브러리 캐시 | 앱 저장소에 `mbgl-offline.db`가 생긴다. 기록을 삭제하면 `clearAmbientCache`와 `packDatabase`로 지도 조각 캐시 전체를 비운다. 다른 기록의 카드 이미지는 남는다 |
+| 목록 좌표 | 같은 장소라도 목록마다 좌표와 주소 표기가 조금 다르다. 목록 중복 제거에 이름도 쓴다 |
+
+디스크가 가득 차면 에뮬레이터가 멈춘다. `DRIVELOG_Pleos`만 7GB 이상 쓰므로 여유 공간을 15GB 이상 둔다. 2026-11-03 시험 중 시스템 프로세스가 위치 서비스(GNSS)에서 멈춰 Watchdog으로 한 번 재시작됐고, 원인은 확인하지 못했다. 앱 크래시 기록은 없었다.
+
+Pleos 내비는 에뮬레이터에서 실제 지도 데이터로 검색한다. 그래서 인터넷 연결이 필요할 수 있으며, 오프라인 동작은 미검증이다.
 
 분할 화면 레이아웃은 `wm size` 853×1344로만 확인했다. 실제 window bar 조작으로는 미검증이다.

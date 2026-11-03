@@ -117,7 +117,7 @@ private fun CarButton(text: String, tag: String, modifier: Modifier, primary: Bo
 /** "‹ 여정" header. Holding the title opens SDK diagnostics, which is parked-only like everything else. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun TopBar(onBack: (() -> Unit)?, onTitleHold: (() -> Unit)? = null, trailing: (@Composable () -> Unit)? = null) {
+fun TopBar(onBack: (() -> Unit)?, onTitleHold: (() -> Unit)? = null, trailing: (@Composable () -> Unit)? = null, title: String = "여정") {
     val d = LocalCarDimens.current
     Row(Modifier.fillMaxWidth().heightIn(min = maxOf(d.u(44), MinTouch)), verticalAlignment = Alignment.CenterVertically) {
         Box(
@@ -126,7 +126,7 @@ fun TopBar(onBack: (() -> Unit)?, onTitleHold: (() -> Unit)? = null, trailing: (
             contentAlignment = Alignment.Center,
         ) { if (onBack != null) CarIcon(CarGlyph.CHEVRON_LEFT, d.u(20), fg()) }
         Box(Modifier.heightIn(min = MinTouch).combinedClickable(onClick = {}, onLongClick = onTitleHold).padding(horizontal = d.u(4)).testTag("title"), contentAlignment = Alignment.Center) {
-            T("여정", d.t(18), bold = true)
+            T(title, d.t(18), bold = true)
         }
         Spacer(Modifier.weight(1f))
         trailing?.invoke()
@@ -213,7 +213,7 @@ fun SimulationBadge() {
     T("시뮬레이션 데이터", d.t(14), Modifier.clip(RoundedCornerShape(d.u(6))).background(soft()).padding(horizontal = d.u(10), vertical = d.u(4)).testTag("sim-badge"), bold = true)
 }
 
-enum class CarGlyph { CHEVRON_LEFT, CHEVRON_RIGHT, CHECK, PIN, INFO, CLOUD_OFF, REFRESH, DOCUMENT, PHOTO }
+enum class CarGlyph { CHEVRON_LEFT, CHEVRON_RIGHT, CHECK, PIN, INFO, CLOUD_OFF, REFRESH, DOCUMENT, PHOTO, SEARCH, CLOCK, BOOKMARK, LIST }
 
 @Composable
 fun CarIcon(glyph: CarGlyph, size: Dp, color: Color, modifier: Modifier = Modifier) {
@@ -253,6 +253,19 @@ fun CarIcon(glyph: CarGlyph, size: Dp, color: Color, modifier: Modifier = Modifi
                 drawPath(poly(.2f to .06f, .62f to .06f, .82f to .28f, .82f to .94f, .2f to .94f, .2f to .06f), color, style = Stroke(w * .08f, join = StrokeJoin.Round))
                 drawLine(color, Offset(w * .34f, w * .55f), Offset(w * .68f, w * .55f), w * .07f)
                 drawLine(color, Offset(w * .34f, w * .73f), Offset(w * .68f, w * .73f), w * .07f)
+            }
+            CarGlyph.SEARCH -> {
+                drawCircle(color, w * .3f, Offset(w * .42f, w * .42f), style = stroke)
+                drawLine(color, Offset(w * .64f, w * .64f), Offset(w * .9f, w * .9f), w * .1f, StrokeCap.Round)
+            }
+            CarGlyph.CLOCK -> {
+                drawCircle(color, w * .42f, Offset(w / 2, w / 2), style = stroke)
+                drawPath(poly(.5f to .26f, .5f to .52f, .68f to .62f), color, style = stroke)
+            }
+            CarGlyph.BOOKMARK -> drawPath(poly(.22f to .08f, .78f to .08f, .78f to .92f, .5f to .7f, .22f to .92f, .22f to .08f), color, style = stroke)
+            CarGlyph.LIST -> listOf(.22f, .5f, .78f).forEach { y ->
+                drawCircle(color, w * .06f, Offset(w * .12f, w * y))
+                drawLine(color, Offset(w * .32f, w * y), Offset(w * .92f, w * y), w * .09f, StrokeCap.Round)
             }
             CarGlyph.PHOTO -> {
                 drawRoundRect(color, Offset(w * .08f, w * .16f), Size(w * .84f, w * .68f), style = Stroke(w * .08f))

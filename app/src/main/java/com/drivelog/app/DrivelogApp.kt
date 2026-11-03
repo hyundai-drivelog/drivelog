@@ -7,6 +7,7 @@ import com.drivelog.app.core.platform.CarPlatform
 import com.drivelog.app.core.platform.createCarPlatform
 import com.drivelog.app.core.recording.Recorder
 import com.drivelog.app.core.vehicle.VehicleStateMonitor
+import com.drivelog.app.feature.car.RouteMapCache
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,6 +25,9 @@ class DrivelogApp : Application() {
     lateinit var recorder: Recorder
         private set
 
+    lateinit var routeMaps: RouteMapCache
+        private set
+
     /** Debug-only stand-in for the gear signal; always surfaced on screen as simulation. */
     val simulatedGear = MutableStateFlow(CarGear.PARK)
 
@@ -33,5 +37,6 @@ class DrivelogApp : Application() {
         vehicleState = VehicleStateMonitor(this).also { it.start() }
         store = JourneyStore(this, BuildConfig.API_BASE_URL, scope).also { it.startSyncLoop() }
         recorder = Recorder(this, platform, scope) { simulatedGear.value }
+        routeMaps = RouteMapCache(this)
     }
 }

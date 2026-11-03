@@ -43,6 +43,10 @@ data class RecordV(
     val simulated: Boolean,
     val route: List<List<Double>>,
     val hasPhoto: Boolean = false,
+    /** Where the driver was heading. The server ignores these until it stores them. */
+    val placeAddress: String? = null,
+    val destinationLatitude: Double? = null,
+    val destinationLongitude: Double? = null,
 )
 
 data class JourneyV(
@@ -67,5 +71,7 @@ data class OutboxOp(
         const val PLACE = "PLACE"
         const val RECORD = "RECORD"
         const val VISIT = "VISIT"
+        const val ARCHIVE = "ARCHIVE"
+        const val DELETE_RECORD = "DELETE_RECORD"
     }
 }

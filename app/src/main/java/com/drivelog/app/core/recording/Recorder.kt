@@ -32,7 +32,7 @@ data class RoutePoint(val latitude: Double, val longitude: Double, val atMillis:
 
 data class Recording(
     val id: String,
-    val goalId: String,
+    val goalId: String?,
     val place: PlaceV,
     val startedAtMillis: Long,
     val elapsedSeconds: Long = 0,
@@ -83,9 +83,9 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
     private val mutableState = MutableStateFlow<Recording?>(null)
     val state: StateFlow<Recording?> = mutableState
 
-    private data class Meta(val id: String, val goalId: String, val place: PlaceV, val startedAtMillis: Long, val simulated: Boolean)
+    private data class Meta(val id: String, val goalId: String?, val place: PlaceV, val startedAtMillis: Long, val simulated: Boolean)
 
-    fun start(goalId: String, place: PlaceV, simulated: Boolean): Boolean {
+    fun start(goalId: String?, place: PlaceV, simulated: Boolean): Boolean {
         if (mutableState.value != null) return false
         val now = System.currentTimeMillis()
         val recording = Recording(UUID.randomUUID().toString(), goalId, place, now, simulated = simulated)
@@ -218,10 +218,11 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
 
     fun clearRecovery() = clearFiles()
 
-    private fun toRecord(id: String, goalId: String, place: PlaceV, started: Long, ended: Long, elapsed: Long, points: List<RoutePoint>,
+    private fun toRecord(id: String, goalId: String?, place: PlaceV, started: Long, ended: Long, elapsed: Long, points: List<RoutePoint>,
                          distance: Double?, source: String, status: String, simulated: Boolean) = RecordV(
-        id, goalId, place.id, place.name, started, ended, elapsed, distance, source, status, simulated,
+        id, goalId, place.id.ifBlank { null }, place.name, started, ended, elapsed, distance, source, status, simulated,
         thin(points).map { listOf(it.latitude, it.longitude, it.atMillis.toDouble()) },
+        placeAddress = place.address, destinationLatitude = place.latitude, destinationLongitude = place.longitude,
     )
 
     /** Keeps ends and recording gaps; the server caps a route at 20,000 points. */
