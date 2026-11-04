@@ -1,5 +1,7 @@
 package com.drivelog.app.feature.car
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -8,11 +10,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -23,7 +27,8 @@ import com.drivelog.app.core.recording.haversineKm
 import kotlin.math.cos
 import kotlin.math.max
 
-val DriveCardBackground = Color(0xFF111214)
+val DriveCardBackground = Color(0xFF131417)
+val DriveCardPressed = Color(0xFF313236)
 val DriveCardText = Color.White
 val DriveCardMuted = Color(0xFFB4B6BA)
 private val GridDot = Color.White.copy(alpha = 0.09f)
@@ -82,17 +87,42 @@ private fun pathOf(line: List<Offset>) = Path().apply {
     line.forEachIndexed { index, point -> if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y) }
 }
 
+/** The first [fraction] of the lines' combined length, in order. The jumps between lines take no time. */
+fun trimLines(lines: List<List<Offset>>, fraction: Float): List<List<Offset>> {
+    if (fraction >= 1f) return lines
+    val total = lines.sumOf { line -> line.zipWithNext().sumOf { (a, b) -> (b - a).getDistance().toDouble() } }
+    var left = total * fraction.coerceAtLeast(0f)
+    val kept = ArrayList<List<Offset>>(lines.size)
+    lines.filter { it.isNotEmpty() }.forEach { line ->
+        val part = arrayListOf(line.first())
+        line.zipWithNext().forEach { (a, b) ->
+            val length = (b - a).getDistance().toDouble()
+            if (left < length) {
+                part.add(lerp(a, b, (left / length).toFloat()))
+                kept.add(part)
+                return kept
+            }
+            part.add(b)
+            left -= length
+        }
+        kept.add(part)
+    }
+    return kept
+}
+
 /**
  * The recorded GPS track, never the navigation app's planned line, which the SDK does not expose. The dot
  * grid is plainly not a map, so nothing here can be mistaken for geography the app does not have.
+ * With [drawRoute] the track traces itself from start to end and the destination pin lands last.
  */
 @Composable
-fun DriveRouteArt(points: List<MapPoint>, destination: MapPoint?, destinationLabel: String?, modifier: Modifier = Modifier) {
+fun DriveRouteArt(points: List<MapPoint>, destination: MapPoint?, destinationLabel: String?, modifier: Modifier = Modifier, drawRoute: Boolean = false) {
     val d = LocalCarDimens.current
     val measurer = rememberTextMeasurer()
     val labelStyle = TextStyle(color = DriveCardText, fontSize = d.t(15), fontWeight = FontWeight.Bold)
     val pieces = remember(points) { splitAtGaps(points.thinnedForDrawing()) }
     val pin = remember(points, destination) { destination.takeIf { destinationFitsFrame(points, it) } }
+    val trace = rememberProgress(points, tween(1200, easing = FastOutSlowInEasing), enabled = drawRoute)
     Box(modifier.clip(RoundedCornerShape(d.u(10))).semantics { contentDescription = "주행 경로" }) {
         Canvas(Modifier.matchParentSize()) {
             drawRect(DriveCardBackground)
@@ -103,16 +133,20 @@ fun DriveRouteArt(points: List<MapPoint>, destination: MapPoint?, destinationLab
                 while (x < size.width) { drawCircle(GridDot, 1.2f * density, Offset(x, y)); x += spacing }
                 y += spacing
             }
+        }
+        // Its own layer: tracing the route must not redraw the whole dot grid on every frame.
+        Canvas(Modifier.matchParentSize().graphicsLayer {}) {
             val all = pieces.flatten() + listOfNotNull(pin)
             if (all.isEmpty()) return@Canvas
+            val traced = trace.value
             val width = 4f * d.scale * density
             val project = fitToFrame(all, size.width, size.height, 46f * d.scale * density)
-            val lines = pieces.map { piece -> piece.map(project) }
+            val lines = trimLines(pieces.map { piece -> smooth(piece.map(project)) }, traced)
             lines.zipWithNext().forEach { (before, after) ->
                 drawLine(DriveCardMuted, before.last(), after.first(), width * 0.6f, StrokeCap.Round, dashedEffect(width))
             }
             lines.forEach { line ->
-                val path = pathOf(smooth(line))
+                val path = pathOf(line)
                 drawPath(path, RouteGlow, style = Stroke(width * 3.2f, cap = StrokeCap.Round, join = StrokeJoin.Round))
                 drawPath(path, DriveCardText, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
             }
@@ -121,22 +155,27 @@ fun DriveRouteArt(points: List<MapPoint>, destination: MapPoint?, destinationLab
                 drawCircle(DriveCardText, width * 2.4f, start, style = Stroke(width * 0.8f))
                 drawCircle(DriveCardText, width * 0.9f, start)
             }
-            if (pin != null) {
+            val landing = ((traced - PIN_LANDS_AT) / (1f - PIN_LANDS_AT)).coerceIn(0f, 1f)
+            if (pin != null && landing > 0f) {
                 val tip = project(pin)
-                drawPin(tip, 38f * d.scale * density, DriveCardText, DriveCardBackground)
+                drawPin(tip, 38f * d.scale * density * landing, DriveCardText, DriveCardBackground)
                 if (destinationLabel != null) {
                     val layout = measurer.measure(destinationLabel, labelStyle, maxLines = 1)
                     val gap = 16f * d.scale * density
                     val right = tip.x + gap
                     val x = if (right + layout.size.width <= size.width - 4f) right else (tip.x - gap - layout.size.width).coerceAtLeast(4f)
-                    drawText(layout, topLeft = Offset(x, (tip.y - 34f * d.scale * density).coerceAtLeast(4f)))
+                    drawText(layout, topLeft = Offset(x, (tip.y - 34f * d.scale * density).coerceAtLeast(4f)), alpha = landing)
                 }
-            } else lines.lastOrNull()?.lastOrNull()?.let { end ->
+            }
+            // The moving end while tracing, and where the drive stopped when no pin marks it.
+            if (pin == null || traced < 1f) lines.lastOrNull()?.lastOrNull()?.let { end ->
                 drawCircle(DriveCardText, width * 1.8f, end)
             }
         }
     }
 }
+
+private const val PIN_LANDS_AT = 0.85f
 
 private fun fitToFrame(points: List<MapPoint>, width: Float, height: Float, pad: Float): (MapPoint) -> Offset {
     val k = cos(Math.toRadians(points.map { it.latitude }.average()))

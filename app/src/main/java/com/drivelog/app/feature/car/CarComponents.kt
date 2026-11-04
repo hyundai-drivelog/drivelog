@@ -7,6 +7,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,9 +30,12 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -43,6 +48,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -55,6 +61,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
+import androidx.compose.ui.unit.sp
 import com.drivelog.app.R
 import kotlin.math.cos
 import kotlin.math.sin
@@ -79,37 +87,76 @@ fun keepWordsTogether(text: String): String = buildString(text.length * 2) {
 @Composable
 fun T(
     text: String, size: TextUnit, modifier: Modifier = Modifier, color: Color = fg(), bold: Boolean = false,
-    align: TextAlign? = null, maxLines: Int = Int.MAX_VALUE,
+    align: TextAlign? = null, maxLines: Int = Int.MAX_VALUE, display: Boolean = false, tracking: Float = 0f,
 ) = Text(
-    keepWordsTogether(text), modifier, color = color, fontSize = size, fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
-    textAlign = align, maxLines = maxLines, overflow = TextOverflow.Ellipsis, lineHeight = size * 1.28f,
+    keepWordsTogether(text), modifier, color = color, fontSize = size,
+    // Display text is what the mockups lead with: the heaviest weight, set slightly tight.
+    fontWeight = if (display) FontWeight.ExtraBold else if (bold) FontWeight.Bold else FontWeight.Normal,
+    letterSpacing = (if (display) -0.02f else tracking).em,
+    textAlign = align, maxLines = maxLines, overflow = TextOverflow.Ellipsis, lineHeight = size * (if (display) 1.18f else 1.28f),
 )
 
+/** Pleos Basic Button sizes: height and corner radius from the guide, the label and padding measured from its drawing. */
+enum class ButtonSize(val height: Dp, val radius: Dp, val padding: Dp, val label: TextUnit, val icon: Dp) {
+    LARGE(100.dp, 32.dp, 44.dp, 32.sp, 44.dp),
+    MEDIUM(80.dp, 24.dp, 32.dp, 28.sp, 36.dp),
+    SMALL(64.dp, 16.dp, 24.dp, 24.sp, 28.dp),
+}
+
+/** The emphasised action: Pleos's filled button. */
 @Composable
-fun PrimaryButton(text: String, tag: String, modifier: Modifier = Modifier, chevron: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) =
-    CarButton(text, tag, modifier, true, chevron, enabled, onClick)
+fun PrimaryButton(
+    text: String, tag: String, modifier: Modifier = Modifier, chevron: Boolean = false, enabled: Boolean = true, loading: Boolean = false,
+    size: ButtonSize = ButtonSize.LARGE, icon: CarGlyph? = null, onClick: () -> Unit,
+) = CarButton(text, tag, modifier, true, chevron, enabled, loading, size, icon, onClick)
+
+/** Everything else: Pleos's basic button, a light tint of the ink. */
+@Composable
+fun SecondaryButton(
+    text: String, tag: String, modifier: Modifier = Modifier, enabled: Boolean = true, loading: Boolean = false,
+    size: ButtonSize = ButtonSize.LARGE, icon: CarGlyph? = null, onClick: () -> Unit,
+) = CarButton(text, tag, modifier, false, false, enabled, loading, size, icon, onClick)
 
 @Composable
-fun SecondaryButton(text: String, tag: String, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) =
-    CarButton(text, tag, modifier, false, false, enabled, onClick)
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun CarButton(text: String, tag: String, modifier: Modifier, primary: Boolean, chevron: Boolean, enabled: Boolean, onClick: () -> Unit) {
-    val d = LocalCarDimens.current
-    val shape = RoundedCornerShape(d.u(12))
+private fun CarButton(
+    text: String, tag: String, modifier: Modifier, filled: Boolean, chevron: Boolean, enabled: Boolean, loading: Boolean,
+    size: ButtonSize, icon: CarGlyph?, onClick: () -> Unit,
+) {
     val colors = MaterialTheme.colorScheme
-    val content = (if (primary) colors.onPrimary else colors.onBackground).copy(alpha = if (enabled || primary) 1f else 0.35f)
+    val ink = colors.onBackground
+    val shape = RoundedCornerShape(size.radius)
+    val press = remember { MutableInteractionSource() }
+    val pressed by press.collectIsPressedAsState()
+    val inactive = !enabled || loading
+    val filledPressed = if (colors.background.luminance() > 0.5f) Color(0xFF313236) else Color(0xFFC7C9CE)
+    val fill = when {
+        filled && inactive -> ink.copy(alpha = 0.05f)
+        filled -> if (pressed) filledPressed else colors.primary
+        inactive -> Color.Transparent
+        else -> ink.copy(alpha = if (pressed) 0.1f else 0.05f)
+    }
+    val content = when {
+        inactive -> ink.copy(alpha = 0.32f)
+        filled -> colors.onPrimary
+        else -> ink
+    }
     Row(
-        modifier.heightIn(min = maxOf(d.u(56), MinTouch)).clip(shape)
-            .then(if (primary) Modifier.background(colors.primary.copy(alpha = if (enabled) 1f else 0.35f)) else Modifier.border(d.u(1.5f), colors.onBackground.copy(alpha = if (enabled) 1f else 0.35f), shape))
-            .combinedClickable(enabled = enabled, role = Role.Button, onClick = onClick).padding(horizontal = d.u(16)).testTag(tag),
+        modifier.heightIn(min = size.height).clip(shape).background(fill)
+            .then(if (!filled && inactive) Modifier.border(4.dp, ink.copy(alpha = 0.1f), shape) else Modifier)
+            .pressClick(enabled = !inactive, source = press, indication = null, onClick = onClick).padding(horizontal = size.padding).testTag(tag),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
     ) {
-        T(text, d.t(21), color = content, bold = true, maxLines = 1)
-        if (chevron) {
-            Spacer(Modifier.width(d.u(10)))
-            CarIcon(CarGlyph.CHEVRON_RIGHT, d.u(16), content)
+        if (loading) LoadingIndicator(LoadingStyle.LINEAR, size.icon, ink)
+        else {
+            if (icon != null) {
+                CarIcon(icon, size.icon, content)
+                Spacer(Modifier.width(size.padding / 3))
+            }
+            T(text, size.label, color = content, bold = true, maxLines = 1)
+            if (chevron) {
+                Spacer(Modifier.width(size.padding / 3))
+                CarIcon(CarGlyph.CHEVRON_RIGHT, size.icon, content)
+            }
         }
     }
 }
@@ -121,11 +168,11 @@ fun TopBar(onBack: (() -> Unit)?, onTitleHold: (() -> Unit)? = null, trailing: (
     val d = LocalCarDimens.current
     Row(Modifier.fillMaxWidth().heightIn(min = maxOf(d.u(44), MinTouch)), verticalAlignment = Alignment.CenterVertically) {
         Box(
-            Modifier.size(maxOf(d.u(44), MinTouch))
-                .then(if (onBack != null) Modifier.combinedClickable(role = Role.Button, onClickLabel = "뒤로", onClick = onBack).semantics { contentDescription = "뒤로" }.testTag("back") else Modifier),
+            Modifier.size(maxOf(d.u(44), MinTouch)).clip(RoundedCornerShape(16.dp))
+                .then(if (onBack != null) Modifier.pressClick(onClick = onBack).semantics { contentDescription = "뒤로" }.testTag("back") else Modifier),
             contentAlignment = Alignment.Center,
-        ) { if (onBack != null) CarIcon(CarGlyph.CHEVRON_LEFT, d.u(20), fg()) }
-        Box(Modifier.heightIn(min = MinTouch).combinedClickable(onClick = {}, onLongClick = onTitleHold).padding(horizontal = d.u(4)).testTag("title"), contentAlignment = Alignment.Center) {
+        ) { if (onBack != null) CarIcon(CarGlyph.CHEVRON_LEFT, 48.dp, fg()) }
+        Box(Modifier.heightIn(min = MinTouch).combinedClickable(interactionSource = null, indication = null, onClick = {}, onLongClick = onTitleHold).padding(horizontal = d.u(4)).testTag("title"), contentAlignment = Alignment.Center) {
             T(title, d.t(18), bold = true)
         }
         Spacer(Modifier.weight(1f))
@@ -162,6 +209,9 @@ fun placeImage(name: String): Int = when {
     else -> R.drawable.demo_coastal_road
 }
 
+/** A photo beside a place must really be of that place, so anything else keeps the map. */
+fun placeHasPhoto(name: String) = placeImage(name) != R.drawable.demo_coastal_road
+
 private val Mono = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
 
 @Composable
@@ -195,8 +245,8 @@ fun Stat(value: String, unit: String, label: String, modifier: Modifier = Modifi
     val d = LocalCarDimens.current
     Column(modifier) {
         Row(verticalAlignment = Alignment.Bottom) {
-            T(value, d.t(44), bold = true, maxLines = 1)
-            if (unit.isNotEmpty()) T(unit, d.t(28), Modifier.padding(start = d.u(5), bottom = d.u(3)), bold = true)
+            T(value, d.t(54), maxLines = 1, display = true)
+            if (unit.isNotEmpty()) T(unit, d.t(28), Modifier.padding(start = d.u(6), bottom = d.u(6)), bold = true)
         }
         T(label, d.t(17), color = muted())
     }
@@ -213,64 +263,76 @@ fun SimulationBadge() {
     T("시뮬레이션 데이터", d.t(14), Modifier.clip(RoundedCornerShape(d.u(6))).background(soft()).padding(horizontal = d.u(10), vertical = d.u(4)).testTag("sim-badge"), bold = true)
 }
 
-enum class CarGlyph { CHEVRON_LEFT, CHEVRON_RIGHT, CHECK, PIN, INFO, CLOUD_OFF, REFRESH, DOCUMENT, PHOTO, SEARCH, CLOCK, BOOKMARK, LIST }
+enum class CarGlyph { CHEVRON_LEFT, CHEVRON_RIGHT, CHECK, PIN, INFO, CLOUD_OFF, REFRESH, DOCUMENT, PHOTO, SEARCH, CLOCK, BOOKMARK, LIST, MIC }
 
+/**
+ * System icons on the Pleos grid: drawn at 48 units and scaled, Outlined at a 3.6 unit stroke with round caps and
+ * joins, Filled with 1.5 unit corners. The guide pairs icons with text labels, so an icon rarely stands alone.
+ */
 @Composable
 fun CarIcon(glyph: CarGlyph, size: Dp, color: Color, modifier: Modifier = Modifier) {
     val surface = MaterialTheme.colorScheme.background
     Canvas(modifier.size(size)) {
-        val w = this.size.width
-        val stroke = Stroke(w * 0.1f, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        fun poly(vararg p: Pair<Float, Float>) = Path().apply {
-            moveTo(p[0].first * w, p[0].second * w)
-            p.drop(1).forEach { lineTo(it.first * w, it.second * w) }
+        val u = this.size.width / 48f
+        val stroke = Stroke(3.6f * u, cap = StrokeCap.Round, join = StrokeJoin.Round)
+        fun at(x: Float, y: Float) = Offset(x * u, y * u)
+        fun poly(vararg p: Pair<Float, Float>, closed: Boolean = false) = Path().apply {
+            moveTo(p[0].first * u, p[0].second * u)
+            p.drop(1).forEach { lineTo(it.first * u, it.second * u) }
+            if (closed) close()
         }
+        fun line(x1: Float, y1: Float, x2: Float, y2: Float, ink: Color = color) = drawLine(ink, at(x1, y1), at(x2, y2), 3.6f * u, StrokeCap.Round)
         when (glyph) {
-            CarGlyph.CHEVRON_LEFT -> drawPath(poly(.65f to .1f, .25f to .5f, .65f to .9f), color, style = stroke)
-            CarGlyph.CHEVRON_RIGHT -> drawPath(poly(.35f to .1f, .75f to .5f, .35f to .9f), color, style = stroke)
-            CarGlyph.CHECK -> drawPath(poly(.2f to .52f, .42f to .74f, .82f to .28f), color, style = stroke)
-            CarGlyph.PIN -> drawPin(Offset(w / 2, w), w, color, surface)
+            CarGlyph.CHEVRON_LEFT -> drawPath(poly(29f to 10f, 15f to 24f, 29f to 38f), color, style = stroke)
+            CarGlyph.CHEVRON_RIGHT -> drawPath(poly(19f to 10f, 33f to 24f, 19f to 38f), color, style = stroke)
+            CarGlyph.CHECK -> drawPath(poly(9f to 25f, 19.5f to 35.5f, 39f to 13f), color, style = stroke)
+            CarGlyph.PIN -> drawPin(at(24f, 45f), 42f * u, color, surface)
             CarGlyph.INFO -> {
-                drawCircle(color, w / 2)
-                drawCircle(surface, w * .06f, Offset(w / 2, w * .28f))
-                drawLine(surface, Offset(w / 2, w * .44f), Offset(w / 2, w * .76f), w * .1f, StrokeCap.Round)
+                drawCircle(color, 20f * u, at(24f, 24f))
+                drawCircle(surface, 2.6f * u, at(24f, 15f))
+                line(24f, 22.5f, 24f, 34f, surface)
             }
             CarGlyph.CLOUD_OFF -> {
                 drawPath(Path().apply {
-                    moveTo(w * .26f, w * .76f)
-                    cubicTo(w * .02f, w * .76f, w * .02f, w * .42f, w * .26f, w * .42f)
-                    cubicTo(w * .3f, w * .14f, w * .68f, w * .14f, w * .72f, w * .4f)
-                    cubicTo(w * 1f, w * .4f, w * 1f, w * .76f, w * .74f, w * .76f)
+                    moveTo(14f * u, 38f * u)
+                    cubicTo(4f * u, 38f * u, 3f * u, 23f * u, 13f * u, 21f * u)
+                    cubicTo(15f * u, 9f * u, 33f * u, 8f * u, 36f * u, 20f * u)
+                    cubicTo(46f * u, 20f * u, 47f * u, 38f * u, 35f * u, 38f * u)
                     close()
-                }, color, style = Stroke(w * .05f, join = StrokeJoin.Round))
-                drawLine(color, Offset(w * .14f, w * .1f), Offset(w * .86f, w * .9f), w * .05f, StrokeCap.Round)
+                }, color, style = stroke)
+                line(8f, 6f, 40f, 42f)
             }
             CarGlyph.REFRESH -> {
-                drawArc(color, 40f, 290f, false, Offset(w * .12f, w * .12f), Size(w * .76f, w * .76f), style = stroke)
-                drawPath(poly(.86f to .1f, .86f to .36f, .6f to .36f), color, style = stroke)
+                drawArc(color, 40f, 290f, false, at(7f, 7f), Size(34f * u, 34f * u), style = stroke)
+                drawPath(poly(40f to 6f, 40f to 17f, 29f to 17f), color, style = stroke)
             }
             CarGlyph.DOCUMENT -> {
-                drawPath(poly(.2f to .06f, .62f to .06f, .82f to .28f, .82f to .94f, .2f to .94f, .2f to .06f), color, style = Stroke(w * .08f, join = StrokeJoin.Round))
-                drawLine(color, Offset(w * .34f, w * .55f), Offset(w * .68f, w * .55f), w * .07f)
-                drawLine(color, Offset(w * .34f, w * .73f), Offset(w * .68f, w * .73f), w * .07f)
+                drawPath(poly(11f to 5f, 29f to 5f, 38f to 14f, 38f to 43f, 11f to 43f, closed = true), color, style = stroke)
+                line(18f, 27f, 31f, 27f)
+                line(18f, 34f, 31f, 34f)
             }
             CarGlyph.SEARCH -> {
-                drawCircle(color, w * .3f, Offset(w * .42f, w * .42f), style = stroke)
-                drawLine(color, Offset(w * .64f, w * .64f), Offset(w * .9f, w * .9f), w * .1f, StrokeCap.Round)
+                drawCircle(color, 13.2f * u, at(21f, 21f), style = stroke)
+                line(31f, 31f, 41f, 41f)
             }
             CarGlyph.CLOCK -> {
-                drawCircle(color, w * .42f, Offset(w / 2, w / 2), style = stroke)
-                drawPath(poly(.5f to .26f, .5f to .52f, .68f to .62f), color, style = stroke)
+                drawCircle(color, 18.2f * u, at(24f, 24f), style = stroke)
+                drawPath(poly(24f to 14f, 24f to 25f, 31f to 29.5f), color, style = stroke)
             }
-            CarGlyph.BOOKMARK -> drawPath(poly(.22f to .08f, .78f to .08f, .78f to .92f, .5f to .7f, .22f to .92f, .22f to .08f), color, style = stroke)
-            CarGlyph.LIST -> listOf(.22f, .5f, .78f).forEach { y ->
-                drawCircle(color, w * .06f, Offset(w * .12f, w * y))
-                drawLine(color, Offset(w * .32f, w * y), Offset(w * .92f, w * y), w * .09f, StrokeCap.Round)
+            CarGlyph.BOOKMARK -> drawPath(poly(12f to 6f, 36f to 6f, 36f to 42f, 24f to 33f, 12f to 42f, closed = true), color, style = stroke)
+            CarGlyph.LIST -> listOf(12f, 24f, 36f).forEach { y ->
+                drawCircle(color, 2.2f * u, at(8f, y))
+                line(16f, y, 42f, y)
             }
             CarGlyph.PHOTO -> {
-                drawRoundRect(color, Offset(w * .08f, w * .16f), Size(w * .84f, w * .68f), style = Stroke(w * .08f))
-                drawCircle(color, w * .08f, Offset(w * .32f, w * .36f))
-                drawPath(poly(.14f to .76f, .42f to .5f, .58f to .64f, .7f to .52f, .88f to .72f), color, style = Stroke(w * .08f, join = StrokeJoin.Round))
+                drawRoundRect(color, at(5f, 9f), Size(38f * u, 30f * u), CornerRadius(5f * u), style = stroke)
+                drawCircle(color, 3.2f * u, at(16f, 19f))
+                drawPath(poly(8f to 35f, 19f to 26f, 27f to 32f, 34f to 25f, 41f to 33f), color, style = stroke)
+            }
+            CarGlyph.MIC -> {
+                drawRoundRect(color, at(17f, 5f), Size(14f * u, 24f * u), CornerRadius(7f * u), style = stroke)
+                drawArc(color, 0f, 180f, false, at(10f, 9f), Size(28f * u, 28f * u), style = stroke)
+                line(24f, 37f, 24f, 43f)
             }
         }
     }
@@ -279,12 +341,15 @@ fun CarIcon(glyph: CarGlyph, size: Dp, color: Color, modifier: Modifier = Modifi
 fun DrawScope.drawPin(tip: Offset, h: Float, color: Color, hole: Color) {
     val r = h * 0.36f
     val cy = tip.y - h + r
-    drawPath(Path().apply {
+    val shape = Path().apply {
         moveTo(tip.x, tip.y)
         lineTo(tip.x - r * cos(Math.toRadians(25.0)).toFloat(), cy + r * sin(Math.toRadians(25.0)).toFloat())
         arcTo(androidx.compose.ui.geometry.Rect(tip.x - r, cy - r, tip.x + r, cy + r), 155f, 230f, false)
         close()
-    }, color)
+    }
+    drawPath(shape, color)
+    // Rounds the point to the guide's Filled corner: 1.5 of 48 units.
+    drawPath(shape, color, style = Stroke(h * 3f / 48f, join = StrokeJoin.Round))
     drawCircle(hole, r * 0.42f, Offset(tip.x, cy))
 }
 

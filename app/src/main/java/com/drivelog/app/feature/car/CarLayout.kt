@@ -27,6 +27,11 @@ data class CarDimens(val mode: CarLayoutMode, val scale: Float) {
 
 const val WIDE_MIN_ASPECT = 1.15f
 
+private const val BARELY_MOVED_KM = 0.1
+
+/** Under about one block, or no route at all: likely a start pressed by mistake, so saving becomes a choice. */
+fun barelyMoved(distanceKm: Double?, hasRoute: Boolean) = !hasRoute || distanceKm == null || distanceKm < BARELY_MOVED_KM
+
 fun carDimensFor(widthDp: Float, heightDp: Float): CarDimens {
     val mode = if (widthDp / heightDp >= WIDE_MIN_ASPECT) CarLayoutMode.WIDE else CarLayoutMode.STACKED
     val scale = if (mode == CarLayoutMode.WIDE) minOf(widthDp / 1100f, heightDp / 600f) else minOf(widthDp / 640f, heightDp / 900f)

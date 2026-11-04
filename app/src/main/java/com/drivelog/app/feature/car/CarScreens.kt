@@ -66,7 +66,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-private fun shortName(name: String) = name.removeSuffix("해수욕장").removeSuffix("해변").trim().ifEmpty { name }
+fun shortName(name: String) = name.removeSuffix("해수욕장").removeSuffix("해변").trim().ifEmpty { name }
 /** 으로 after a final consonant except ㄹ, otherwise 로: 송정으로, 광안리로, 다대포로. */
 fun withDirectionParticle(name: String): String {
     // Names come from any search result now, so one can end in Latin letters or digits ("수서역 SRT").
@@ -83,7 +83,7 @@ fun distanceLabel(source: String) = if (source == DistanceSource.VEHICLE) "차�
 @Composable
 private fun Heading(text: String, size: Int = 40, modifier: Modifier = Modifier, align: TextAlign? = null) {
     val d = LocalCarDimens.current
-    T(text, d.t(size), modifier.semantics { heading() }, bold = true, align = align)
+    T(text, d.t(size), modifier.semantics { heading() }, align = align, display = true)
 }
 
 @Composable
@@ -105,7 +105,7 @@ private fun Frame(
 fun LinkControl(linked: Boolean, onLink: () -> Unit, onUnlink: () -> Unit) {
     val d = LocalCarDimens.current
     T(if (linked) "휴대폰 연결 해제" else "휴대폰 연결", d.t(16),
-        Modifier.heightIn(min = 64.dp).combinedClickable(role = Role.Button, onClick = if (linked) onUnlink else onLink)
+        Modifier.heightIn(min = 64.dp).clip(RoundedCornerShape(16.dp)).pressClick(onClick = if (linked) onUnlink else onLink)
             .padding(horizontal = d.u(10), vertical = d.u(14)).testTag(if (linked) "unlink" else "open-link"), bold = true)
 }
 
@@ -123,7 +123,7 @@ fun DrivingLockScreen() {
 
 @Composable
 fun RecordingScreen(
-    recording: Recording, parked: Boolean, gear: CarGear, showSimControls: Boolean, naviAvailable: Boolean, routeMessage: String?,
+    recording: Recording, parked: Boolean, gear: CarGear, showSimControls: Boolean, naviAvailable: Boolean, routeMessage: String?, routeEnded: Boolean,
     onEnd: () -> Unit, onSimGear: (CarGear) -> Unit, onOpenNavigation: () -> Unit,
 ) {
     val d = LocalCarDimens.current
@@ -149,7 +149,7 @@ fun RecordingScreen(
                 T("${withDirectionParticle(shortName(recording.place.name))} 가는 길", d.t(34), bold = true, align = TextAlign.Center)
                 Spacer(Modifier.height(d.u(10)))
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(d.u(14)).clip(CircleShape).background(fg()))
+                    PulsingDot(d.u(14), fg())
                     Spacer(Modifier.width(d.u(10)))
                     T("기록 중", d.t(18))
                 }
@@ -174,6 +174,7 @@ fun RecordingScreen(
                         T(routeMessage, d.t(15), color = muted(), align = TextAlign.Center)
                     }
                 }
+                routeEnded -> T("안내가 끝났어요 · 정차하면 저장해요", d.t(if (d.stacked) 22 else 17), color = muted(), align = TextAlign.Center)
                 recording.locationStale -> T("위치 신호를 기다리는 중이에요", d.t(17), color = muted())
                 d.stacked -> T("정차 후 종료 가능", d.t(22), color = muted())
                 recording.arrived -> T("목적지 근처예요 · 정차 후 기록을 종료할 수 있어요", d.t(17), color = muted(), align = TextAlign.Center)
@@ -210,7 +211,11 @@ private fun RoadLines(modifier: Modifier) {
         val horizon = h * 0.58f
         fun side(left: Boolean) {
             fun x(v: Float) = if (left) w * v else w * (1 - v)
-            drawLine(strong, Offset(x(0f), h * 0.84f), Offset(x(0.335f), horizon), 2.5f, StrokeCap.Round)
+            // The road's edge bends toward the horizon, as a real one does in perspective.
+            drawPath(Path().apply {
+                moveTo(x(0f), h * 0.84f)
+                cubicTo(x(0.1f), h * 0.74f, x(0.22f), h * 0.62f, x(0.335f), horizon)
+            }, strong, style = Stroke(2.5f * density, cap = StrokeCap.Round))
             drawPath(Path().apply {
                 moveTo(x(0f), h * (if (left) 0.42f else 0.50f))
                 cubicTo(x(0.05f), h * (if (left) 0.46f else 0.47f), x(0.10f), h * 0.57f, x(0.335f), horizon)
@@ -234,10 +239,12 @@ private fun RoadLines(modifier: Modifier) {
 // --- 05 정차 후 기록 종료 ---------------------------------------------------------------------------
 
 @Composable
-fun StopConfirmScreen(recording: Recording, onEnd: () -> Unit, onContinue: () -> Unit) {
+fun StopConfirmScreen(routeMaps: RouteMapCache, recording: Recording, onEnd: () -> Unit, onDiscard: () -> Unit, onContinue: () -> Unit) {
     val d = LocalCarDimens.current
     val away = recording.kmToPlace()
     val hasRoute = recording.points.size >= 2
+    val barelyMoved = barelyMoved(recording.distanceKm, hasRoute)
+    var confirmDiscard by remember { mutableStateOf(false) }
     Frame(onContinue, simulated = recording.simulated) {
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxWidth().weight(1f)) {
@@ -264,14 +271,21 @@ fun StopConfirmScreen(recording: Recording, onEnd: () -> Unit, onContinue: () ->
                                 d.t(20), bold = true,
                             )
                         }
+                        if (barelyMoved) {
+                            Spacer(Modifier.height(d.u(14)))
+                            T("거의 움직이지 않았어요. 저장하지 않고 끝낼 수도 있어요", d.t(18), Modifier.testTag("barely-moved"), color = muted())
+                        }
                     }
                 }, right = {
-                    RouteMap(recording.points.map { MapPoint(it.latitude, it.longitude, it.atMillis) }, null, null, paneFill(280))
+                    LiveRouteMap(routeMaps, recording.points.map { MapPoint(it.latitude, it.longitude, it.atMillis) }, null, null, paneFill(280))
                 })
             }
             Spacer(Modifier.height(d.u(14)))
             Row(Modifier.fillMaxWidth().padding(bottom = d.u(10)), horizontalArrangement = Arrangement.spacedBy(d.u(14))) {
                 PrimaryButton("기록 종료", "confirm-end", Modifier.weight(1f), onClick = onEnd)
+                if (barelyMoved) SecondaryButton(if (confirmDiscard) "한 번 더 누르면 삭제" else "저장 안 함", "discard-recording", Modifier.weight(1f)) {
+                    if (confirmDiscard) onDiscard() else confirmDiscard = true
+                }
                 SecondaryButton("계속 기록", "keep-recording", Modifier.weight(1f), onClick = onContinue)
             }
         }
@@ -281,13 +295,18 @@ fun StopConfirmScreen(recording: Recording, onEnd: () -> Unit, onContinue: () ->
 // --- 07 휴대폰 연결 --------------------------------------------------------------------------------
 
 @Composable
-fun PhoneLinkScreen(code: String?, expiresAt: Long, webUrl: String?, failed: Boolean, onBack: () -> Unit, onNewCode: () -> Unit) {
+fun PhoneLinkScreen(
+    code: String?, expiresAt: Long, webUrl: String?, failed: Boolean, onBack: () -> Unit, onNewCode: () -> Unit,
+    /** Set when this is only a preview: the code connects to nothing, so this moves on in place of a phone. */
+    onPreviewNext: (() -> Unit)? = null,
+) {
     val d = LocalCarDimens.current
+    val preview = onPreviewNext != null
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(1000) } }
+    LaunchedEffect(expiresAt) { while (true) { now = System.currentTimeMillis(); delay(1000) } }
     val left = ((expiresAt - now) / 1000).coerceAtLeast(0)
     val expired = code != null && left == 0L
-    Frame(onBack) {
+    Frame(onBack, simulated = preview) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
             Heading("휴대폰과 여정을 연결하세요", 36, align = TextAlign.Center)
             Spacer(Modifier.height(d.u(4)))
@@ -295,7 +314,11 @@ fun PhoneLinkScreen(code: String?, expiresAt: Long, webUrl: String?, failed: Boo
             Spacer(Modifier.height(d.u(16)))
             val steps = @Composable {
                 Column(verticalArrangement = Arrangement.spacedBy(d.u(16))) {
-                    LinkStep(1, "휴대폰에서 여정 열기", if (!webUrl.isNullOrBlank()) "휴대폰 브라우저로 $webUrl 에 접속하세요." else "휴대폰 브라우저로 여정 웹 주소에 접속하세요.")
+                    LinkStep(1, "휴대폰에서 여정 열기", when {
+                        preview -> "휴대폰에 설치된 여정 앱을 실행하세요."
+                        !webUrl.isNullOrBlank() -> "휴대폰 브라우저로 $webUrl 에 접속하세요."
+                        else -> "휴대폰 브라우저로 여정 웹 주소에 접속하세요."
+                    })
                     LinkStep(2, "아래 연결 코드 입력", "\"차량과 연결\" 화면에\n코드를 입력하세요.")
                 }
             }
@@ -306,16 +329,25 @@ fun PhoneLinkScreen(code: String?, expiresAt: Long, webUrl: String?, failed: Boo
                 ) {
                     when {
                         failed -> T("서버에 연결할 수 없어요", d.t(20), bold = true, align = TextAlign.Center)
-                        code == null -> T("코드를 받는 중이에요", d.t(20), color = muted())
+                        code == null -> {
+                            LoadingIndicator(LoadingStyle.TENSION)
+                            Spacer(Modifier.height(d.u(8)))
+                            T("코드를 받는 중이에요", d.t(20), color = muted())
+                        }
                         expired -> T("코드가 만료되었어요", d.t(20), bold = true)
                         else -> {
                             T("연결 코드 · 남은 시간  ${pad(left / 60)}:${pad(left % 60)}", d.t(17), bold = false)
                             Spacer(Modifier.height(d.u(6)))
                             T("${code.take(3)} ${code.drop(3)}", d.t(56), Modifier.testTag("link-code"), bold = true, maxLines = 1)
+                            if (preview) T("예시 코드예요. 실제로 연결되지 않아요", d.t(15), Modifier.testTag("preview-note"), color = muted(), align = TextAlign.Center)
                         }
                     }
                     Spacer(Modifier.height(d.u(12)))
-                    SecondaryButton("새 코드 받기", "new-code", Modifier.fillMaxWidth(), onClick = onNewCode)
+                    SecondaryButton("새 코드 받기", "new-code", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, icon = CarGlyph.REFRESH, onClick = onNewCode)
+                    if (onPreviewNext != null) {
+                        Spacer(Modifier.height(d.u(8)))
+                        PrimaryButton("연결 후 화면 보기", "preview-next", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onPreviewNext)
+                    }
                 }
             }
             if (d.stacked) {
@@ -369,9 +401,9 @@ private fun LinkStep(number: Int, title: String, body: String) {
 // --- 08 모바일로 이어가기 --------------------------------------------------------------------------
 
 @Composable
-fun ContinueOnPhoneScreen(record: RecordV?, onBackToGoal: () -> Unit) {
+fun ContinueOnPhoneScreen(record: RecordV?, onBackToGoal: () -> Unit, preview: Boolean = false) {
     val d = LocalCarDimens.current
-    Frame(onBackToGoal, simulated = record?.simulated == true) {
+    Frame(onBackToGoal, simulated = preview || record?.simulated == true) {
         val visual = @Composable { modifier: Modifier ->
             Box(modifier) {
                 PlacePhoto(record?.placeName ?: "", Modifier.fillMaxWidth(0.82f).fillMaxHeight(0.86f).align(Alignment.CenterStart))
@@ -406,6 +438,10 @@ fun ContinueOnPhoneScreen(record: RecordV?, onBackToGoal: () -> Unit) {
                     Spacer(Modifier.height(d.u(8)))
                     T("${distanceLabel(record.distanceSource)} · 기록 경과 시간", d.t(14), color = muted())
                 }
+                if (preview) {
+                    Spacer(Modifier.height(d.u(8)))
+                    T("예시 화면이에요. 실제로 전송되지 않았어요", d.t(15), Modifier.testTag("preview-note"), bold = true, align = TextAlign.Center)
+                }
             }
         }
         val next = @Composable {
@@ -418,7 +454,7 @@ fun ContinueOnPhoneScreen(record: RecordV?, onBackToGoal: () -> Unit) {
                     T("사진 선택과 카드 편집은\n휴대폰에서 이어가세요.", d.t(18))
                 }
                 Spacer(Modifier.height(d.u(24)))
-                PrimaryButton("목표로 돌아가기", "back-to-goal", Modifier.fillMaxWidth(), onClick = onBackToGoal)
+                PrimaryButton(if (preview) "돌아가기" else "목표로 돌아가기", "back-to-goal", Modifier.fillMaxWidth(), onClick = onBackToGoal)
             }
         }
         if (d.stacked) {
@@ -427,7 +463,8 @@ fun ContinueOnPhoneScreen(record: RecordV?, onBackToGoal: () -> Unit) {
             }
         } else {
             Row(Modifier.fillMaxSize().padding(bottom = d.u(10)), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(d.u(22))) {
-                visual(Modifier.weight(0.31f).fillMaxHeight(0.9f))
+                // A fixed shape: in a tall window, filling the height stretches the phone and blurs the small photo.
+                Box(Modifier.weight(0.31f), contentAlignment = Alignment.Center) { visual(Modifier.fillMaxWidth().aspectRatio(0.95f)) }
                 Box(Modifier.weight(0.40f)) { status() }
                 VerticalRule(Modifier.fillMaxHeight(0.7f))
                 Box(Modifier.weight(0.27f)) { next() }
@@ -440,13 +477,13 @@ fun ContinueOnPhoneScreen(record: RecordV?, onBackToGoal: () -> Unit) {
 
 /** Shown after a drive and again from 내 기록; only the latter offers deletion, as a two-step action. */
 @Composable
-fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String, onBack: () -> Unit, onHistory: (() -> Unit)?, onDelete: (() -> Unit)?) {
+fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String, onBack: () -> Unit, onHistory: (() -> Unit)?, onDelete: (() -> Unit)?, onPhonePreview: (() -> Unit)? = null) {
     val d = LocalCarDimens.current
     var confirmDelete by remember(record?.id) { mutableStateOf(false) }
     Frame(onBack, simulated = record?.simulated == true) {
-        Panes(0.46f, left = {
-            Column(Modifier.padding(start = d.u(42))) {
-                Heading(title, 36, Modifier.testTag("record-saved"))
+        Panes(0.38f, left = {
+            Column(Modifier.padding(start = d.u(22))) {
+                Heading(title, 32, Modifier.testTag("record-saved"))
                 if (record != null) {
                     Spacer(Modifier.height(d.u(8)))
                     T(record.placeName, d.t(22), color = muted(), maxLines = 1)
@@ -458,6 +495,10 @@ fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String,
                     PrimaryButton("내 기록 보기", "open-history-after", Modifier.fillMaxWidth(), onClick = onHistory)
                     Spacer(Modifier.height(d.u(10)))
                 }
+                if (onPhonePreview != null) {
+                    SecondaryButton("휴대폰으로 보내기", "open-phone-preview", Modifier.fillMaxWidth(), onClick = onPhonePreview)
+                    Spacer(Modifier.height(d.u(10)))
+                }
                 SecondaryButton(if (onHistory != null) "홈으로" else "돌아가기", "back-from-record", Modifier.fillMaxWidth(), onClick = onBack)
                 if (onDelete != null) {
                     Spacer(Modifier.height(d.u(10)))
@@ -467,8 +508,10 @@ fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String,
                 }
             }
         }, right = {
-            Box(paneFill(280).padding(bottom = d.u(8)), contentAlignment = Alignment.Center) {
-                RouteVisual(routeMaps, record, record?.placeName, Modifier.fillMaxWidth().aspectRatio(ROUTE_IMAGE_ASPECT))
+            // A fixed slice in the scrolling column would be shorter than the image, which then spills over the buttons.
+            val frame = if (d.stacked) Modifier.fillMaxWidth() else paneFill(280)
+            Box(frame.padding(bottom = d.u(8)), contentAlignment = Alignment.Center) {
+                RouteVisual(routeMaps, record, record?.placeName, Modifier.aspectRatio(ROUTE_IMAGE_ASPECT), drawRoute = true)
             }
         })
     }
@@ -480,15 +523,22 @@ fun RecordV.destinationPoint(): MapPoint? {
     return MapPoint(latitude, longitude)
 }
 
+/** The distance is the drive's headline, as on the cards. Time follows as a supporting line. */
 @Composable
 private fun RecordStats(record: RecordV) {
     val d = LocalCarDimens.current
-    Row(Modifier.height(IntrinsicSize.Min)) {
-        Stat(distanceText(record.distanceKm), if (record.distanceKm != null) "km" else "", distanceLabel(record.distanceSource))
-        Spacer(Modifier.width(d.u(32)))
-        VerticalRule(Modifier.fillMaxHeight())
-        Spacer(Modifier.width(d.u(32)))
-        Stat(minutes(record.elapsedSeconds), "분", "기록 경과 시간")
+    Column {
+        Row(verticalAlignment = Alignment.Bottom) {
+            T(distanceText(record.distanceKm), d.t(84), maxLines = 1, display = true)
+            if (record.distanceKm != null) T("km", d.t(36), Modifier.padding(start = d.u(8), bottom = d.u(12)), bold = true)
+        }
+        T(distanceLabel(record.distanceSource), d.t(18), color = muted())
+        Spacer(Modifier.height(d.u(14)))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            T("${minutes(record.elapsedSeconds)}분", d.t(28), bold = true)
+            Spacer(Modifier.width(d.u(10)))
+            T("기록 경과 시간", d.t(18), color = muted())
+        }
     }
 }
 
@@ -523,7 +573,7 @@ fun OfflineSavedScreen(record: RecordV?, destination: MapPoint?, linked: Boolean
                 T(if (linked) "네트워크가 연결되면 다시 전송해요" else "연결하면 이어서 전송해요", d.t(16), color = muted(), align = TextAlign.Center)
                 Spacer(Modifier.height(d.u(12)))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(d.u(12))) {
-                    PrimaryButton(if (linked) "다시 시도" else "휴대폰 연결", "retry-sync", Modifier.weight(1f), enabled = !syncing, onClick = onRetry)
+                    PrimaryButton(if (linked) "다시 시도" else "휴대폰 연결", "retry-sync", Modifier.weight(1f), loading = syncing, icon = if (linked) CarGlyph.REFRESH else null, onClick = onRetry)
                     SecondaryButton("목표로 돌아가기", "offline-back", Modifier.weight(1f), onClick = onBackToGoal)
                 }
             }
@@ -536,7 +586,7 @@ fun OfflineSavedScreen(record: RecordV?, destination: MapPoint?, linked: Boolean
 // --- 10 중단된 기록 복구 ---------------------------------------------------------------------------
 
 @Composable
-fun RecoveryScreen(record: RecordV, destination: MapPoint?, onKeep: () -> Unit, onDelete: () -> Unit) {
+fun RecoveryScreen(routeMaps: RouteMapCache, record: RecordV, destination: MapPoint?, onKeep: () -> Unit, onDelete: () -> Unit) {
     val d = LocalCarDimens.current
     var confirmDelete by remember { mutableStateOf(false) }
     Frame(null, simulated = record.simulated) {
@@ -571,7 +621,7 @@ fun RecoveryScreen(record: RecordV, destination: MapPoint?, onKeep: () -> Unit, 
                 }
             }
         }, right = {
-            RouteMap(record.route.toMapPoints(), destination, record.placeName, paneFill(280).padding(bottom = d.u(8)), unfinished = true)
+            LiveRouteMap(routeMaps, record.route.toMapPoints(), destination, record.placeName, paneFill(280).padding(bottom = d.u(8)), unfinished = true)
         })
     }
 }

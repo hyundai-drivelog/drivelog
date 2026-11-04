@@ -10,7 +10,10 @@ import com.drivelog.app.feature.car.destinationFitsFrame
 import com.drivelog.app.feature.car.isNewDestination
 import com.drivelog.app.feature.car.routeBounds
 import com.drivelog.app.feature.car.splitAtGaps
-import com.drivelog.app.feature.car.withoutSymbolLayers
+import com.drivelog.app.feature.car.barelyMoved
+import com.drivelog.app.feature.car.mercatorProjector
+import com.drivelog.app.feature.car.previewLinkCode
+import com.drivelog.app.feature.car.routeMapStyle
 import com.drivelog.app.feature.car.thinnedForDrawing
 import com.drivelog.app.feature.car.mergePlaces
 import com.drivelog.app.core.recording.resolveDistance
@@ -43,16 +46,50 @@ class JourneyRulesTest {
         assertEquals(listOf("광안리"), mergePlaces(listOf(own), listOf(navi, empty)).map { it.name })
     }
 
-    @Test fun mapStyleLosesItsTextLayersOnly() {
-        val cleaned = withoutSymbolLayers("""{"version":8,"layers":[{"id":"road","type":"line"},{"id":"name","type":"symbol"}]}""")
-        assertTrue(cleaned.contains("road"))
-        assertFalse(cleaned.contains("symbol"))
+    @Test fun mapStyleKeepsTheProviderTilesUnderOurOwnLayers() {
+        val style = routeMapStyle("""{"version":8,"sprite":"s","glyphs":"g","sources":{"openmaptiles":{"type":"vector"}},"layers":[{"id":"houses","type":"fill","source-layer":"building"},{"id":"name","type":"symbol"}]}""")
+        assertTrue(style.contains("openmaptiles"))
+        assertTrue(style.contains("transportation"))
+        assertFalse(style.contains("building"))
+        assertFalse(style.contains("symbol"))
+        assertFalse(style.contains("sprite"))
+        assertFalse(style.contains("glyphs"))
+    }
+
+    @Test fun savingBecomesAChoiceOnlyWhenTheCarBarelyMoved() {
+        assertTrue(barelyMoved(0.0, hasRoute = true))
+        assertTrue(barelyMoved(0.09, hasRoute = true))
+        assertTrue(barelyMoved(5.0, hasRoute = false))
+        assertTrue(barelyMoved(null, hasRoute = true))
+        assertFalse(barelyMoved(0.1, hasRoute = true))
+        assertFalse(barelyMoved(18.6, hasRoute = true))
+    }
+
+    @Test fun previewLinkCodeIsAlwaysSixDigits() {
+        repeat(200) { assertTrue(previewLinkCode().matches(Regex("[1-9][0-9]{5}"))) }
+    }
+
+    @Test fun mapStyleFollowsTheTheme() {
+        val provider = """{"version":8,"sources":{"openmaptiles":{"type":"vector"}},"layers":[]}"""
+        assertNotEquals(routeMapStyle(provider, dark = true), routeMapStyle(provider, dark = false))
+    }
+
+    @Test fun mercatorProjectorPutsTheCornersOnTheirPixelsAndStretchesTowardThePole() {
+        val box = doubleArrayOf(35.0, 129.0, 36.0, 130.0)
+        val project = mercatorProjector(box, 0f, 1000f, 1000f, 0f)
+        assertEquals(0f, project(MapPoint(35.0, 129.0)).x, 0.01f)
+        assertEquals(1000f, project(MapPoint(35.0, 129.0)).y, 0.01f)
+        assertEquals(1000f, project(MapPoint(36.0, 130.0)).x, 0.01f)
+        assertEquals(0f, project(MapPoint(36.0, 130.0)).y, 0.01f)
+        assertEquals(500f, project(MapPoint(35.5, 129.5)).x, 0.01f)
+        // Mercator: the middle latitude sits below the frame's middle, by a small but real amount.
+        assertTrue(project(MapPoint(35.5, 129.5)).y > 500f)
     }
 
     @Test fun routeBoundsLeaveRoomAroundEvenAVeryShortDrive() {
         val box = routeBounds(listOf(MapPoint(37.55, 126.97), MapPoint(37.5501, 126.9701)))
-        assertTrue(box[2] - box[0] >= 0.012)
-        assertTrue(box[3] - box[1] >= 0.012)
+        assertEquals(0.035, box[2] - box[0], 1e-9)
+        assertEquals(0.035, box[3] - box[1], 1e-9)
         assertTrue(box[0] < 37.55 && box[2] > 37.5501)
     }
 
