@@ -80,7 +80,16 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
             Screen.RECORD -> RecordSavedScreen(
                 model.routeMaps, shown.opened, "드라이브 기록", { model.goBack() }, null, model::deleteOpenedRecord,
                 shown.opened?.takeIf { phonePreviewOffered }?.let { record -> { model.openPhonePreview(record) } },
+                shown.opened?.takeIf { BuildConfig.DEBUG }?.let { record -> { model.openCourseShare(record) } },
             )
+            Screen.COMMUNITY -> CommunityScreen(
+                model.communityCourses, model.courseOriginFilter, model.courseDestinationFilter,
+                { model.courseOriginFilter = it }, { model.courseDestinationFilter = it }, model::openCourse, model::home,
+            )
+            Screen.COURSE_DETAIL -> model.openedCourse?.let { course ->
+                CourseDetailScreen(model.routeMaps, course, { model.selectPlace(course.toPlace()) }, { model.removeCourse(course) }, { model.goBack() })
+            }
+            Screen.COURSE_SHARE -> CourseShareScreen(model.routeMaps, model.courseDraft, model::publishCourse) { model.goBack() }
             Screen.PHONE_PREVIEW_LINK -> PhoneLinkScreen(
                 model.phonePreviewCode, model.phonePreviewExpiresAt, null, false,
                 model::leavePhonePreview, model::newPhonePreviewCode, onPreviewNext = model::showPhonePreviewDone,
@@ -95,6 +104,7 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
             else RecordSavedScreen(
                 model.routeMaps, shown.finished, "드라이브를 기록했어요", model::home, model::openHistory, null,
                 shown.finished?.takeIf { phonePreviewOffered }?.let { record -> { model.openPhonePreview(record) } },
+                shown.finished?.takeIf { BuildConfig.DEBUG }?.let { record -> { model.openCourseShare(record) } },
             )
             Screen.OFFLINE -> OfflineSavedScreen(shown.finished, shown.finished?.destinationPoint(), store.token != null, model.syncing, model::retrySync, model::home)
             Screen.HOME -> HomeScreen(
@@ -102,6 +112,8 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                 remember(store.recentPlaces, navi) { model.recentPlaces() }, remember(store.savedPlaces, navi) { model.savedPlaces() },
                 store.journey.records, searchActions, model::selectPlace, model::openRecord, model::openHistory, { model.go(Screen.DIAGNOSTICS) },
                 if (BuildConfig.PHONE_LINK_ENABLED) ({ LinkControl(store.token != null, model::openLink, model::unlink) }) else null,
+                // A mockup of a community: a submitted build must not offer it.
+                if (BuildConfig.DEBUG) model::openCommunity else null,
             )
         }
     }

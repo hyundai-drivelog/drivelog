@@ -212,6 +212,10 @@ fun placeImage(name: String): Int = when {
 /** A photo beside a place must really be of that place, so anything else keeps the map. */
 fun placeHasPhoto(name: String) = placeImage(name) != R.drawable.demo_coastal_road
 
+/** A photo sharp enough to fill a whole poster. The other bundled ones are small and only suit a banner. */
+@DrawableRes
+fun posterImage(name: String): Int? = if (name.contains("광안리")) R.drawable.place_gwangalli_poster else null
+
 private val Mono = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
 
 @Composable
@@ -220,6 +224,13 @@ fun PlacePhoto(name: String, modifier: Modifier = Modifier, bitmap: ImageBitmap?
     val shaped = modifier.clip(RoundedCornerShape(d.u(10))).background(soft())
     if (bitmap != null) Image(bitmap, name, shaped, contentScale = ContentScale.Crop)
     else Image(painterResource(placeImage(name)), name, shaped, contentScale = ContentScale.Crop, colorFilter = Mono)
+}
+
+/** The whole poster's picture: the driver's own photo in colour, or a bundled one in the mockups' monochrome. */
+@Composable
+fun PosterPhoto(name: String, bitmap: ImageBitmap?, @DrawableRes bundled: Int?, modifier: Modifier = Modifier) {
+    if (bitmap != null) Image(bitmap, name, modifier, contentScale = ContentScale.Crop)
+    else if (bundled != null) Image(painterResource(bundled), name, modifier, contentScale = ContentScale.Crop, colorFilter = Mono)
 }
 
 @Composable

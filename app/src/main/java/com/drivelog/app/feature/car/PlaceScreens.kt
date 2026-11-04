@@ -1,5 +1,6 @@
 package com.drivelog.app.feature.car
 
+import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -12,6 +13,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -29,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,7 +53,11 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -69,9 +76,11 @@ import com.drivelog.app.core.platform.SpeechState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
 private fun recordDate(millis: Long) = SimpleDateFormat("M월 d일 a h:mm", Locale.KOREA).format(Date(millis))
-private fun posterDate(millis: Long) = SimpleDateFormat("yyyy.MM.dd", Locale.KOREA).format(Date(millis))
+internal fun posterDate(millis: Long) = SimpleDateFormat("yyyy.MM.dd", Locale.KOREA).format(Date(millis))
 
 /** Controls on the left with the map beside them; narrow windows scroll one column with the map below. */
 @Composable
@@ -97,11 +106,13 @@ private fun PlaceMap(current: MapPoint?, destination: NaviPlace?, modifier: Modi
     startLabel = if (current != null) "현재 위치" else null,
 )
 
-/** The last few drives under the home photo, or a line saying where they will appear. */
+/** The last few real drives under the home photo, or a line saying where they will appear. All remain in 내 기록. */
 @Composable
 private fun RecentDrives(records: List<RecordV>, onRecord: (RecordV) -> Unit) {
     val d = LocalCarDimens.current
-    val latest = remember(records) { records.sortedByDescending { it.startedAtMillis }.take(3) }
+    val latest = remember(records) {
+        records.filterNot { barelyMoved(it.distanceKm, it.route.size >= 2) }.sortedByDescending { it.startedAtMillis }.take(3)
+    }
     if (latest.isEmpty()) {
         T("기록한 드라이브가 여기에 모여요", d.t(17), Modifier.fillMaxWidth().padding(vertical = d.u(14)).testTag("recent-empty"), color = muted(), align = TextAlign.Center)
         return
@@ -114,9 +125,7 @@ private fun RecentDrives(records: List<RecordV>, onRecord: (RecordV) -> Unit) {
                     .pressClick { onRecord(record) }.padding(horizontal = d.u(12)).testTag("recent-drive"),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(Modifier.size(d.u(28)).clip(CircleShape).background(fg()), contentAlignment = Alignment.Center) {
-                    CarIcon(CarGlyph.CHECK, d.u(16), MaterialTheme.colorScheme.background)
-                }
+                RouteGlyph(remember(record.id) { record.route.toMapPoints() }, Modifier.size(d.u(44)))
                 Spacer(Modifier.width(d.u(10)))
                 Column(Modifier.weight(1f)) {
                     T(record.placeName, d.t(17), bold = true, maxLines = 1)
@@ -213,6 +222,7 @@ class SearchActions(val onQuery: (String) -> Unit, val onSearch: () -> Unit, val
 fun HomeScreen(
     query: String, speech: SpeechState, canSearch: Boolean, simulation: Boolean, note: String?, recents: List<NaviPlace>, saved: List<NaviPlace>, records: List<RecordV>,
     actions: SearchActions, onPlace: (NaviPlace) -> Unit, onRecord: (RecordV) -> Unit, onHistory: () -> Unit, onHold: () -> Unit, linkControl: (@Composable () -> Unit)?,
+    onCommunity: (() -> Unit)? = null,
 ) {
     val d = LocalCarDimens.current
     var tab by rememberSaveable { mutableIntStateOf(0) }
@@ -221,6 +231,7 @@ fun HomeScreen(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(d.u(10))) {
                 if (simulation) SimulationBadge()
                 linkControl?.invoke()
+                if (onCommunity != null) SecondaryButton("추천 코스", "open-community", size = ButtonSize.MEDIUM, icon = CarGlyph.PIN, onClick = onCommunity)
                 SecondaryButton("내 기록", "open-history", size = ButtonSize.MEDIUM, icon = CarGlyph.LIST, onClick = onHistory)
             }
         })
@@ -262,7 +273,15 @@ fun HomeScreen(
             }, stackedHeight = 360) { modifier ->
                 Column(modifier, verticalArrangement = Arrangement.spacedBy(d.u(8))) {
                     // A mood image, not a place, so it is the one photo that names nowhere.
-                    PlacePhoto("", Modifier.fillMaxWidth().weight(1f))
+                    // Settles once on arrival. The frame stays still: only the picture inside it moves.
+                    val settle = rememberProgress(Unit, tween(1400, easing = FastOutSlowInEasing))
+                    Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(d.u(10)))) {
+                        PlacePhoto("", Modifier.fillMaxSize().graphicsLayer {
+                            val scale = 1.05f - 0.05f * settle.value
+                            scaleX = scale
+                            scaleY = scale
+                        })
+                    }
                     RecentDrives(records, onRecord)
                 }
             }
@@ -337,12 +356,14 @@ fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<R
         Column(Modifier.fillMaxWidth().weight(1f).padding(horizontal = d.u(22))) {
             Tabs(listOf("이전 드라이브", "사진 카드"), tab) { tab = it }
             Spacer(Modifier.height(d.u(12)))
+            Crossfade(tab, Modifier.fillMaxSize(), tween(if (LocalMotionEnabled.current) 220 else 0), label = "history tab") { shownTab ->
             when {
                 sorted.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     T("아직 기록한 드라이브가 없어요", d.t(20), Modifier.testTag("history-empty"), color = muted(), align = TextAlign.Center)
                 }
-                tab == 0 -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(d.u(8))) {
-                    sorted.forEach { record -> DriveRow(record) { onRecord(record) } }
+                shownTab == 0 -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(d.u(8))) {
+                    HistorySummary(sorted)
+                    sorted.forEachIndexed { index, record -> DriveRow(record, index) { onRecord(record) } }
                 }
                 else -> Column(Modifier.fillMaxSize()) {
                     if (!BuildConfig.PHONE_LINK_ENABLED) {
@@ -351,32 +372,63 @@ fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<R
                     // Sending the area of a drive to an outside service is stated where its result appears.
                     T("지도는 정차 중에만 받아요. 이때 주행 지역이 지도 서비스(OpenFreeMap)로 전달돼요", d.t(16), Modifier.testTag("map-privacy-note"), color = muted(), maxLines = 2)
                     Spacer(Modifier.height(d.u(10)))
-                    LazyVerticalGrid(
+                    // A poster of a drive that went nowhere has nothing to show. Those stay in the list tab.
+                    val posters = sorted.filterNot { barelyMoved(it.distanceKm, it.route.size >= 2) }
+                    if (posters.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        T("드라이브를 기록하면 여기에 카드가 만들어져요", d.t(20), Modifier.testTag("posters-empty"), color = muted(), align = TextAlign.Center)
+                    }
+                    else LazyVerticalGrid(
                         GridCells.Fixed(if (d.stacked) 1 else 3), Modifier.fillMaxSize(),
                         horizontalArrangement = Arrangement.spacedBy(d.u(12)), verticalArrangement = Arrangement.spacedBy(d.u(12)),
                     ) {
-                        items(sorted, key = { it.id }) { record -> DrivePoster(store, routeMaps, record) { onRecord(record) } }
+                        itemsIndexed(posters, key = { _, record -> record.id }) { index, record -> DrivePoster(store, routeMaps, record, index) { onRecord(record) } }
                     }
                 }
+            }
             }
         }
     }
 }
 
+/** The whole journey at a glance, above the list. Totals never hide what they are made of. */
 @Composable
-private fun DriveRow(record: RecordV, onClick: () -> Unit) {
+private fun HistorySummary(records: List<RecordV>) {
+    val d = LocalCarDimens.current
+    val totalKm = remember(records) { records.sumOf { it.distanceKm ?: 0.0 } }
+    val totalSeconds = remember(records) { records.sumOf { it.elapsedSeconds } }
+    val simulated = remember(records) { records.any { it.simulated } }
+    val shownKm = rememberCountUp(totalKm)
+    val shownCount = rememberCountUp(records.size.toDouble())
+    val shownSeconds = rememberCountUp(totalSeconds.toDouble())
+    Row(Modifier.revealOnce().fillMaxWidth().height(IntrinsicSize.Min).padding(vertical = d.u(10)).testTag("history-summary")) {
+        Stat(distanceText(shownKm), "km", "지금까지 달린 거리 · 추정 포함")
+        Spacer(Modifier.width(d.u(36)))
+        VerticalRule(Modifier.fillMaxHeight())
+        Spacer(Modifier.width(d.u(36)))
+        Stat("${shownCount.roundToInt()}", "회", if (simulated) "드라이브 · 시뮬레이션 포함" else "드라이브")
+        Spacer(Modifier.width(d.u(36)))
+        VerticalRule(Modifier.fillMaxHeight())
+        Spacer(Modifier.width(d.u(36)))
+        Stat(minutes(shownSeconds.roundToLong()), "분", "기록 시간")
+    }
+}
+
+@Composable
+private fun DriveRow(record: RecordV, index: Int, onClick: () -> Unit) {
     val d = LocalCarDimens.current
     Row(
-        Modifier.fillMaxWidth().heightIn(min = maxOf(d.u(72), 64.dp)).clip(RoundedCornerShape(d.u(10))).background(soft())
-            .pressClick(onClick = onClick).padding(horizontal = d.u(18)).testTag("drive-row"),
+        Modifier.revealOnce(index).fillMaxWidth().heightIn(min = maxOf(d.u(72), 64.dp)).clip(RoundedCornerShape(d.u(10))).background(soft())
+            .pressClick(onClick = onClick).padding(horizontal = d.u(14)).testTag("drive-row"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        RouteGlyph(remember(record.id) { record.route.toMapPoints() }, Modifier.size(d.u(52)))
+        Spacer(Modifier.width(d.u(14)))
         Column(Modifier.weight(1f)) {
             T(record.placeName, d.t(20), bold = true, maxLines = 1)
             T(recordDate(record.startedAtMillis) + labels(record), d.t(15), color = muted(), maxLines = 1)
         }
         Column(horizontalAlignment = Alignment.End) {
-            T("${distanceText(record.distanceKm)} km", d.t(24), maxLines = 1, display = true)
+            T(if (record.distanceKm != null) "${distanceText(record.distanceKm)} km" else "거리 없음", d.t(24), maxLines = 1, display = true)
             T("${minutes(record.elapsedSeconds)}분 · ${distanceLabel(record.distanceSource)}", d.t(14), color = muted(), maxLines = 1)
         }
         Spacer(Modifier.width(d.u(14)))
@@ -389,35 +441,87 @@ private fun labels(record: RecordV) = buildString {
     if (record.status == RecordStatus.PARTIAL) append(" · 불완전한 기록")
 }
 
-/** A keepsake rather than a list row: a title, the route, and the distance set as large as it will go. */
+private const val POSTER_ASPECT = 0.68f
+private val PosterScrim = Brush.verticalGradient(
+    0f to Color.Black.copy(alpha = 0.62f), 0.36f to Color.Transparent, 0.58f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.82f),
+)
+
+/** The drive as a poster, as the mockup cards set it: over a photo when one is sharp enough, otherwise on black. */
 @Composable
-private fun DrivePoster(store: JourneyStore, routeMaps: RouteMapCache, record: RecordV, onClick: () -> Unit) {
+private fun DrivePoster(store: JourneyStore, routeMaps: RouteMapCache, record: RecordV, index: Int, onClick: () -> Unit) {
     val d = LocalCarDimens.current
     val photo = rememberRecordPhoto(store, record)
+    val bundled = posterImage(record.placeName)
     val press = remember { MutableInteractionSource() }
     val pressed by press.collectIsPressedAsState()
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(d.u(14))).background(if (pressed) DriveCardPressed else DriveCardBackground)
-            .pressClick(source = press, indication = null, onClick = onClick).padding(d.u(14)).testTag("drive-card"),
+    Box(
+        Modifier.revealOnce(index).fillMaxWidth().aspectRatio(POSTER_ASPECT).clip(RoundedCornerShape(d.u(14))).background(DriveCardBackground)
+            .pressClick(source = press, indication = null, onClick = onClick).testTag("drive-card"),
     ) {
-        T("A DRIVE TO REMEMBER", d.t(14), color = DriveCardMuted, maxLines = 1, tracking = 0.2f)
-        T("${shortName(record.placeName)}에 남긴 하루", d.t(24), color = DriveCardText, maxLines = 1, display = true)
+        if (photo != null || bundled != null) PhotoPoster(record, photo, bundled) else BlackPoster(routeMaps, record)
+        if (pressed) Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.28f)))
+    }
+}
+
+/** Says what the number is, and that a simulated drive is one, right beside it. */
+private fun posterLabel(record: RecordV) = distanceLabel(record.distanceSource) + labels(record)
+
+@Composable
+private fun PosterDistance(record: RecordV, size: Int) {
+    val d = LocalCarDimens.current
+    val shown = rememberCountUp(record.distanceKm ?: 0.0)
+    Row(verticalAlignment = Alignment.Bottom) {
+        T(if (record.distanceKm != null) distanceText(shown) else distanceText(null), d.t(size), color = DriveCardText, maxLines = 1, display = true)
+        if (record.distanceKm != null) T("km", d.t(size * 2 / 5), Modifier.padding(start = d.u(6), bottom = d.u(size / 8)), color = DriveCardText, maxLines = 1, display = true)
+    }
+}
+
+@Composable
+private fun PosterFooter(record: RecordV) {
+    val d = LocalCarDimens.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        T("${shortName(record.placeName)} | ${minutes(record.elapsedSeconds)}분 기록 | ${posterDate(record.startedAtMillis)}", d.t(14), Modifier.weight(1f), color = DriveCardText, maxLines = 1)
+        Spacer(Modifier.width(d.u(6)))
+        T("여정", d.t(15), color = DriveCardText, bold = true, maxLines = 1)
+    }
+}
+
+@Composable
+private fun BoxScope.PhotoPoster(record: RecordV, photo: ImageBitmap?, bundled: Int?) {
+    val d = LocalCarDimens.current
+    PosterPhoto(record.placeName, photo, bundled, Modifier.matchParentSize())
+    // White type stays readable over any photo, and the middle is left clear for the picture and the route.
+    Box(Modifier.matchParentSize().background(PosterScrim))
+    Column(Modifier.matchParentSize().padding(d.u(18))) {
+        T(posterLabel(record), d.t(15), color = DriveCardText, maxLines = 1)
+        PosterDistance(record, 68)
+        RouteGlyph(remember(record.id) { record.route.toMapPoints() }, Modifier.fillMaxWidth().weight(1f).padding(vertical = d.u(8)), DriveCardText, d.u(3), trace = true)
+        T("${shortName(record.placeName)}에 남긴 하루", d.t(28), color = DriveCardText, maxLines = 1, display = true)
         Spacer(Modifier.height(d.u(8)))
+        PosterFooter(record)
+    }
+}
+
+@Composable
+private fun BlackPoster(routeMaps: RouteMapCache, record: RecordV) {
+    val d = LocalCarDimens.current
+    Column(Modifier.fillMaxSize().padding(d.u(18))) {
+        T("A DRIVE TO REMEMBER", d.t(13), color = DriveCardMuted, maxLines = 1, tracking = 0.2f)
+        Spacer(Modifier.height(d.u(2)))
+        T("${shortName(record.placeName)}에 남긴 하루", d.t(26), color = DriveCardText, maxLines = 1, display = true)
+        Spacer(Modifier.height(d.u(10)))
         // The image's own shape, so cropping cannot remove the map attribution drawn on it.
-        val visual = Modifier.fillMaxWidth().aspectRatio(ROUTE_IMAGE_ASPECT)
-        if (photo != null) PlacePhoto(record.placeName, visual, photo)
-        else RouteVisual(routeMaps, record, null, visual)
-        Spacer(Modifier.height(d.u(8)))
-        Row(verticalAlignment = Alignment.Bottom) {
-            T(distanceText(record.distanceKm), d.t(46), color = DriveCardText, maxLines = 1, display = true)
-            if (record.distanceKm != null) T("km", d.t(22), Modifier.padding(start = d.u(5), bottom = d.u(6)), color = DriveCardText, maxLines = 1, display = true)
-            Spacer(Modifier.weight(1f))
-            // Kept beside the distance so a simulated drive says so without scrolling.
-            Column(Modifier.padding(bottom = d.u(4)), horizontalAlignment = Alignment.End) {
-                T(labels(record).removePrefix(" · ").ifEmpty { distanceLabel(record.distanceSource) }, d.t(14), color = DriveCardMuted, maxLines = 1)
-                T("${minutes(record.elapsedSeconds)}분 · ${posterDate(record.startedAtMillis)}", d.t(15), color = DriveCardText, maxLines = 1)
-            }
+        RouteVisual(routeMaps, record, null, Modifier.fillMaxWidth().aspectRatio(ROUTE_IMAGE_ASPECT))
+        if (placeHasPhoto(record.placeName)) {
+            Spacer(Modifier.height(d.u(8)))
+            // A banner, because these bundled photos blur at any larger size.
+            PlacePhoto(record.placeName, Modifier.fillMaxWidth().aspectRatio(4.2f))
         }
+        Spacer(Modifier.weight(1f))
+        T(posterLabel(record), d.t(14), color = DriveCardMuted, maxLines = 1)
+        PosterDistance(record, 58)
+        Spacer(Modifier.height(d.u(4)))
+        PosterFooter(record)
     }
 }
 

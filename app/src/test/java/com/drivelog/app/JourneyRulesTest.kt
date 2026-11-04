@@ -11,7 +11,12 @@ import com.drivelog.app.feature.car.isNewDestination
 import com.drivelog.app.feature.car.routeBounds
 import com.drivelog.app.feature.car.splitAtGaps
 import com.drivelog.app.feature.car.barelyMoved
+import com.drivelog.app.feature.car.SampleCourses
+import com.drivelog.app.feature.car.filterCourses
 import com.drivelog.app.feature.car.mercatorProjector
+import com.drivelog.app.feature.car.nearestArea
+import com.drivelog.app.feature.car.routeKm
+import com.drivelog.app.feature.car.trimRouteEnds
 import com.drivelog.app.feature.car.previewLinkCode
 import com.drivelog.app.feature.car.routeMapStyle
 import com.drivelog.app.feature.car.thinnedForDrawing
@@ -63,6 +68,52 @@ class JourneyRulesTest {
         assertTrue(barelyMoved(null, hasRoute = true))
         assertFalse(barelyMoved(0.1, hasRoute = true))
         assertFalse(barelyMoved(18.6, hasRoute = true))
+    }
+
+    /** About 111 m a step: 0.001 degrees of latitude. */
+    private fun northward(steps: Int) = List(steps + 1) { MapPoint(35.0 + it * 0.001, 129.0) }
+
+    @Test fun aRecommendedRouteLosesBothEnds() {
+        val route = northward(30)
+        val trimmed = trimRouteEnds(route)!!
+        assertEquals(routeKm(route) - 1.0, routeKm(trimmed), 0.001)
+        assertFalse(route.first() in trimmed)
+        assertFalse(route.last() in trimmed)
+    }
+
+    @Test fun sparsePointsAreCutAtTheDistanceNotAtTheNextPoint() {
+        // Every 1.1 km, as a poor signal records. Only 500 m goes from each end, not a whole step.
+        val route = List(5) { MapPoint(35.0 + it * 0.01, 129.0, it * 1000L) }
+        val trimmed = trimRouteEnds(route)!!
+        assertEquals(routeKm(route) - 1.0, routeKm(trimmed), 0.001)
+        assertEquals(route[1], trimmed[1])
+        assertEquals(route[3], trimmed[trimmed.lastIndex - 1])
+        assertTrue(trimmed.first().atMillis in 1 until 1000L)
+    }
+
+    @Test fun aRouteTooShortToTrimCannotBeRecommended() {
+        assertNull(trimRouteEnds(northward(8)))
+        assertNull(trimRouteEnds(emptyList()))
+        assertNull(trimRouteEnds(listOf(MapPoint(35.0, 129.0))))
+    }
+
+    @Test fun anOriginIsNamedOnlyAtNeighbourhoodLevel() {
+        assertEquals("부산 수영구", nearestArea(MapPoint(35.146, 129.113)))
+        assertEquals("출발지 주변", nearestArea(MapPoint(36.5, 128.0)))
+    }
+
+    @Test fun coursesFilterByOriginAndDestinationWithMineFirst() {
+        val mine = SampleCourses[0].copy(id = "mine", recommendations = 0, mine = true)
+        val all = SampleCourses + mine
+        assertEquals("mine", filterCourses(all, null, null).first().id)
+        assertTrue(filterCourses(all, "부산 사하구", null).all { it.originArea == "부산 사하구" })
+        assertTrue(filterCourses(all, null, "양평 두물머리").all { it.destinationName == "양평 두물머리" })
+        assertTrue(filterCourses(all, "서울 강남구", "송정 해수욕장").isEmpty())
+    }
+
+    @Test fun sampleCoursesCanAllBeDrawnAndHaveUniqueIds() {
+        assertEquals(SampleCourses.size, SampleCourses.map { it.id }.distinct().size)
+        SampleCourses.forEach { assertTrue(it.route.size >= 2 && it.distanceKm > 1.0) }
     }
 
     @Test fun previewLinkCodeIsAlwaysSixDigits() {

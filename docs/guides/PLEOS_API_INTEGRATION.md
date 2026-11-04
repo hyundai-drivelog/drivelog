@@ -184,6 +184,8 @@ onBackPressedDispatcher.addCallback(this) {
 | 카드 지도 | MapLibre 13.7.1 `MapSnapshotter` + OpenFreeMap 타일에 앱 자체 레이어(`routeMapStyle`: 육지·바다·도로만, 건물과 글자 없음). 온라인에서 생성, 저장 후 오프라인 표시, 네트워크 없으면 지도 없는 카드로 대체 후 다음 기회에 재시도 통과. `RouteMapCache.kt` |
 | 지도 일괄 생성 | 기록마다 `MapSnapshotter`를 새로 만들면 5장째에 `Vulkan buffer allocation failed` 후 `std::bad_alloc`으로 앱이 죽었다. 앱 전체에서 하나만 만들어 재사용한다. 스타일을 바꾸면 `route-maps-v3`의 버전을 올려 다시 그린다 |
 | 휴대폰 화면 미리보기 | 실제 연동 없는 목업(`PHONE_PREVIEW_*`, 목업 07·08). debug 빌드이고 `phoneLinkEnabled=false`일 때만 기록 화면에 `휴대폰으로 보내기`가 나온다. 서버·토큰·기록을 건드리지 않고 시뮬레이션으로 표시한다 |
+| 경로 모양 그림 | `RouteGlyph`. 기록 좌표만으로 목록에 그려 지도 요청과 통신이 없다. 애니메이션 없음 |
+| 커뮤니티 코스 미리보기 | 실제 커뮤니티 없는 목업(`COMMUNITY`, `COURSE_*`, `CommunityCourses.kt`). debug 빌드에서만 보인다. 예시 코스는 앱에 들어 있고, 내 추천은 메모리에만 두어 앱을 끄면 사라진다. 공개 미리보기는 경로 앞뒤 500m를 자르고 출발지는 동네 이름만 쓴다(작은 표 기반 예시). 안내 버튼은 기존 장소 확인 화면으로 이어지고 목적지까지만 안내한다 |
 | 화면용 실제 지도 | 기록 종료 확인·복구 화면(`LiveRouteMap`). 온라인이면 테마에 맞는 지도, 오프라인이면 `지도 배경은 예시예요`. 화면을 빠르게 다시 열면 `Map is currently rendering an image`로 거절될 수 있어 1초 뒤 한 번 재시도한다. 복귀 10회 반복 통과, 앱 메모리 약 200MB. **주행 전환 시 요청 취소는 실제로 시험하지 않았다** |
 | 지도 라이브러리 캐시 | 앱 저장소에 `mbgl-offline.db`가 생긴다. 기록을 삭제하면 `clearAmbientCache`와 `packDatabase`로 지도 조각 캐시 전체를 비운다. 다른 기록의 카드 이미지는 남는다 |
 | 목록 좌표 | 같은 장소라도 목록마다 좌표와 주소 표기가 조금 다르다. 목록 중복 제거에 이름도 쓴다 |

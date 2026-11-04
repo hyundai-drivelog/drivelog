@@ -27,7 +27,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** RECORDING and LOCKED follow from vehicle state (see routeFor); nothing navigates to them. */
-enum class Screen { HOME, PLACE, HISTORY, RECORD, STOP, SYNCING, LINK, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE }
+enum class Screen { HOME, PLACE, HISTORY, RECORD, STOP, SYNCING, LINK, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE, COMMUNITY, COURSE_DETAIL, COURSE_SHARE }
 
 private const val PHONE_PREVIEW_CODE_MS = 5 * 60 * 1000L
 
@@ -237,6 +237,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             Screen.HOME, Screen.RECOVERY, Screen.SYNCING -> return false
             Screen.LINK -> leaveLink()
             Screen.PHONE_PREVIEW_LINK, Screen.PHONE_PREVIEW_DONE -> leavePhonePreview()
+            Screen.COURSE_DETAIL -> go(Screen.COMMUNITY)
+            Screen.COURSE_SHARE -> go(returnAfterCourseShare)
             Screen.RECORD -> go(Screen.HISTORY)
             else -> home()
         }
@@ -455,6 +457,51 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     fun showPhonePreviewDone() = go(Screen.PHONE_PREVIEW_DONE)
 
     fun leavePhonePreview() = go(returnAfterPhonePreview)
+
+    // --- Community as a preview: example courses, and recommendations kept only in memory -------------
+
+    var postedCourses by mutableStateOf(emptyList<CommunityCourse>())
+        private set
+    val communityCourses get() = postedCourses + SampleCourses
+    var courseOriginFilter by mutableStateOf<String?>(null)
+    var courseDestinationFilter by mutableStateOf<String?>(null)
+    var openedCourse by mutableStateOf<CommunityCourse?>(null)
+        private set
+    var courseDraft by mutableStateOf<CourseDraft?>(null)
+        private set
+    private var returnAfterCourseShare = Screen.HOME
+    private var courseDraftRecordId: String? = null
+
+    fun openCommunity() {
+        courseOriginFilter = null
+        courseDestinationFilter = null
+        go(Screen.COMMUNITY)
+    }
+
+    fun openCourse(course: CommunityCourse) {
+        openedCourse = course
+        go(Screen.COURSE_DETAIL)
+    }
+
+    fun openCourseShare(record: RecordV) {
+        courseDraft = courseDraftFrom(record)
+        courseDraftRecordId = record.id
+        returnAfterCourseShare = screen
+        go(Screen.COURSE_SHARE)
+    }
+
+    /** One recommendation per drive: posting again replaces it, as tapping twice must not list a course twice. */
+    fun publishCourse(tags: List<String>) {
+        val draft = courseDraft ?: return
+        val id = "mine-$courseDraftRecordId"
+        postedCourses = listOf(draft.toCourse(id, tags)) + postedCourses.filter { it.id != id }
+        openCommunity()
+    }
+
+    fun removeCourse(course: CommunityCourse) {
+        postedCourses = postedCourses.filter { it.id != course.id }
+        go(Screen.COMMUNITY)
+    }
 
     fun startLink() {
         linkJob?.cancel()
