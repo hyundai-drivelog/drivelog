@@ -15,15 +15,24 @@ import com.drivelog.app.core.journey.PlaceV
 import com.drivelog.app.core.journey.RecordV
 import com.drivelog.app.core.platform.CarGear
 import com.drivelog.app.core.platform.NaviPlace
+import com.drivelog.app.core.platform.RouteEnd
 import com.drivelog.app.core.recording.RecordingService
+import kotlin.random.Random
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
-enum class Screen { HOME, PLACE, HISTORY, RECORD, STOP, SYNCING, LINK, DONE, OFFLINE, RECOVERY, DIAGNOSTICS }
+/** RECORDING and LOCKED follow from vehicle state (see routeFor); nothing navigates to them. */
+enum class Screen { HOME, PLACE, HISTORY, RECORD, STOP, SYNCING, LINK, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE }
+
+private const val PHONE_PREVIEW_CODE_MS = 5 * 60 * 1000L
+
+/** A code that connects to nothing, for the phone screens' preview. */
+fun previewLinkCode(random: Random = Random.Default) = random.nextInt(100_000, 1_000_000).toString()
 
 fun NaviPlace.toPlace() = PlaceV("", 0, name, address, latitude, longitude, poiId, poiSubId, poiProvider)
 fun PlaceV.toNaviPlace() = NaviPlace(name, address, latitude, longitude, poiId, poiSubId, poiProvider)
@@ -43,6 +52,18 @@ fun NaviPlace.sameLocation(other: NaviPlace) = latitude == other.latitude && lon
 fun mergePlaces(vararg lists: List<NaviPlace>): List<NaviPlace> =
     // The navigation app reports slightly different coordinates for one place across its lists, so names count too.
     lists.flatMap { it }.filter { it.isUsablePlace() }.distinctBy { it.latitude to it.longitude }.distinctBy { it.name }
+
+/**
+ * What the end of guidance does to a recording. Saving waits for P: the driver may keep going after ending
+ * guidance, and the rest of the drive still belongs to the record. Nothing changes on screen while moving.
+ */
+enum class RouteEndAction { NONE, ANNOUNCE, SAVE }
+
+fun routeEndAction(end: RouteEnd?, recording: Boolean, parked: Boolean) = when {
+    end == null || !recording -> RouteEndAction.NONE
+    parked -> RouteEndAction.SAVE
+    else -> RouteEndAction.ANNOUNCE
+}
 
 /** True once the navigation app holds a destination the driver did not already have when the search began. */
 fun isNewDestination(current: NaviPlace?, before: NaviPlace?) =
@@ -128,8 +149,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             platform.speech.collect { state ->
                 val heard = state.heard ?: return@collect
                 platform.clearSpeech()
+                // Only fills the field: a misheard phrase must not take over the screen with a navigation search.
                 searchQuery = heard
-                searchPlace()
             }
         }
         viewModelScope.launch {
@@ -144,12 +165,28 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             // Moving into P mid-drive offers the end-of-drive screen, as the driver has just stopped.
             var previous = gear
             combine(app.vehicleState.gear, app.simulatedGear) { real, sim -> if (simulation) sim else real }.collectLatest { current ->
-                if (recorder.state.value != null && previous != CarGear.PARK && previous != CarGear.UNKNOWN && current == CarGear.PARK) {
+                // When guidance has already ended, reaching P saves the drive instead of asking.
+                if (recorder.state.value != null && platform.navi.value.routeEnd == null && previous != CarGear.PARK && previous != CarGear.UNKNOWN && current == CarGear.PARK) {
                     screen = Screen.STOP
                     platform.speak("정차했어요. 기록을 종료할 수 있어요.")
                 }
                 if (current != CarGear.PARK && screen == Screen.STOP) screen = Screen.HOME
                 previous = current
+            }
+        }
+        viewModelScope.launch {
+            combine(platform.navi, recorder.state, snapshotFlow { parked }) { navi, recording, isParked ->
+                routeEndAction(navi.routeEnd, recording != null, isParked)
+            }.distinctUntilChanged().collect { action ->
+                when (action) {
+                    RouteEndAction.SAVE -> {
+                        platform.clearRouteEnd()
+                        platform.speak("안내가 끝나 드라이브를 저장했어요.")
+                        endRecording()
+                    }
+                    RouteEndAction.ANNOUNCE -> platform.speak("안내가 끝났어요. 정차하면 드라이브를 저장해요.")
+                    RouteEndAction.NONE -> {}
+                }
             }
         }
     }
@@ -199,6 +236,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         when (screen) {
             Screen.HOME, Screen.RECOVERY, Screen.SYNCING -> return false
             Screen.LINK -> leaveLink()
+            Screen.PHONE_PREVIEW_LINK, Screen.PHONE_PREVIEW_DONE -> leavePhonePreview()
             Screen.RECORD -> go(Screen.HISTORY)
             else -> home()
         }
@@ -231,7 +269,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Explicit action only: typed text or a finished phrase. */
+    /** Explicit action only: the driver pressed 찾기 on typed or spoken text. */
     fun searchPlace() {
         val keyword = searchQuery.trim()
         if (!parked || keyword.isEmpty()) return
@@ -280,6 +318,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         if (!parked) return
         val place = selectedPlace ?: return
         if (!recordingAvailable) { message = "이 차량에서는 위치를 수집할 수 없어 기록할 수 없어요."; return }
+        // Before the recording exists: guidance that ended earlier must not read as the end of this drive.
+        platform.clearRouteEnd()
         if (!recorder.start(null, place.toPlace(), simulation)) {
             message = "위치 권한을 허용하면 기록할 수 있어요. 경로는 드라이브 카드를 만드는 데 쓰여요."
             return
@@ -310,6 +350,15 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             fillRouteMaps()
             continueAfterRecord()
         }
+    }
+
+    /** Offered only when the car barely moved. Guidance is the navigation app's, so it stays as the driver left it. */
+    fun discardRecording() {
+        if (!parked) return
+        recorder.discard()
+        RecordingService.stop(getApplication())
+        routeMaps.clearTiles() // The stop screen fetched the map of this spot.
+        home()
     }
 
     /** Outcome of the upload decides what the driver is told; "arrived" is never claimed in advance. */
@@ -344,6 +393,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deletePartial() {
         recorder.clearRecovery()
+        routeMaps.clearTiles() // The recovery screen fetched the map of where this drive went.
         recoveredRecord = null
         recoveredPlace = null
         home()
@@ -379,6 +429,32 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun unlink() = store.unlink()
+
+    // --- Phone screens as a preview: no server, no token, and the record stays as it is --------------
+
+    var phonePreviewRecord by mutableStateOf<RecordV?>(null)
+        private set
+    var phonePreviewCode by mutableStateOf("")
+        private set
+    var phonePreviewExpiresAt by mutableStateOf(0L)
+        private set
+    private var returnAfterPhonePreview = Screen.HOME
+
+    fun openPhonePreview(record: RecordV) {
+        phonePreviewRecord = record
+        returnAfterPhonePreview = screen
+        newPhonePreviewCode()
+        go(Screen.PHONE_PREVIEW_LINK)
+    }
+
+    fun newPhonePreviewCode() {
+        phonePreviewCode = previewLinkCode()
+        phonePreviewExpiresAt = System.currentTimeMillis() + PHONE_PREVIEW_CODE_MS
+    }
+
+    fun showPhonePreviewDone() = go(Screen.PHONE_PREVIEW_DONE)
+
+    fun leavePhonePreview() = go(returnAfterPhonePreview)
 
     fun startLink() {
         linkJob?.cancel()

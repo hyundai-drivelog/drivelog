@@ -15,18 +15,24 @@ data class NaviPlace(
     val poiProvider: String? = null,
 )
 
+/** Why guidance stopped. A new route replaces a stopped one, so this only stands while nothing is being guided. */
+enum class RouteEnd { ARRIVED, STOPPED }
+
 data class NaviState(
     val available: Boolean = false,
     val bookmarks: List<NaviPlace> = emptyList(),
     val recents: List<NaviPlace> = emptyList(),
     val currentDestination: NaviPlace? = null,
     val routeMessage: String? = null,
+    val routeEnd: RouteEnd? = null,
 )
 
 /** On-device speech recognition. [heard] holds a finished phrase until it is consumed with [CarPlatform.clearSpeech]. */
 data class SpeechState(
     val available: Boolean = false,
     val listening: Boolean = false,
+    /** The engine has opened the microphone. Until then speech is lost, and a cold engine takes seconds. */
+    val ready: Boolean = false,
     val partial: String = "",
     val heard: String? = null,
     val message: String? = null,
@@ -65,6 +71,9 @@ interface CarPlatform {
 
     /** Sent only on an explicit user action, like [requestRoute]. */
     fun cancelRoute()
+
+    /** Forgets a [NaviState.routeEnd] from before a recording, which says nothing about that recording. */
+    fun clearRouteEnd()
 
     /** Started only by an explicit tap. The result arrives through [SpeechState.heard]. */
     fun startListening()

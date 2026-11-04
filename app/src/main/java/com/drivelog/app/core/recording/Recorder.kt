@@ -175,6 +175,12 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
             current.elapsedSeconds, current.points, distance, source, RecordStatus.COMPLETE, current.simulated)
     }
 
+    /** Ends the recording and leaves nothing behind, neither a record nor anything to recover. */
+    fun discard() {
+        stop()
+        clearFiles()
+    }
+
     private fun stop() {
         ticker?.cancel(); ticker = null
         platform.stopLocation()

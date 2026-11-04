@@ -10,6 +10,7 @@ private class NoPleosCarPlatform : CarPlatform {
     override val speech: StateFlow<SpeechState> = MutableStateFlow(SpeechState())
     override fun searchPlace(keyword: String) {}
     override fun cancelRoute() {}
+    override fun clearRouteEnd() {}
     override fun startListening() {}
     override fun stopListening() {}
     override fun clearSpeech() {}

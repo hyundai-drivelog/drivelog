@@ -60,6 +60,7 @@ class PleosCarPlatform(context: Context) : CarPlatform {
     private var locationListener: FusedLocationListener? = null
     private var alertId: String? = null
     private var onArrived: (() -> Unit)? = null
+    private var replacingRoute = false
 
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private val speechAttributes = AudioAttributes.Builder()
@@ -87,18 +88,31 @@ class PleosCarPlatform(context: Context) : CarPlatform {
         override fun onDestinationChanged() { runCatching { helper?.getDestinationInfo() } }
         // Side by side the app never returns to the foreground, and the navigation app was seen sending only these.
         override fun onRouteStarted(routeStartInfo: RouteStartInfo) {
+            Log.i(TAG, "route event: started")
+            replacingRoute = false
+            mutableNavi.update { it.copy(routeEnd = null) }
             route("내비에서 경로를 찾고 있어요")
             runCatching { helper?.getDestinationInfo() }
         }
         override fun onRoutingCompleted() {
+            Log.i(TAG, "route event: routing completed")
             route("내비 안내를 시작했어요")
             runCatching { helper?.getDestinationInfo() }
         }
         override fun onRouteCancelled() {
-            mutableNavi.update { state -> state.copy(currentDestination = null, routeMessage = null) }
+            Log.i(TAG, "route event: cancelled, replacing=$replacingRoute")
+            // Our own new route replacing an old one also cancels it. That is not the driver ending guidance.
+            val end = if (replacingRoute) null else RouteEnd.STOPPED
+            mutableNavi.update { state -> state.copy(currentDestination = null, routeMessage = null, routeEnd = state.routeEnd ?: end) }
         }
-        override fun onDestinationArrived(destinationArrivedInfo: DestinationArrivedInfo) { onArrived?.invoke() }
+        // Not onRouteEnded: the navigation app sends it right after onRouteStarted, while guidance is starting.
+        override fun onDestinationArrived(destinationArrivedInfo: DestinationArrivedInfo) {
+            Log.i(TAG, "route event: arrived")
+            onArrived?.invoke()
+            mutableNavi.update { it.copy(routeEnd = RouteEnd.ARRIVED) }
+        }
         override fun onError(errorCode: NaviErrorCode) {
+            replacingRoute = false
             route(when (errorCode) {
                 NaviErrorCode.CAUSE_LOW_BATTERY -> "배터리가 부족해 경로를 찾을 수 없어요"
                 NaviErrorCode.CAUSE_SEARCH_ROUTE_OVER_DISTANCE -> "탐색 가능한 거리를 넘었어요"
@@ -174,11 +188,19 @@ class PleosCarPlatform(context: Context) : CarPlatform {
         }
     }
 
+    private var peakRms = Double.NEGATIVE_INFINITY
+
     private val sttListener = object : ResultListener {
-        override fun onReady() {}
+        override fun onReady() {
+            if (!mutableSpeech.value.listening) return // Stopped while the engine was still starting.
+            mutableSpeech.update { it.copy(ready = true) }
+            // The driver's time to speak starts now, not at the tap.
+            handler.removeCallbacks(listenTimeout)
+            handler.postDelayed(listenTimeout, LISTEN_TIMEOUT_MS)
+        }
         override fun onStartedRecognition() {}
         override fun onUpdatedEpdData(on: Long, off: Long) {}
-        override fun onUpdatedRms(rms: Double) {}
+        override fun onUpdatedRms(rms: Double) { if (rms > peakRms) peakRms = rms }
         override fun onUpdated(stt: String, completed: Boolean) {
             if (completed && stt.isNotBlank()) handler.removeCallbacks(listenTimeout)
             mutableSpeech.update { state ->
@@ -187,6 +209,7 @@ class PleosCarPlatform(context: Context) : CarPlatform {
             }
         }
         override fun onEndedRecognition() {
+            Log.d(TAG, "stt ended, peak rms $peakRms") // Tells a silent microphone from an engine that heard nothing.
             handler.removeCallbacks(listenTimeout)
             audioManager.abandonAudioFocusRequest(listenFocus)
             mutableSpeech.update { state ->
@@ -206,9 +229,17 @@ class PleosCarPlatform(context: Context) : CarPlatform {
 
     /** The microphone must not stay open when the engine never decides the phrase has ended. */
     private val listenTimeout = Runnable {
-        val partial = mutableSpeech.value.partial.trim()
+        val state = mutableSpeech.value
+        val partial = state.partial.trim()
+        Log.d(TAG, "stt timed out, ready ${state.ready}, peak rms $peakRms")
         stopListening()
-        mutableSpeech.update { if (partial.isNotEmpty()) it.copy(heard = partial) else it.copy(message = "잘 듣지 못했어요. 다시 말씀해 주세요") }
+        mutableSpeech.update {
+            when {
+                partial.isNotEmpty() -> it.copy(heard = partial)
+                !state.ready -> it.copy(message = "음성 인식을 시작하지 못했어요. 직접 입력해 주세요")
+                else -> it.copy(message = "잘 듣지 못했어요. 다시 말씀해 주세요")
+            }
+        }
     }
 
     override fun startListening() {
@@ -217,8 +248,9 @@ class PleosCarPlatform(context: Context) : CarPlatform {
             mutableSpeech.update { it.copy(message = "다른 오디오가 사용 중이에요. 잠시 후 다시 시도해 주세요") }
             return
         }
-        mutableSpeech.update { it.copy(listening = true, partial = "", heard = null, message = null) }
-        handler.postDelayed(listenTimeout, LISTEN_TIMEOUT_MS)
+        peakRms = Double.NEGATIVE_INFINITY
+        mutableSpeech.update { it.copy(listening = true, ready = false, partial = "", heard = null, message = null) }
+        handler.postDelayed(listenTimeout, LISTEN_PREPARE_TIMEOUT_MS)
         runCatching { engine.request() }.onFailure {
             handler.removeCallbacks(listenTimeout)
             Log.w(TAG, "stt request failed: ${it.javaClass.simpleName}")
@@ -343,6 +375,8 @@ class PleosCarPlatform(context: Context) : CarPlatform {
         }.onFailure { Log.w(TAG, "proximity unavailable: ${it.javaClass.simpleName}") }
     }
 
+    override fun clearRouteEnd() = mutableNavi.update { it.copy(routeEnd = null) }
+
     override fun clearArrival() {
         alertId?.let { id -> runCatching { fused?.removeProximityAlert(id) } }
         alertId = null
@@ -360,6 +394,7 @@ class PleosCarPlatform(context: Context) : CarPlatform {
 
     override fun requestRoute(place: NaviPlace) {
         val sdk = helper?.takeIf { naviConnected } ?: run { route("내비게이션에 연결할 수 없어요"); return }
+        replacingRoute = mutableNavi.value.currentDestination != null
         runCatching {
             sdk.requestRoute(RouteInfo(
                 latitude = place.latitude, longitude = place.longitude, poiName = place.name,
@@ -411,6 +446,7 @@ class PleosCarPlatform(context: Context) : CarPlatform {
         const val SPEECH_ACTION = "ai.pleos.playground.caas.intent.action.SPEECH_START"
         const val SPEECH_LEAD_IN_MS = 150L
         const val LISTEN_TIMEOUT_MS = 10_000L
+        const val LISTEN_PREPARE_TIMEOUT_MS = 20_000L // A cold engine took about 9 seconds on the emulator.
     }
 }
 
