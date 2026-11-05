@@ -26,6 +26,7 @@ private class NoPleosCarPlatform : CarPlatform {
     override fun refreshNaviPlaces() {}
     override fun requestRoute(place: NaviPlace) {}
     override fun openNavigation() {}
+    override fun showRouteOverview() {}
     override fun clearRouteMessage() {}
     override fun speak(text: String) {}
 }

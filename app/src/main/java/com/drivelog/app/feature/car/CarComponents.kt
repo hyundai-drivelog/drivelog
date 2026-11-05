@@ -3,6 +3,8 @@ package com.drivelog.app.feature.car
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,7 +32,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,8 +44,6 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -55,6 +58,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.drivelog.app.R
+import kotlinx.coroutines.delay
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -108,19 +113,38 @@ enum class ButtonSize(val height: Dp, val radius: Dp, val padding: Dp, val label
 fun PrimaryButton(
     text: String, tag: String, modifier: Modifier = Modifier, chevron: Boolean = false, enabled: Boolean = true, loading: Boolean = false,
     size: ButtonSize = ButtonSize.LARGE, icon: CarGlyph? = null, onClick: () -> Unit,
-) = CarButton(text, tag, modifier, true, chevron, enabled, loading, size, icon, onClick)
+) = CarButton(text, tag, modifier, true, chevron, enabled, loading, size, icon, false, onClick)
 
 /** Everything else: Pleos's basic button, a light tint of the ink. */
 @Composable
 fun SecondaryButton(
     text: String, tag: String, modifier: Modifier = Modifier, enabled: Boolean = true, loading: Boolean = false,
-    size: ButtonSize = ButtonSize.LARGE, icon: CarGlyph? = null, onClick: () -> Unit,
-) = CarButton(text, tag, modifier, false, false, enabled, loading, size, icon, onClick)
+    size: ButtonSize = ButtonSize.LARGE, icon: CarGlyph? = null, danger: Boolean = false, onClick: () -> Unit,
+) = CarButton(text, tag, modifier, false, false, enabled, loading, size, icon, danger, onClick)
+
+/**
+ * The armed state of a two-tap action that cannot be undone. It disarms by itself, so a tap forgotten a while ago
+ * cannot turn a later one into a deletion.
+ */
+@Composable
+fun rememberConfirmState(key: Any? = Unit): MutableState<Boolean> {
+    val armed = remember(key) { mutableStateOf(false) }
+    LaunchedEffect(armed.value) {
+        if (armed.value) {
+            delay(CONFIRM_DISARM_MS)
+            armed.value = false
+        }
+    }
+    return armed
+}
+
+private const val CONFIRM_DISARM_MS = 5_000L
+private val MinButtonLabel = 16.sp
 
 @Composable
 private fun CarButton(
     text: String, tag: String, modifier: Modifier, filled: Boolean, chevron: Boolean, enabled: Boolean, loading: Boolean,
-    size: ButtonSize, icon: CarGlyph?, onClick: () -> Unit,
+    size: ButtonSize, icon: CarGlyph?, danger: Boolean, onClick: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     val ink = colors.onBackground
@@ -138,6 +162,7 @@ private fun CarButton(
     val content = when {
         inactive -> ink.copy(alpha = 0.32f)
         filled -> colors.onPrimary
+        danger -> colors.error
         else -> ink
     }
     Row(
@@ -152,7 +177,12 @@ private fun CarButton(
                 CarIcon(icon, size.icon, content)
                 Spacer(Modifier.width(size.padding / 3))
             }
-            T(text, size.label, color = content, bold = true, maxLines = 1)
+            // The label is a fixed size while the layout scales, so it shrinks to fit rather than being cut off.
+            BasicText(
+                keepWordsTogether(text), Modifier.weight(1f, fill = false),
+                style = TextStyle(color = content, fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                autoSize = TextAutoSize.StepBased(MinButtonLabel, size.label, 1.sp),
+            )
             if (chevron) {
                 Spacer(Modifier.width(size.padding / 3))
                 CarIcon(CarGlyph.CHEVRON_RIGHT, size.icon, content)
@@ -182,10 +212,12 @@ fun TopBar(onBack: (() -> Unit)?, onTitleHold: (() -> Unit)? = null, trailing: (
 
 /** Two columns in a wide window, one scrolling column in a narrow one. */
 @Composable
-fun Panes(leftWeight: Float, left: @Composable ColumnScope.() -> Unit, right: @Composable ColumnScope.() -> Unit) {
+fun Panes(leftWeight: Float, left: @Composable ColumnScope.() -> Unit, right: @Composable ColumnScope.() -> Unit, rightFirstWhenStacked: Boolean = false) {
     val d = LocalCarDimens.current
     if (d.stacked) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(d.u(16))) { left(); right() }
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(d.u(16))) {
+            if (rightFirstWhenStacked) { right(); left() } else { left(); right() }
+        }
     } else {
         Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(d.u(28))) {
             Column(Modifier.weight(leftWeight).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.Center) { left() }
@@ -216,21 +248,19 @@ fun placeHasPhoto(name: String) = placeImage(name) != R.drawable.demo_coastal_ro
 @DrawableRes
 fun posterImage(name: String): Int? = if (name.contains("광안리")) R.drawable.place_gwangalli_poster else null
 
-private val Mono = ColorFilter.colorMatrix(ColorMatrix().apply { setToSaturation(0f) })
-
 @Composable
 fun PlacePhoto(name: String, modifier: Modifier = Modifier, bitmap: ImageBitmap? = null) {
     val d = LocalCarDimens.current
     val shaped = modifier.clip(RoundedCornerShape(d.u(10))).background(soft())
     if (bitmap != null) Image(bitmap, name, shaped, contentScale = ContentScale.Crop)
-    else Image(painterResource(placeImage(name)), name, shaped, contentScale = ContentScale.Crop, colorFilter = Mono)
+    else Image(painterResource(placeImage(name)), name, shaped, contentScale = ContentScale.Crop)
 }
 
-/** The whole poster's picture: the driver's own photo in colour, or a bundled one in the mockups' monochrome. */
+/** The whole poster's picture: the driver's own photo, or a bundled one. */
 @Composable
 fun PosterPhoto(name: String, bitmap: ImageBitmap?, @DrawableRes bundled: Int?, modifier: Modifier = Modifier) {
     if (bitmap != null) Image(bitmap, name, modifier, contentScale = ContentScale.Crop)
-    else if (bundled != null) Image(painterResource(bundled), name, modifier, contentScale = ContentScale.Crop, colorFilter = Mono)
+    else if (bundled != null) Image(painterResource(bundled), name, modifier, contentScale = ContentScale.Crop)
 }
 
 @Composable
@@ -271,7 +301,8 @@ fun VerticalRule(modifier: Modifier = Modifier) {
 @Composable
 fun SimulationBadge() {
     val d = LocalCarDimens.current
-    T("시뮬레이션 데이터", d.t(14), Modifier.clip(RoundedCornerShape(d.u(6))).background(soft()).padding(horizontal = d.u(10), vertical = d.u(4)).testTag("sim-badge"), bold = true)
+    // Outlined, because a filled shape on these screens is something to press.
+    T("시뮬레이션 데이터", d.t(14), Modifier.border(1.dp, muted(), RoundedCornerShape(d.u(6))).padding(horizontal = d.u(10), vertical = d.u(4)).testTag("sim-badge"), bold = true)
 }
 
 enum class CarGlyph { CHEVRON_LEFT, CHEVRON_RIGHT, CHECK, PIN, INFO, CLOUD_OFF, REFRESH, DOCUMENT, PHOTO, SEARCH, CLOCK, BOOKMARK, LIST, MIC }

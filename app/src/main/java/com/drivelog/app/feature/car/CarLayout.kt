@@ -22,8 +22,11 @@ data class CarDimens(val mode: CarLayoutMode, val scale: Float) {
     val stacked get() = mode == CarLayoutMode.STACKED
     fun u(value: Float): Dp = (value * scale).dp
     fun u(value: Int): Dp = (value * scale).dp
-    fun t(value: Int): TextUnit = (value * scale).sp
+    fun t(value: Int): TextUnit = maxOf(value * scale, MIN_TEXT_SP).sp
 }
+
+/** Pleos's smallest System UI size. A small window shrinks the layout, never the text below this. */
+const val MIN_TEXT_SP = 12f
 
 const val WIDE_MIN_ASPECT = 1.15f
 

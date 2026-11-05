@@ -1,7 +1,10 @@
 package com.drivelog.app.feature.car
 
 import android.app.Application
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -27,7 +30,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** RECORDING and LOCKED follow from vehicle state (see routeFor); nothing navigates to them. */
-enum class Screen { HOME, PLACE, HISTORY, RECORD, STOP, SYNCING, LINK, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE, COMMUNITY, COURSE_DETAIL, COURSE_SHARE }
+enum class Screen { HOME, PLACE, HISTORY, RECORD, STOP, SYNCING, LINK, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE, COMMUNITY, COURSE_DETAIL, COURSE_SHARE, CARD_QR }
 
 private const val PHONE_PREVIEW_CODE_MS = 5 * 60 * 1000L
 private const val NAVI_RETRY_COUNT = 6
@@ -97,6 +100,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     var linkError by mutableStateOf(false)
         private set
     var syncing by mutableStateOf(false)
+        private set
+    var locationRefused by mutableStateOf(false)
         private set
 
     var searchQuery by mutableStateOf("")
@@ -184,8 +189,15 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
                 when (action) {
                     RouteEndAction.SAVE -> {
                         platform.clearRouteEnd()
-                        platform.speak("안내가 끝나 드라이브를 저장했어요.")
-                        endRecording()
+                        val current = recorder.state.value
+                        // Guidance switched off before setting out says nothing about a drive worth keeping.
+                        if (current != null && barelyMoved(current.distanceKm, current.points.size >= 2)) {
+                            screen = Screen.STOP
+                            platform.speak("거의 움직이지 않았어요. 저장할지 골라 주세요.")
+                        } else {
+                            platform.speak("안내가 끝나 드라이브를 저장했어요.")
+                            endRecording()
+                        }
                     }
                     RouteEndAction.ANNOUNCE -> platform.speak("안내가 끝났어요. 정차하면 드라이브를 저장해요.")
                     RouteEndAction.NONE -> {}
@@ -233,6 +245,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     fun go(target: Screen) {
         message = null
+        locationRefused = false
         awaitingNavi = false
         platform.stopListening()
         platform.clearSpeech()
@@ -257,6 +270,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             Screen.HOME, Screen.RECOVERY, Screen.SYNCING -> return false
             Screen.LINK -> leaveLink()
             Screen.PHONE_PREVIEW_LINK, Screen.PHONE_PREVIEW_DONE -> leavePhonePreview()
+            Screen.CARD_QR -> leaveCardQr()
             Screen.COURSE_DETAIL -> go(Screen.COMMUNITY)
             Screen.COURSE_SHARE -> go(returnAfterCourseShare)
             Screen.RECORD -> go(Screen.HISTORY)
@@ -344,8 +358,11 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         platform.clearRouteEnd()
         if (!recorder.start(null, place.toPlace(), simulation)) {
             message = "위치 권한을 허용하면 기록할 수 있어요. 경로는 드라이브 카드를 만드는 데 쓰여요."
+            // After a permanent refusal the system stops asking, and this is the only way left to allow it.
+            locationRefused = missingLocationPermissions().isNotEmpty()
             return
         }
+        locationRefused = false
         val navi = platform.navi.value
         val guiding = navi.currentDestination?.sameLocation(place) == true
         go(Screen.HOME)
@@ -356,7 +373,15 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun openAppSettings() {
+        val context = getApplication<Application>()
+        val details = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+        runCatching { context.startActivity(details.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { message = "설정 화면을 열 수 없어요. 차량 설정에서 위치 권한을 허용해 주세요." }
+    }
+
     fun openNavigation() = platform.openNavigation()
+    fun showRouteOverview() { if (parked) platform.showRouteOverview() }
     fun cancelRoute() = platform.cancelRoute()
 
     fun askToStop() { if (parked) go(Screen.STOP) }
@@ -477,6 +502,21 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     fun showPhonePreviewDone() = go(Screen.PHONE_PREVIEW_DONE)
 
     fun leavePhonePreview() = go(returnAfterPhonePreview)
+
+    // --- A drive card handed to the phone by QR code: nothing leaves the car any other way ------------
+
+    var cardQrRecord by mutableStateOf<RecordV?>(null)
+        private set
+    private var returnAfterCardQr = Screen.HOME
+
+    fun openCardQr(record: RecordV) {
+        if (!parked) return
+        cardQrRecord = record
+        returnAfterCardQr = screen
+        go(Screen.CARD_QR)
+    }
+
+    fun leaveCardQr() = go(returnAfterCardQr)
 
     // --- Community as a preview: example courses, and recommendations kept only in memory -------------
 

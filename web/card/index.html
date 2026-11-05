@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>여정 드라이브 카드</title>
+<style>
+  :root { color-scheme: dark; --bg: #131417; --ink: #ffffff; --muted: #b4b6ba; --soft: #1f2023; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink);
+         font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+         display: flex; flex-direction: column; align-items: center; padding: 16px; gap: 16px; }
+  canvas { width: 100%; max-width: 540px; height: auto; border-radius: 16px; display: block; }
+  button { width: 100%; max-width: 540px; min-height: 56px; border: 0; border-radius: 16px; font: inherit; font-size: 18px;
+           font-weight: 700; background: var(--ink); color: var(--bg); cursor: pointer; }
+  p { margin: 0; max-width: 540px; color: var(--muted); font-size: 14px; line-height: 1.5; text-align: center; }
+  .error { padding-top: 30vh; font-size: 18px; color: var(--ink); }
+</style>
+</head>
+<body>
+<canvas id="card" width="1080" height="1350" aria-label="드라이브 카드"></canvas>
+<button id="save" type="button">이미지로 저장</button>
+<p>이 카드는 차량에서 보낸 QR 코드의 주소에서만 만들어져요. 주소의 # 뒤에 담긴 경로는 서버로 전송되지 않아요.</p>
+<script>
+"use strict";
+// Everything comes from the part of the address after #, which the browser never sends to any server.
+// No map, font or script is fetched, so the drive is not revealed to anyone by opening this page.
+const params = new URLSearchParams(location.hash.slice(1));
+const canvas = document.getElementById("card");
+const ctx = canvas.getContext("2d");
+
+function decodePolyline(text) {
+  const points = [];
+  let index = 0, lat = 0, lon = 0;
+  while (index < text.length) {
+    for (const axis of [0, 1]) {
+      let shift = 0, result = 0, byte;
+      do {
+        byte = text.charCodeAt(index++) - 63;
+        result |= (byte & 0x1f) << shift;
+        shift += 5;
+      } while (byte >= 0x20 && index < text.length);
+      const delta = (result & 1) ? ~(result >> 1) : (result >> 1);
+      if (axis === 0) lat += delta; else lon += delta;
+    }
+    points.push([lat / 1e5, lon / 1e5]);
+  }
+  return points;
+}
+
+function haversineKm(a, b) {
+  const r = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * r, dLon = (b[1] - a[1]) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLon / 2) ** 2;
+  return 6371.0088 * 2 * Math.asin(Math.sqrt(Math.min(1, h)));
+}
+
+function shortName(name) {
+  const trimmed = name.replace(/해수욕장$/, "").replace(/해변$/, "").trim();
+  return trimmed || name;
+}
+
+function minutesText(seconds) {
+  const m = Math.floor(seconds / 60);
+  return m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간 ${m % 60}분`;
+}
+
+function showError(message) {
+  document.body.innerHTML = "";
+  const p = document.createElement("p");
+  p.className = "error";
+  p.textContent = message;
+  document.body.appendChild(p);
+}
+
+function draw() {
+  if (params.get("v") !== "1") { showError("드라이브 카드 정보가 없어요. 차량의 QR 코드를 다시 찍어 주세요."); return false; }
+  const name = params.get("n") || "드라이브";
+  const started = new Date(Number(params.get("s") || 0) * 1000);
+  const km = params.get("k");
+  const seconds = Number(params.get("e") || 0);
+  const pieces = (params.get("p") || "").split(".").filter(Boolean).map(decodePolyline).filter(p => p.length >= 2);
+  const W = canvas.width, H = canvas.height, pad = 72;
+  const font = (weight, size) => `${weight} ${size}px -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif`;
+
+  ctx.fillStyle = "#131417";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#b4b6ba";
+  ctx.font = font(400, 30);
+  ctx.fillText("나의 드라이브", pad, 110);
+  ctx.fillStyle = "#ffffff";
+  ctx.font = font(800, 64);
+  ctx.fillText(`${shortName(name)}에 남긴 하루`, pad, 190, W - pad * 2);
+
+  // The route area: a dot grid, plainly not a map, with the drive fitted inside it.
+  const box = { x: pad, y: 250, w: W - pad * 2, h: 700 };
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(box.x, box.y, box.w, box.h, 24);
+  ctx.clip();
+  ctx.fillStyle = "#0e0f11";
+  ctx.fillRect(box.x, box.y, box.w, box.h);
+  ctx.fillStyle = "rgba(255,255,255,0.09)";
+  for (let y = box.y + 18; y < box.y + box.h; y += 36) for (let x = box.x + 18; x < box.x + box.w; x += 36) {
+    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
+  }
+  const all = pieces.flat();
+  if (all.length >= 2) {
+    const k = Math.cos(all.reduce((s, p) => s + p[0], 0) / all.length * Math.PI / 180);
+    const xs = all.map(p => p[1] * k), ys = all.map(p => -p[0]);
+    const minX = Math.min(...xs), minY = Math.min(...ys);
+    const spanX = Math.max(Math.max(...xs) - minX, 1e-6), spanY = Math.max(Math.max(...ys) - minY, 1e-6);
+    const inner = 70;
+    const scale = Math.min((box.w - inner * 2) / spanX, (box.h - inner * 2) / spanY);
+    const ox = box.x + (box.w - spanX * scale) / 2, oy = box.y + (box.h - spanY * scale) / 2;
+    const at = p => [ox + (p[1] * k - minX) * scale, oy + (-p[0] - minY) * scale];
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    // A recording gap is not driving: it is drawn dashed, never as a solid road.
+    ctx.setLineDash([16, 16]); ctx.lineWidth = 5; ctx.strokeStyle = "rgba(180,182,186,0.8)";
+    for (let i = 1; i < pieces.length; i++) {
+      const a = at(pieces[i - 1][pieces[i - 1].length - 1]), b = at(pieces[i][0]);
+      ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    for (const [width, style] of [[30, "rgba(255,255,255,0.16)"], [10, "#ffffff"]]) {
+      ctx.lineWidth = width; ctx.strokeStyle = style;
+      for (const piece of pieces) {
+        ctx.beginPath();
+        piece.forEach((p, i) => i === 0 ? ctx.moveTo(...at(p)) : ctx.lineTo(...at(p)));
+        ctx.stroke();
+      }
+    }
+    // Distance marks every km, or wider for a long drive, as in the car.
+    const total = pieces.reduce((s, piece) => s + piece.slice(1).reduce((t, p, i) => t + haversineKm(piece[i], p), 0), 0);
+    const step = total <= 10 ? 1 : total <= 20 ? 2 : total <= 50 ? 5 : total <= 100 ? 10 : total <= 200 ? 20 : 50;
+    let driven = 0, next = step;
+    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = font(800, 26);
+    for (const piece of pieces) for (let i = 1; i < piece.length; i++) {
+      const len = haversineKm(piece[i - 1], piece[i]);
+      while (len > 0 && driven + len >= next) {
+        const t = (next - driven) / len;
+        if (total - next >= step * 0.3) {
+          const p = at([piece[i - 1][0] + (piece[i][0] - piece[i - 1][0]) * t, piece[i - 1][1] + (piece[i][1] - piece[i - 1][1]) * t]);
+          ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(...p, 24, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#131417"; ctx.fillText(String(next), ...p);
+        }
+        next += step;
+      }
+      driven += len;
+    }
+    const start = at(all[0]), end = at(all[all.length - 1]);
+    ctx.fillStyle = "#131417"; ctx.beginPath(); ctx.arc(...start, 24, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 8; ctx.stroke();
+    ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(...start, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(...end, 18, 0, Math.PI * 2); ctx.fill();
+    ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
+  }
+  ctx.restore();
+
+  const label = params.get("d") === "v" ? "차량 주행거리" : "추정 거리";
+  ctx.fillStyle = "#b4b6ba"; ctx.font = font(400, 30);
+  ctx.fillText(label + (params.get("m") === "1" ? " · 시뮬레이션" : ""), pad, 1030);
+  ctx.fillStyle = "#ffffff"; ctx.font = font(800, 150);
+  const value = km ?? "—";
+  ctx.fillText(value, pad, 1180);
+  if (km) {
+    const w = ctx.measureText(value).width;
+    ctx.font = font(800, 60); ctx.fillText("km", pad + w + 16, 1180);
+  }
+  const date = `${started.getFullYear()}.${String(started.getMonth() + 1).padStart(2, "0")}.${String(started.getDate()).padStart(2, "0")}`;
+  ctx.font = font(400, 30); ctx.fillStyle = "#ffffff";
+  ctx.fillText(`${shortName(name)} | ${minutesText(seconds)} 기록 | ${date}`, pad, 1270, W - pad * 2 - 120);
+  ctx.textAlign = "end"; ctx.font = font(800, 34);
+  ctx.fillText("여정", W - pad, 1270);
+  ctx.textAlign = "start";
+  return true;
+}
+
+if (draw()) {
+  document.getElementById("save").addEventListener("click", () => {
+    canvas.toBlob(async blob => {
+      if (!blob) return;
+      const file = new File([blob], "drive-card.png", { type: "image/png" });
+      // The phone's own share sheet where there is one, so the card can go straight to photos or a message.
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file] }); return; } catch (error) { if (error.name === "AbortError") return; }
+      }
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = "drive-card.png";
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+    }, "image/png");
+  });
+}
+</script>
+</body>
+</html>

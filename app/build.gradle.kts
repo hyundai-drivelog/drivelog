@@ -17,6 +17,11 @@ val pleosSdkEnabled = providers.gradleProperty("pleosSdkEnabled")
 val phoneLinkEnabled = providers.gradleProperty("phoneLinkEnabled")
     .orElse("false").get().toBooleanStrict()
 val releaseApiBaseUrl = providers.gradleProperty("releaseApiBaseUrl").orElse("").get()
+// Where web/card/ is published. Without it the car offers no QR, as the code would open nothing.
+val cardWebUrl = providers.gradleProperty("cardWebUrl").orElse("").get()
+require(cardWebUrl.isBlank() || (cardWebUrl.startsWith("https://") && cardWebUrl.endsWith("/") && !cardWebUrl.contains('"') && !cardWebUrl.contains('#'))) {
+    "cardWebUrl must be an HTTPS URL ending in /"
+}
 require(releaseApiBaseUrl.isBlank() ||
     (releaseApiBaseUrl.startsWith("https://") && releaseApiBaseUrl.endsWith("/") && !releaseApiBaseUrl.contains('"'))) {
     "releaseApiBaseUrl must be an HTTPS base URL ending in /"
@@ -39,6 +44,7 @@ android {
         versionName = "1.0"
         buildConfigField("boolean", "PLEOS_SDK_INCLUDED", pleosSdkEnabled.toString())
         buildConfigField("boolean", "PHONE_LINK_ENABLED", phoneLinkEnabled.toString())
+        buildConfigField("String", "CARD_WEB_URL", "\"$cardWebUrl\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The map library is native. Only vehicle hardware and the emulator image are packaged.
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
@@ -96,6 +102,7 @@ dependencies {
     implementation(libs.androidx.compose.foundation)
     implementation(libs.androidx.compose.material3)
     implementation(libs.maplibre)
+    implementation(libs.zxing.core)
     implementation(libs.retrofit)
     implementation(libs.retrofit.gson)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)

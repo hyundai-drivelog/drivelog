@@ -130,8 +130,8 @@ fun routeBounds(points: List<MapPoint>, margin: Double = 0.22, minSpanDegrees: D
 class RouteMapCache(context: Context) {
     private val context = context.applicationContext
     // The folder name carries the map style's version, so older images are drawn again in the current style.
-    private val directory = File(this.context.filesDir, "route-maps-v3").apply {
-        listOf("route-maps", "route-maps-v2").forEach { File(this@RouteMapCache.context.filesDir, it).deleteRecursively() }
+    private val directory = File(this.context.filesDir, "route-maps-v6").apply {
+        listOf("route-maps", "route-maps-v2", "route-maps-v3", "route-maps-v4", "route-maps-v5").forEach { File(this@RouteMapCache.context.filesDir, it).deleteRecursively() }
         mkdirs()
     }
     private val client = OkHttpClient.Builder().callTimeout(10, TimeUnit.SECONDS).build()
@@ -153,6 +153,7 @@ class RouteMapCache(context: Context) {
      */
     fun delete(id: String) {
         file(id).delete()
+        projectionFile(id).delete()
         mutableReady.update { it - file(id).name.removeSuffix(".jpg") }
         clearTiles()
     }
@@ -190,14 +191,29 @@ class RouteMapCache(context: Context) {
         }.onFailure { Log.w(TAG, "live map failed: ${it.javaClass.simpleName}") }.getOrNull()
     }
 
+    /**
+     * The map alone, with where coordinates fall on it. The route is drawn over it on screen, so it can be traced
+     * again on request, and a change to how routes look needs no new map.
+     */
     private suspend fun render(record: RecordV): Boolean {
         val style = loadStyle(dark = true) ?: return false
         val points = record.route.toMapPoints()
         val pin = record.destinationPoint().takeIf { destinationFitsFrame(points, it) }
-        val snapshot = capture(routeBounds(points + listOfNotNull(pin)), IMAGE_WIDTH, IMAGE_HEIGHT, style) ?: return false
+        val box = routeBounds(points + listOfNotNull(pin))
+        val snapshot = capture(box, IMAGE_WIDTH, IMAGE_HEIGHT, style) ?: return false
         return runCatching {
-            val image = compose(snapshot, record)
+            val southWest = snapshot.pixelForLatLng(LatLng(box[0], box[1]))
+            val northEast = snapshot.pixelForLatLng(LatLng(box[2], box[3]))
+            val image = snapshot.bitmap.copy(Bitmap.Config.ARGB_8888, true)
+            val note = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xCCFFFFFF.toInt(); textSize = 28f }
+            Canvas(image).drawText(ATTRIBUTION, 16f, image.height - 16f, note)
+            val projection = JsonObject().apply {
+                add("box", JsonParser.parseString(box.joinToString(",", "[", "]")))
+                add("sw", JsonParser.parseString("[${southWest.x},${southWest.y}]"))
+                add("ne", JsonParser.parseString("[${northEast.x},${northEast.y}]"))
+            }
             withContext(Dispatchers.IO) {
+                projectionFile(record.id).writeText(projection.toString())
                 val target = file(record.id)
                 val temp = File(directory, target.name + ".tmp")
                 temp.outputStream().use { image.compress(Bitmap.CompressFormat.JPEG, 88, it) }
@@ -211,6 +227,19 @@ class RouteMapCache(context: Context) {
             false
         }
     }
+
+    private fun projectionFile(id: String) = File(directory, file(id).name.removeSuffix(".jpg") + ".json")
+
+    /** The stored map and its projection, or null when either is missing or unreadable. Reads from disk. */
+    fun loadFrame(id: String): MapFrame? = runCatching {
+        val json = JsonParser.parseString(projectionFile(id).readText()).asJsonObject
+        fun numbers(key: String) = json.getAsJsonArray(key).map { it.asDouble }
+        val box = numbers("box").toDoubleArray()
+        val sw = numbers("sw")
+        val ne = numbers("ne")
+        val image = BitmapFactory.decodeFile(file(id).path)?.asImageBitmap() ?: return null
+        MapFrame(image, mercatorProjector(box, sw[0].toFloat(), sw[1].toFloat(), ne[0].toFloat(), ne[1].toFloat()))
+    }.getOrNull()
 
     private suspend fun loadStyle(dark: Boolean): String? {
         val provider = providerStyle ?: withContext(Dispatchers.IO) {
@@ -256,82 +285,22 @@ class RouteMapCache(context: Context) {
         }
     }
 
-    private fun compose(snapshot: MapSnapshot, record: RecordV): Bitmap {
-        val image = Bitmap.createBitmap(snapshot.bitmap.width, snapshot.bitmap.height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(image)
-        canvas.drawBitmap(snapshot.bitmap, 0f, 0f, null)
-        val points = record.route.toMapPoints()
-        val project = { point: MapPoint -> snapshot.pixelForLatLng(LatLng(point.latitude, point.longitude)).let { Offset(it.x, it.y) } }
-        val lines = splitAtGaps(points.thinnedForDrawing()).map { piece -> piece.map(project) }
-        val width = 9f
-        val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND; color = android.graphics.Color.WHITE; strokeWidth = width
-        }
-        val glow = Paint(stroke).apply { alpha = 130; strokeWidth = width * 2.2f; maskFilter = BlurMaskFilter(width * 1.6f, BlurMaskFilter.Blur.NORMAL) }
-        val dashed = Paint(stroke).apply { alpha = 170; strokeWidth = width * 0.6f; pathEffect = DashPathEffect(floatArrayOf(14f, 14f), 0f) }
-        lines.zipWithNext().forEach { (before, after) -> canvas.drawLine(before.last().x, before.last().y, after.first().x, after.first().y, dashed) }
-        lines.forEach { line ->
-            val path = Path()
-            smooth(line).forEachIndexed { index, point -> if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y) }
-            canvas.drawPath(path, glow)
-            canvas.drawPath(path, stroke)
-        }
-        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE }
-        val hole = Paint(fill).apply { color = 0xFF111214.toInt() }
-        lines.firstOrNull()?.firstOrNull()?.let { start ->
-            canvas.drawCircle(start.x, start.y, width * 2.4f, fill)
-            canvas.drawCircle(start.x, start.y, width * 1.6f, hole)
-            canvas.drawCircle(start.x, start.y, width * 0.9f, fill)
-        }
-        val pin = record.destinationPoint().takeIf { destinationFitsFrame(points, it) }
-        if (pin != null) drawPin(canvas, project(pin), record.placeName, fill, hole)
-        else lines.lastOrNull()?.lastOrNull()?.let { end -> canvas.drawCircle(end.x, end.y, width * 1.8f, fill) }
-        val note = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xCCFFFFFF.toInt(); textSize = 28f }
-        canvas.drawText(ATTRIBUTION, 16f, image.height - 16f, note)
-        return image
-    }
-
-    private fun drawPin(canvas: Canvas, tip: Offset, name: String, fill: Paint, hole: Paint) {
-        val height = 58f
-        val radius = height * 0.36f
-        val centerY = tip.y - height + radius
-        canvas.drawPath(Path().apply {
-            moveTo(tip.x, tip.y)
-            lineTo(tip.x - radius * 0.9f, centerY + radius * 0.42f)
-            lineTo(tip.x + radius * 0.9f, centerY + radius * 0.42f)
-            close()
-        }, fill)
-        canvas.drawCircle(tip.x, centerY, radius, fill)
-        canvas.drawCircle(tip.x, centerY, radius * 0.42f, hole)
-        val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE; textSize = 28f; typeface = Typeface.DEFAULT_BOLD }
-        val textWidth = label.measureText(name)
-        val right = tip.x + radius + 12f
-        val x = if (right + textWidth <= canvas.width - 8f) right else (tip.x - radius - 12f - textWidth).coerceAtLeast(8f)
-        canvas.drawText(name, x, centerY + 10f, label)
-    }
-
     private companion object { const val TAG = "DriveLogMap" }
 }
 
-/** The stored map image when there is one, otherwise the map-free art, which never needs a network. */
+/**
+ * The route over its stored map when there is one, otherwise over the map-free art, which never needs a network.
+ * [replay] draws the route again from the start each time it changes.
+ */
 @Composable
-fun RouteVisual(cache: RouteMapCache, record: RecordV?, label: String?, modifier: Modifier = Modifier, drawRoute: Boolean = false) {
-    val d = LocalCarDimens.current
+fun RouteVisual(cache: RouteMapCache, record: RecordV?, label: String?, modifier: Modifier = Modifier, drawRoute: Boolean = false, replay: Int = 0) {
     val ready by cache.ready.collectAsState()
     val hasImage = record != null && cache.has(record.id)
-    val image by produceState<ImageBitmap?>(null, record?.id, hasImage, ready) {
-        value = if (record == null || !hasImage) null else withContext(Dispatchers.IO) {
-            runCatching { BitmapFactory.decodeFile(cache.file(record.id).path)?.asImageBitmap() }.getOrNull()
-        }
+    val frame by produceState<MapFrame?>(null, record?.id, hasImage, ready) {
+        value = if (record == null || !hasImage) null else withContext(Dispatchers.IO) { cache.loadFrame(record.id) }
     }
-    // A stored image is about to replace the art, so tracing would only be cut short.
-    val trace = drawRoute && remember(record?.id) { !hasImage }
-    Crossfade(image, modifier, tween(320), label = "route image") { loaded ->
-        if (loaded != null) {
-            Box(Modifier.fillMaxSize().clip(RoundedCornerShape(d.u(10))).background(DriveCardBackground)) {
-                // The route sits well inside its margin, so filling the frame never cuts it off.
-                Image(loaded, "주행 경로 지도", Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-            }
-        } else DriveRouteArt(record?.route?.toMapPoints().orEmpty(), record?.destinationPoint(), label, Modifier.fillMaxSize(), trace)
+    val points = remember(record?.id) { record?.route?.toMapPoints().orEmpty() }
+    Crossfade(frame, modifier, tween(320), label = "route image") { loaded ->
+        DriveRouteArt(points, record?.destinationPoint(), label, Modifier.fillMaxSize(), drawRoute || replay > 0, loaded, replay)
     }
 }

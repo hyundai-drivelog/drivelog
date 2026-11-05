@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -57,7 +59,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -71,7 +72,9 @@ import com.drivelog.app.BuildConfig
 import com.drivelog.app.core.journey.JourneyStore
 import com.drivelog.app.core.journey.RecordStatus
 import com.drivelog.app.core.journey.RecordV
+import androidx.compose.runtime.key
 import com.drivelog.app.core.platform.NaviPlace
+import com.drivelog.app.core.platform.RouteSummary
 import com.drivelog.app.core.platform.SpeechState
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -99,12 +102,29 @@ private fun MapPanes(left: @Composable ColumnScope.() -> Unit, stackedHeight: In
     }
 }
 
-/** Only the pins are real positions; the map itself labels its backdrop as an example. */
+/**
+ * Where the car is and where it is going, on a real map fetched while parked. The navigation app's route is not
+ * drawn: the SDK does not expose its line, and a line from anywhere else would not be the one it guides.
+ */
 @Composable
-private fun PlaceMap(current: MapPoint?, destination: NaviPlace?, modifier: Modifier) = RouteMap(
-    listOfNotNull(current), destination?.let { MapPoint(it.latitude, it.longitude) }, destination?.name, modifier,
-    startLabel = if (current != null) "현재 위치" else null,
-)
+private fun PlaceMap(routeMaps: RouteMapCache, current: MapPoint?, destination: NaviPlace?, modifier: Modifier) {
+    // Framed once per map, so a position arriving after the screen opens frames it again with both points.
+    key(current != null, destination?.latitude, destination?.longitude) {
+        LiveRouteMap(
+            routeMaps, listOfNotNull(current), destination?.let { MapPoint(it.latitude, it.longitude) }, destination?.name, modifier,
+            startLabel = if (current != null) "현재 위치" else null,
+        )
+    }
+}
+
+/** The navigation app's figures for its chosen route. Its duration is reported in seconds. */
+fun routeSummaryText(summary: RouteSummary): String {
+    val km = summary.distanceMeters / 1000.0
+    val distance = if (km < 10) String.format(java.util.Locale.US, "%.1f km", km) else "${km.roundToInt()} km"
+    val minutes = ((summary.durationSeconds + 59) / 60).coerceAtLeast(1)
+    val time = if (minutes < 60) "${minutes}분" else "${minutes / 60}시간 ${minutes % 60}분"
+    return "내비 추천 경로 · $distance · 약 $time"
+}
 
 /** The last few real drives under the home photo, or a line saying where they will appear. All remain in 내 기록. */
 @Composable
@@ -247,14 +267,14 @@ fun HomeScreen(
                 }
                 if (line != null) {
                     Spacer(Modifier.height(d.u(6)))
-                    T(line, d.t(16), Modifier.testTag("search-note"), color = muted(), maxLines = 2)
+                    T(line, d.t(16), Modifier.testTag("search-note"), color = if (!canSearch) MaterialTheme.colorScheme.error else muted(), bold = !canSearch, maxLines = 2)
                 }
                 Spacer(Modifier.height(d.u(12)))
                 Tabs(listOf("최근 검색", "저장한 장소"), tab) { tab = it }
                 Spacer(Modifier.height(d.u(8)))
                 val places = if (tab == 0) recents else saved
                 if (places.isEmpty()) {
-                    T(if (tab == 0) "아직 검색한 장소가 없어요" else "저장한 장소가 없어요", d.t(18), Modifier.fillMaxWidth().padding(vertical = d.u(24)).testTag("places-empty"), color = muted(), align = TextAlign.Center)
+                    T(if (tab == 0) "가고 싶은 곳을 말하거나 입력해 보세요" else "장소를 고른 뒤 저장하면 여기에 모여요", d.t(18), Modifier.fillMaxWidth().padding(vertical = d.u(24)).testTag("places-empty"), color = muted(), align = TextAlign.Center)
                 } else places.forEach { place ->
                     Row(
                         Modifier.padding(bottom = d.u(7)).fillMaxWidth().heightIn(min = maxOf(d.u(62), 64.dp)).clip(RoundedCornerShape(d.u(10))).background(soft())
@@ -273,15 +293,7 @@ fun HomeScreen(
             }, stackedHeight = 360) { modifier ->
                 Column(modifier, verticalArrangement = Arrangement.spacedBy(d.u(8))) {
                     // A mood image, not a place, so it is the one photo that names nowhere.
-                    // Settles once on arrival. The frame stays still: only the picture inside it moves.
-                    val settle = rememberProgress(Unit, tween(1400, easing = FastOutSlowInEasing))
-                    Box(Modifier.fillMaxWidth().weight(1f).clip(RoundedCornerShape(d.u(10)))) {
-                        PlacePhoto("", Modifier.fillMaxSize().graphicsLayer {
-                            val scale = 1.05f - 0.05f * settle.value
-                            scaleX = scale
-                            scaleY = scale
-                        })
-                    }
+                    PlacePhoto("", Modifier.fillMaxWidth().weight(1f))
                     RecentDrives(records, onRecord)
                 }
             }
@@ -296,6 +308,12 @@ fun HomeScreen(
 fun PlaceConfirmScreen(
     place: NaviPlace, query: String, speech: SpeechState, canSearch: Boolean, simulation: Boolean, naviAvailable: Boolean, guidanceActive: Boolean, isSaved: Boolean, message: String?, current: MapPoint?,
     actions: SearchActions, onSave: () -> Unit, onStart: () -> Unit, onCancelRoute: () -> Unit, onBack: () -> Unit,
+    /** Set once recording was refused for lack of a location grant, which a repeat request may no longer offer. */
+    onOpenSettings: (() -> Unit)? = null,
+    routeMaps: RouteMapCache? = null,
+    /** The navigation app's figures for the route it is already guiding to this place. */
+    routeSummary: RouteSummary? = null,
+    onShowRoute: (() -> Unit)? = null,
 ) {
     val d = LocalCarDimens.current
     Column(Modifier.fillMaxSize().padding(horizontal = d.u(22), vertical = d.u(8))) {
@@ -325,18 +343,31 @@ fun PlaceConfirmScreen(
                         naviAvailable -> "길 안내는 Pleos 내비게이션으로 연결돼요"
                         else -> "내비게이션에 연결할 수 없어 기록만 시작해요"
                     },
-                    d.t(16), Modifier.fillMaxWidth().testTag("place-note"), color = muted(), align = TextAlign.Center, maxLines = 2,
+                    d.t(16), Modifier.fillMaxWidth().testTag("place-note"), color = if (onOpenSettings != null) MaterialTheme.colorScheme.error else muted(), bold = onOpenSettings != null, align = TextAlign.Center, maxLines = 2,
                 )
+                if (onOpenSettings != null) {
+                    Spacer(Modifier.height(d.u(4)))
+                    SecondaryButton("설정에서 권한 허용", "open-settings", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onOpenSettings)
+                }
                 // Choosing a place in the navigation app has already started guidance, which may not be wanted yet.
                 if (guidanceActive) {
-                    Spacer(Modifier.height(d.u(4)))
-                    SecondaryButton("내비 안내 끄기", "cancel-route", Modifier.fillMaxWidth(), onClick = onCancelRoute)
+                    if (routeSummary != null) {
+                        Spacer(Modifier.height(d.u(10)))
+                        T(routeSummaryText(routeSummary), d.t(18), Modifier.fillMaxWidth().testTag("route-summary"), bold = true, align = TextAlign.Center, maxLines = 1)
+                    }
+                    Spacer(Modifier.height(d.u(6)))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(d.u(10))) {
+                        // The route the navigation app chose, shown by it: the only way to see that exact line.
+                        if (onShowRoute != null) SecondaryButton("내비에서 경로 보기", "show-route", Modifier.weight(1f), size = ButtonSize.MEDIUM, onClick = onShowRoute)
+                        SecondaryButton("내비 안내 끄기", "cancel-route", Modifier.weight(1f), size = ButtonSize.MEDIUM, onClick = onCancelRoute)
+                    }
                 }
             }, stackedHeight = 400) { modifier ->
                 Column(modifier, verticalArrangement = Arrangement.spacedBy(d.u(10))) {
                     // A banner, because the bundled photos are small and blur when they fill the pane.
                     if (placeHasPhoto(place.name)) PlacePhoto(place.name, Modifier.fillMaxWidth().aspectRatio(3.2f))
-                    PlaceMap(current, place, Modifier.fillMaxWidth().weight(1f))
+                    if (routeMaps != null) PlaceMap(routeMaps, current, place, Modifier.fillMaxWidth().weight(1f))
+                    else RouteMap(listOfNotNull(current), MapPoint(place.latitude, place.longitude), place.name, Modifier.fillMaxWidth().weight(1f))
                 }
             }
         }
@@ -359,18 +390,19 @@ fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<R
             Crossfade(tab, Modifier.fillMaxSize(), tween(if (LocalMotionEnabled.current) 220 else 0), label = "history tab") { shownTab ->
             when {
                 sorted.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    T("아직 기록한 드라이브가 없어요", d.t(20), Modifier.testTag("history-empty"), color = muted(), align = TextAlign.Center)
+                    T("아직 기록한 드라이브가 없어요. 장소를 고르고 기록을 시작해 보세요", d.t(20), Modifier.testTag("history-empty"), color = muted(), align = TextAlign.Center)
                 }
-                shownTab == 0 -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(d.u(8))) {
-                    HistorySummary(sorted)
-                    sorted.forEachIndexed { index, record -> DriveRow(record, index) { onRecord(record) } }
+                // Lazy, as every row converts and draws a whole route and the list only ever grows.
+                shownTab == 0 -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(d.u(8))) {
+                    item(key = "summary") { HistorySummary(sorted) }
+                    itemsIndexed(sorted, key = { _, record -> record.id }) { index, record -> DriveRow(record, index) { onRecord(record) } }
                 }
                 else -> Column(Modifier.fillMaxSize()) {
                     // Sending the area of a drive to an outside service is stated where its result appears.
                     T("지도는 정차 중에만 받아요. 이때 주행 지역이 지도 서비스(OpenFreeMap)로 전달돼요", d.t(16), Modifier.testTag("map-privacy-note"), color = muted(), maxLines = 2)
                     Spacer(Modifier.height(d.u(10)))
                     // A poster of a drive that went nowhere has nothing to show. Those stay in the list tab.
-                    val posters = sorted.filterNot { barelyMoved(it.distanceKm, it.route.size >= 2) }
+                    val posters = remember(sorted) { sorted.filterNot { barelyMoved(it.distanceKm, it.route.size >= 2) } }
                     if (posters.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         T("드라이브를 기록하면 여기에 카드가 만들어져요", d.t(20), Modifier.testTag("posters-empty"), color = muted(), align = TextAlign.Center)
                     }
@@ -503,7 +535,7 @@ private fun BoxScope.PhotoPoster(record: RecordV, photo: ImageBitmap?, bundled: 
 private fun BlackPoster(routeMaps: RouteMapCache, record: RecordV) {
     val d = LocalCarDimens.current
     Column(Modifier.fillMaxSize().padding(d.u(18))) {
-        T("A DRIVE TO REMEMBER", d.t(13), color = DriveCardMuted, maxLines = 1, tracking = 0.2f)
+        T("나의 드라이브", d.t(13), color = DriveCardMuted, maxLines = 1)
         Spacer(Modifier.height(d.u(2)))
         T("${shortName(record.placeName)}에 남긴 하루", d.t(26), color = DriveCardText, maxLines = 1, display = true)
         Spacer(Modifier.height(d.u(10)))

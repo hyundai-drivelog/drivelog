@@ -23,6 +23,8 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import com.drivelog.app.core.recording.haversineKm
 import kotlin.math.cos
 import kotlin.math.max
@@ -113,19 +115,31 @@ fun trimLines(lines: List<List<Offset>>, fraction: Float): List<List<Offset>> {
 /**
  * The recorded GPS track, never the navigation app's planned line, which the SDK does not expose. The dot
  * grid is plainly not a map, so nothing here can be mistaken for geography the app does not have.
- * With [drawRoute] the track traces itself from start to end and the destination pin lands last.
+ * With [drawRoute] the track traces itself from start to end and the destination pin lands last; a new [replay]
+ * value traces it again, more slowly, as a replay of the drive. Over a [map] the track sits where it was driven.
  */
 @Composable
-fun DriveRouteArt(points: List<MapPoint>, destination: MapPoint?, destinationLabel: String?, modifier: Modifier = Modifier, drawRoute: Boolean = false) {
+fun DriveRouteArt(
+    points: List<MapPoint>, destination: MapPoint?, destinationLabel: String?, modifier: Modifier = Modifier, drawRoute: Boolean = false,
+    map: MapFrame? = null, replay: Int = 0,
+) {
     val d = LocalCarDimens.current
     val measurer = rememberTextMeasurer()
     val labelStyle = TextStyle(color = DriveCardText, fontSize = d.t(15), fontWeight = FontWeight.Bold)
-    val pieces = remember(points) { splitAtGaps(points.thinnedForDrawing()) }
+    val route = remember(points) { styledRoute(points) }
     val pin = remember(points, destination) { destination.takeIf { destinationFitsFrame(points, it) } }
-    val trace = rememberProgress(points, tween(1200, easing = FastOutSlowInEasing), enabled = drawRoute)
-    Box(modifier.clip(RoundedCornerShape(d.u(10))).semantics { contentDescription = "주행 경로" }) {
+    val trace = rememberProgress(points to replay, tween(if (replay > 0) REPLAY_MS else TRACE_MS, easing = FastOutSlowInEasing), enabled = drawRoute)
+    Box(modifier.clip(RoundedCornerShape(d.u(10))).semantics { contentDescription = if (map != null) "주행 경로 지도" else "주행 경로" }) {
         Canvas(Modifier.matchParentSize()) {
             drawRect(DriveCardBackground)
+            if (map != null) {
+                val (scale, offset) = cropOf(map, size.width, size.height)
+                drawImage(
+                    map.image, dstOffset = IntOffset(offset.x.toInt(), offset.y.toInt()),
+                    dstSize = IntSize((map.image.width * scale).toInt(), (map.image.height * scale).toInt()),
+                )
+                return@Canvas
+            }
             val spacing = 22f * d.scale * density
             var y = spacing / 2
             while (y < size.height) {
@@ -134,14 +148,17 @@ fun DriveRouteArt(points: List<MapPoint>, destination: MapPoint?, destinationLab
                 y += spacing
             }
         }
-        // Its own layer: tracing the route must not redraw the whole dot grid on every frame.
+        // Its own layer: tracing the route must not redraw the map or the dot grid on every frame.
         Canvas(Modifier.matchParentSize().graphicsLayer {}) {
-            val all = pieces.flatten() + listOfNotNull(pin)
+            val all = route.pieces.flatten() + listOfNotNull(pin)
             if (all.isEmpty()) return@Canvas
             val traced = trace.value
             val width = 4f * d.scale * density
-            val project = fitToFrame(all, size.width, size.height, 46f * d.scale * density)
-            val lines = trimLines(pieces.map { piece -> smooth(piece.map(project)) }, traced)
+            val project: (MapPoint) -> Offset = if (map != null) {
+                val (scale, offset) = cropOf(map, size.width, size.height)
+                ({ point -> map.project(point) * scale + offset })
+            } else fitToFrame(all, size.width, size.height, 46f * d.scale * density)
+            val lines = trimLines(route.pieces.map { piece -> roundedRoute(piece.map(project)) }, traced)
             lines.zipWithNext().forEach { (before, after) ->
                 drawLine(DriveCardMuted, before.last(), after.first(), width * 0.6f, StrokeCap.Round, dashedEffect(width))
             }
@@ -149,6 +166,12 @@ fun DriveRouteArt(points: List<MapPoint>, destination: MapPoint?, destinationLab
                 val path = pathOf(line)
                 drawPath(path, RouteGlow, style = Stroke(width * 3.2f, cap = StrokeCap.Round, join = StrokeJoin.Round))
                 drawPath(path, DriveCardText, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            }
+            if (traced >= 1f) route.marks.forEach { mark ->
+                val at = project(mark.point)
+                drawCircle(DriveCardText, width * 2.4f, at)
+                val number = measurer.measure(mark.km.toString(), TextStyle(color = DriveCardBackground, fontSize = d.t(12), fontWeight = FontWeight.Bold), maxLines = 1)
+                drawText(number, topLeft = at - Offset(number.size.width / 2f, number.size.height / 2f))
             }
             lines.firstOrNull()?.firstOrNull()?.let { start ->
                 drawCircle(DriveCardBackground, width * 2.4f, start)
@@ -176,6 +199,14 @@ fun DriveRouteArt(points: List<MapPoint>, destination: MapPoint?, destinationLab
 }
 
 private const val PIN_LANDS_AT = 0.85f
+private const val TRACE_MS = 1200
+private const val REPLAY_MS = 3200
+
+/** How an image fills a frame of another shape while keeping its proportions, as a centred crop does. */
+private fun cropOf(map: MapFrame, width: Float, height: Float): Pair<Float, Offset> {
+    val scale = maxOf(width / map.image.width, height / map.image.height)
+    return scale to Offset((width - map.image.width * scale) / 2, (height - map.image.height * scale) / 2)
+}
 
 private fun fitToFrame(points: List<MapPoint>, width: Float, height: Float, pad: Float): (MapPoint) -> Offset {
     val k = cos(Math.toRadians(points.map { it.latitude }.average()))

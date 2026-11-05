@@ -64,7 +64,7 @@ private const val LIVE_MAP_TIMEOUT_MS = 15_000L
 @Composable
 fun LiveRouteMap(
     cache: RouteMapCache, points: List<MapPoint>, destination: MapPoint?, destinationLabel: String?, modifier: Modifier = Modifier,
-    unfinished: Boolean = false,
+    unfinished: Boolean = false, startLabel: String? = null,
 ) {
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -77,7 +77,7 @@ fun LiveRouteMap(
         val frame = withTimeoutOrNull(LIVE_MAP_TIMEOUT_MS) { cache.liveFrame(framed, size.width, size.height, dark) }
         backdrop = if (frame != null) MapBackdrop.Real(frame) else MapBackdrop.Art
     }
-    RouteMap(points, destination, destinationLabel, modifier.onSizeChanged { size = it }, unfinished, backdrop = backdrop)
+    RouteMap(points, destination, destinationLabel, modifier.onSizeChanged { size = it }, unfinished, startLabel = startLabel, backdrop = backdrop)
 }
 
 /**
@@ -211,7 +211,7 @@ fun RouteGlyph(points: List<MapPoint>, modifier: Modifier = Modifier, color: Col
         val stride = moved.size / GLYPH_MAX_POINTS + 1
         moved.filterIndexed { index, _ -> index % stride == 0 || index == moved.lastIndex }
     }
-    val traced = rememberProgress(line, tween(1100, easing = FastOutSlowInEasing), enabled = trace)
+    val traced = rememberOnceProgress(line, tween(1100, easing = FastOutSlowInEasing), enabled = trace)
     Canvas(modifier.clearAndSetSemantics {}) {
         val width = stroke?.toPx() ?: (minOf(size.width, size.height) * 0.055f)
         val ring = Stroke(width)

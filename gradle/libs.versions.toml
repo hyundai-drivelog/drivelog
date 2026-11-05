@@ -16,9 +16,11 @@ retrofit = "3.0.0"
 lifecycle = "2.9.4"
 coroutines = "1.9.0"
 maplibre = "13.7.1"
+zxing = "3.5.3"
 
 [libraries]
 maplibre = { module = "org.maplibre.gl:android-sdk", version.ref = "maplibre" }
+zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 retrofit = { module = "com.squareup.retrofit2:retrofit", version.ref = "retrofit" }
 retrofit-gson = { module = "com.squareup.retrofit2:converter-gson", version.ref = "retrofit" }
 androidx-lifecycle-viewmodel-ktx = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", version.ref = "lifecycle" }

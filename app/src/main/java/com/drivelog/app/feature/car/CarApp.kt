@@ -40,8 +40,17 @@ private data class ShownScreen(
     val finished: RecordV?, val opened: RecordV?, val query: String, val phonePreview: RecordV?,
 )
 
-/** The phone screens as a mockup, for builds where the real hand-off is off. A submitted build must not offer them. */
-private val phonePreviewOffered = BuildConfig.DEBUG && !BuildConfig.PHONE_LINK_ENABLED
+/** The phone screens as a mockup, for builds where no real hand-off exists. A submitted build must not offer them. */
+private val phonePreviewOffered = BuildConfig.DEBUG && !BuildConfig.PHONE_LINK_ENABLED && BuildConfig.CARD_WEB_URL.isBlank()
+
+/** The real hand-off: a QR code opening the published card page. Offered only once that page has an address. */
+private val cardQrOffered = BuildConfig.CARD_WEB_URL.isNotBlank()
+
+private fun CarViewModel.sendToPhone(record: RecordV): (() -> Unit)? = when {
+    cardQrOffered -> { { openCardQr(record) } }
+    phonePreviewOffered -> { { openPhonePreview(record) } }
+    else -> null
+}
 
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
@@ -69,17 +78,20 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                 RecoveryScreen(model.routeMaps, record, shown.recoveredPoint, model::keepPartial, model::deletePartial)
             }
             Screen.PLACE -> shown.place?.let { place ->
+                val guiding = navi.currentDestination?.sameLocation(place) == true
                 PlaceConfirmScreen(
                     place, shown.query, speech, canSearch, model.simulation, navi.available,
-                    navi.currentDestination?.sameLocation(place) == true, store.savedPlaces.any { it.toNaviPlace().sameLocation(place) },
+                    guiding, store.savedPlaces.any { it.toNaviPlace().sameLocation(place) },
                     model.message ?: navi.routeMessage, model.currentLocation, searchActions,
                     model::toggleSaved, onStartPressed, model::cancelRoute, model::home,
+                    if (model.locationRefused) model::openAppSettings else null,
+                    model.routeMaps, navi.routeSummary.takeIf { guiding }, model::showRouteOverview,
                 )
             }
             Screen.HISTORY -> HistoryScreen(model.store, model.routeMaps, store.journey.records, model::openRecord, model::home)
             Screen.RECORD -> RecordSavedScreen(
                 model.routeMaps, shown.opened, "드라이브 기록", { model.goBack() }, null, model::deleteOpenedRecord,
-                shown.opened?.takeIf { phonePreviewOffered }?.let { record -> { model.openPhonePreview(record) } },
+                shown.opened?.let { model.sendToPhone(it) },
                 shown.opened?.takeIf { BuildConfig.DEBUG }?.let { record -> { model.openCourseShare(record) } },
             )
             Screen.COMMUNITY -> CommunityScreen(
@@ -96,6 +108,7 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
             )
             Screen.PHONE_PREVIEW_DONE -> ContinueOnPhoneScreen(shown.phonePreview, model::leavePhonePreview, preview = true)
             Screen.SYNCING -> SyncingScreen()
+            Screen.CARD_QR -> model.cardQrRecord?.let { record -> CardQrScreen(record, BuildConfig.CARD_WEB_URL, model::leaveCardQr) }
             Screen.LINK -> PhoneLinkScreen(
                 model.linkCode?.code, model.linkCode?.expiresAtMillis ?: 0, model.linkCode?.webUrl, model.linkError,
                 model::leaveLink, model::startLink,
@@ -103,7 +116,7 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
             Screen.DONE -> if (BuildConfig.PHONE_LINK_ENABLED) ContinueOnPhoneScreen(shown.finished, model::home)
             else RecordSavedScreen(
                 model.routeMaps, shown.finished, "드라이브를 기록했어요", model::home, model::openHistory, null,
-                shown.finished?.takeIf { phonePreviewOffered }?.let { record -> { model.openPhonePreview(record) } },
+                shown.finished?.let { model.sendToPhone(it) },
                 shown.finished?.takeIf { BuildConfig.DEBUG }?.let { record -> { model.openCourseShare(record) } },
             )
             Screen.OFFLINE -> OfflineSavedScreen(shown.finished, shown.finished?.destinationPoint(), store.token != null, model.syncing, model::retrySync, model::home)

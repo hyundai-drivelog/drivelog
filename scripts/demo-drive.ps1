@@ -1,31 +1,34 @@
 <#
 .SYNOPSIS
-Drives the Pleos emulator along a short route so that a release build can record a real card.
+Drives the Pleos emulator along a real road so that a release build can record a real card.
 
 .DESCRIPTION
 A release build has no simulation, so position and gear are injected into the emulator:
-Drive, then position fixes at a speed the recorder accepts, then Park.
-Start the recording in the app first, because the app locks once the gear leaves P.
+Drive, then position fixes along scripts\demo-route.json at a changing speed, then Park.
+
+Run it twice. -Prepare first moves the emulator to the start of the route. Then start the recording in the app,
+which must happen before leaving P, and run it again without -Prepare. Without the first step the recording starts
+from wherever the emulator was, the recorder rejects the jump to this route, and the drive stays at 0.0 km.
 Nothing is installed and app data is not touched.
 
 .EXAMPLE
+.\scripts\demo-drive.ps1 -Serial emulator-5556 -Prepare
 .\scripts\demo-drive.ps1 -Serial emulator-5556
 #>
 param(
     [string]$Serial = "emulator-5556",
     [string]$Adb = "adb",
-    [double]$StartLongitude = 129.1186,
-    [double]$StartLatitude = 35.1532,
-    [double]$EndLongitude = 129.1604,
-    [double]$EndLatitude = 35.1587,
-    # The recorder drops jumps above 250 km/h. Timing jitter between fixes raises the apparent speed.
-    [ValidateRange(10, 200)][double]$SpeedKmh = 150,
-    [ValidateRange(1, 10)][int]$IntervalSeconds = 2
+    # The recorder drops jumps above 250 km/h, and timing jitter between fixes raises the apparent speed.
+    [ValidateRange(20, 200)][double]$MaxSpeedKmh = 180,
+    [ValidateRange(5, 200)][double]$MinSpeedKmh = 60,
+    [ValidateRange(1, 10)][int]$IntervalSeconds = 2,
+    [switch]$Prepare
 )
 
 $ErrorActionPreference = "Stop"
 $console = "http://127.0.0.1:8088"
 $culture = [System.Globalization.CultureInfo]::InvariantCulture
+$route = (Get-Content (Join-Path $PSScriptRoot "demo-route.json") -Raw | ConvertFrom-Json).coordinates
 
 function Invoke-Adb {
     & $Adb -s $Serial @args
@@ -41,19 +44,24 @@ function Set-Position([double]$Longitude, [double]$Latitude) {
     Invoke-Adb emu geo fix $Longitude.ToString($culture) $Latitude.ToString($culture) | Out-Null
 }
 
-function Get-DistanceKm([double]$Lon1, [double]$Lat1, [double]$Lon2, [double]$Lat2) {
+function Get-DistanceKm($From, $To) {
     $rad = [Math]::PI / 180
-    $x = ($Lon2 - $Lon1) * $rad * [Math]::Cos(($Lat1 + $Lat2) / 2 * $rad)
-    $y = ($Lat2 - $Lat1) * $rad
+    $x = ($To[0] - $From[0]) * $rad * [Math]::Cos(($From[1] + $To[1]) / 2 * $rad)
+    $y = ($To[1] - $From[1]) * $rad
     return [Math]::Sqrt($x * $x + $y * $y) * 6371
 }
 
 if ((& $Adb -s $Serial get-state 2>$null) -ne "device") { throw "Emulator $Serial is not connected." }
 
-$distanceKm = Get-DistanceKm $StartLongitude $StartLatitude $EndLongitude $EndLatitude
-$steps = [Math]::Max(2, [int][Math]::Ceiling($distanceKm / $SpeedKmh * 3600 / $IntervalSeconds))
-Write-Host ("Route {0:N1} km, {1} fixes, about {2} s." -f $distanceKm, $steps, ($steps * $IntervalSeconds))
-Write-Host "The recording must already be running in the app."
+if ($Prepare) {
+    Set-Position $route[0][0] $route[0][1]
+    Write-Host "Emulator moved to the start of the route. Start the recording in the app, then run this again without -Prepare."
+    exit 0
+}
+
+$legs = for ($i = 0; $i -lt $route.Count - 1; $i++) { Get-DistanceKm $route[$i] $route[$i + 1] }
+$totalKm = ($legs | Measure-Object -Sum).Sum
+Write-Host ("Route {0:N1} km. The recording must already be running in the app." -f $totalKm)
 
 Invoke-Adb forward tcp:8088 tcp:8088 | Out-Null
 
@@ -69,14 +77,25 @@ $session = Start-Job -ArgumentList "$console/browser/session?client=$client" -Sc
 
 try {
     Start-Sleep -Seconds 2
-    Set-Position $StartLongitude $StartLatitude
     Set-Gear "Drive"
-    for ($i = 1; $i -le $steps; $i++) {
+    $leg = 0
+    $intoLeg = 0.0
+    $driven = 0.0
+    while ($leg -lt $legs.Count) {
         Start-Sleep -Seconds $IntervalSeconds
-        $t = $i / $steps
-        # A gentle arc, so that the drawn route is not a ruler line.
-        $bend = [Math]::Sin($t * [Math]::PI) * 0.003
-        Set-Position ($StartLongitude + ($EndLongitude - $StartLongitude) * $t) ($StartLatitude + ($EndLatitude - $StartLatitude) * $t + $bend)
+        # Two slow stretches and two fast ones, so the card has speeds to colour.
+        $wave = (1 - [Math]::Cos($driven / $totalKm * 4 * [Math]::PI)) / 2
+        $speed = $MinSpeedKmh + ($MaxSpeedKmh - $MinSpeedKmh) * $wave
+        $step = $speed * $IntervalSeconds / 3600
+        $driven += $step
+        $intoLeg += $step
+        while ($leg -lt $legs.Count -and $intoLeg -ge $legs[$leg]) {
+            $intoLeg -= $legs[$leg]
+            $leg++
+        }
+        if ($leg -ge $legs.Count) { Set-Position $route[-1][0] $route[-1][1]; break }
+        $t = if ($legs[$leg] -gt 0) { $intoLeg / $legs[$leg] } else { 0 }
+        Set-Position ($route[$leg][0] + ($route[$leg + 1][0] - $route[$leg][0]) * $t) ($route[$leg][1] + ($route[$leg + 1][1] - $route[$leg][1]) * $t)
     }
 } finally {
     # Never leave the emulator in Drive: the app stays locked until it returns to P.

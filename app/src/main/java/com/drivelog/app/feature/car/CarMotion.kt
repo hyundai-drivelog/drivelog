@@ -81,7 +81,7 @@ fun routeDepth(route: Screen): Int = when (route) {
     Screen.RECORDING, Screen.RECORD, Screen.COURSE_DETAIL -> 2
     Screen.COURSE_SHARE -> 3
     Screen.STOP -> 3
-    Screen.DONE, Screen.SYNCING, Screen.LINK, Screen.OFFLINE, Screen.PHONE_PREVIEW_LINK -> 4
+    Screen.DONE, Screen.SYNCING, Screen.LINK, Screen.OFFLINE, Screen.PHONE_PREVIEW_LINK, Screen.CARD_QR -> 4
     Screen.PHONE_PREVIEW_DONE -> 5
 }
 
@@ -112,16 +112,23 @@ fun rememberProgress(key: Any?, spec: AnimationSpec<Float> = tween(800, easing =
 private const val REVEAL_STAGGER_MS = 60
 private const val REVEAL_LATEST_MS = 300
 
-/** Settles into place in list order the first time it appears. Scrolling back to it does not replay this. */
+/** Like [rememberProgress], but scrolling a list item away and back does not play it again. */
+@Composable
+fun rememberOnceProgress(key: Any?, spec: AnimationSpec<Float> = tween(800, easing = FastOutSlowInEasing), enabled: Boolean = true): State<Float> {
+    var played by rememberSaveable(key) { mutableStateOf(false) }
+    val progress = rememberProgress(key, spec, enabled && !played)
+    LaunchedEffect(progress) {
+        snapshotFlow { progress.value }.first { it >= 1f }
+        played = true
+    }
+    return progress
+}
+
+/** Settles into place in list order the first time it appears. */
 @Composable
 fun Modifier.revealOnce(index: Int = 0): Modifier {
-    var done by rememberSaveable { mutableStateOf(false) }
     val delayMillis = minOf(index * REVEAL_STAGGER_MS, REVEAL_LATEST_MS)
-    val progress = rememberProgress(Unit, tween(320, delayMillis = delayMillis, easing = FastOutSlowInEasing), enabled = !done)
-    LaunchedEffect(Unit) {
-        snapshotFlow { progress.value }.first { it >= 1f }
-        done = true
-    }
+    val progress = rememberOnceProgress(Unit, tween(320, delayMillis = delayMillis, easing = FastOutSlowInEasing))
     return graphicsLayer {
         alpha = progress.value
         translationY = (1f - progress.value) * 16.dp.toPx()
@@ -131,7 +138,7 @@ fun Modifier.revealOnce(index: Int = 0): Modifier {
 /** A number that climbs to [target] once. It always ends exactly on the real value. */
 @Composable
 fun rememberCountUp(target: Double): Double {
-    val progress by rememberProgress(target, tween(800, easing = FastOutSlowInEasing))
+    val progress by rememberOnceProgress(target, tween(800, easing = FastOutSlowInEasing))
     return target * progress
 }
 
@@ -207,16 +214,24 @@ enum class LoadingStyle { LINEAR, TENSION }
  */
 @Composable
 fun LoadingIndicator(style: LoadingStyle, size: Dp = 64.dp, color: Color = fg(), modifier: Modifier = Modifier) {
-    val motion = LocalMotionEnabled.current
+    if (!LocalMotionEnabled.current) {
+        // No transition at all: one that is merely not drawn would still ask for every frame.
+        Canvas(modifier.size(size).semantics { contentDescription = "불러오는 중" }) {
+            val unit = this.size.width / 64f
+            drawCircle(color.copy(alpha = 0.1f), 24f * unit, style = Stroke(8f * unit))
+            drawArc(color.copy(alpha = 0.84f), -90f, 100.8f, false, Offset(8f * unit, 8f * unit), Size(48f * unit, 48f * unit), style = Stroke(8f * unit, cap = StrokeCap.Round))
+        }
+        return
+    }
     val transition = rememberInfiniteTransition(label = "loading")
     val turning by transition.animateFloat(0f, 1080f, infiniteRepeatable(tween(2000, easing = LinearEasing)), label = "loading turn")
     val breathing by transition.animateFloat(3.6f, 216f, infiniteRepeatable(tween(1000, easing = LinearEasing), RepeatMode.Reverse), label = "loading sweep")
     Canvas(modifier.size(size).semantics { contentDescription = "불러오는 중" }) {
         val unit = this.size.width / 64f
         drawCircle(color.copy(alpha = 0.1f), 24f * unit, style = Stroke(8f * unit))
-        val sweep = if (style == LoadingStyle.TENSION && motion) breathing else 100.8f
+        val sweep = if (style == LoadingStyle.TENSION) breathing else 100.8f
         drawArc(
-            color.copy(alpha = 0.84f), -90f + (if (motion) turning else 0f), sweep, false, Offset(8f * unit, 8f * unit), Size(48f * unit, 48f * unit),
+            color.copy(alpha = 0.84f), -90f + turning, sweep, false, Offset(8f * unit, 8f * unit), Size(48f * unit, 48f * unit),
             style = Stroke(8f * unit, cap = StrokeCap.Round),
         )
     }
