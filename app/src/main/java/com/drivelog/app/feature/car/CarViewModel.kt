@@ -30,6 +30,8 @@ import kotlinx.coroutines.launch
 enum class Screen { HOME, PLACE, HISTORY, RECORD, STOP, SYNCING, LINK, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE, COMMUNITY, COURSE_DETAIL, COURSE_SHARE }
 
 private const val PHONE_PREVIEW_CODE_MS = 5 * 60 * 1000L
+private const val NAVI_RETRY_COUNT = 6
+private const val NAVI_RETRY_MS = 10_000L
 
 /** A code that connects to nothing, for the phone screens' preview. */
 fun previewLinkCode(random: Random = Random.Default) = random.nextInt(100_000, 1_000_000).toString()
@@ -115,6 +117,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     private var simGear by mutableStateOf(CarGear.PARK)
     private var returnAfterLink = Screen.HOME
     private var linkJob: Job? = null
+    private var naviRetry: Job? = null
 
     val gear: CarGear get() = if (simulation) simGear else realGear
 
@@ -195,6 +198,22 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         platform.refreshNaviPlaces()
         refreshLocation()
         fillRouteMaps()
+        retryNaviConnection()
+    }
+
+    /**
+     * The navigation service can come up after this app, and without it a first-time driver cannot search at all.
+     * Tries for a minute while on screen, since a vehicle without navigation never connects.
+     */
+    private fun retryNaviConnection() {
+        naviRetry?.cancel()
+        naviRetry = viewModelScope.launch {
+            repeat(NAVI_RETRY_COUNT) {
+                if (platform.navi.value.available) return@launch
+                platform.connect()
+                delay(NAVI_RETRY_MS)
+            }
+        }
     }
 
     /** Parked and not recording only. A failure simply leaves the map-free card until the next attempt. */
@@ -205,6 +224,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The map's position request must not outlive the screen when no fix has arrived yet. */
     fun onBackground() {
+        naviRetry?.cancel()
         if (recorder.state.value == null) platform.stopLocation()
     }
 

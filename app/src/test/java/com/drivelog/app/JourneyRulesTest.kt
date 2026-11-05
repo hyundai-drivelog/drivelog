@@ -7,6 +7,7 @@ import com.drivelog.app.core.journey.withSavedToggled
 import com.drivelog.app.core.platform.NaviPlace
 import com.drivelog.app.feature.car.MapPoint
 import com.drivelog.app.feature.car.destinationFitsFrame
+import com.drivelog.app.feature.car.elapsedText
 import com.drivelog.app.feature.car.isNewDestination
 import com.drivelog.app.feature.car.routeBounds
 import com.drivelog.app.feature.car.splitAtGaps
@@ -30,6 +31,16 @@ import org.junit.Test
 
 class JourneyRulesTest {
     private fun place(id: String) = PlaceV(id, 0, id, "", 35.0, 129.0)
+
+    @Test fun elapsedTimeChangesOnlyEveryMinuteWhileDriving() {
+        assertEquals("1분 미만", elapsedText(0))
+        assertEquals("1분 미만", elapsedText(59))
+        assertEquals("1분", elapsedText(60))
+        assertEquals("1분", elapsedText(119))
+        assertEquals("59분", elapsedText(3599))
+        assertEquals("1시간 0분", elapsedText(3600))
+        assertEquals("2시간 5분", elapsedText(7500))
+    }
 
     @Test fun recentPlaceMovesToTheTopInsteadOfRepeating() {
         val a = place("a").copy(latitude = 1.0)

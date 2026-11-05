@@ -132,6 +132,16 @@ class PleosCarPlatform(context: Context) : CarPlatform {
 
     private fun granted(permission: String) = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
+    /** Forgets a failed connection so that the next [connect] starts a new one instead of waiting on this one. */
+    private fun dropNavi(sdk: NaviHelper) {
+        if (helper !== sdk) return
+        helper = null
+        naviConnected = false
+        runCatching { sdk.removeListener(naviListener) }
+        runCatching { sdk.release() }
+        mutableNavi.update { it.copy(available = false) }
+    }
+
     /** Each service is optional: model availability differs, so a missing one only hides its feature. */
     override fun connect() {
         if (vehicle == null && serviceExists(VEHICLE_ACTION)) {
@@ -149,9 +159,12 @@ class PleosCarPlatform(context: Context) : CarPlatform {
                     refreshNaviPlaces()
                 }, { failure ->
                     Log.w(TAG, "navi connection failed: ${failure.javaClass.simpleName}")
-                    mutableNavi.update { it.copy(available = false) }
+                    dropNavi(sdk)
                 })
-            }.onFailure { Log.w(TAG, "navi unavailable: ${it.javaClass.simpleName}") }
+            }.onFailure {
+                Log.w(TAG, "navi unavailable: ${it.javaClass.simpleName}")
+                helper?.let(::dropNavi)
+            }
         }
         if (tts == null && serviceExists(SPEECH_ACTION)) {
             runCatching {

@@ -343,7 +343,7 @@ fun PlaceConfirmScreen(
     }
 }
 
-// --- 03 내 기록: 이전 드라이브, 사진 카드 ------------------------------------------------------------
+// --- 03 내 기록: 이전 드라이브, 드라이브 카드------------------------------------------------------------
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -354,7 +354,7 @@ fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<R
     Column(Modifier.fillMaxSize().padding(horizontal = d.u(22), vertical = d.u(8))) {
         TopBar(onBack, null, if (sorted.any { it.simulated }) ({ SimulationBadge() }) else null, title = "내 기록")
         Column(Modifier.fillMaxWidth().weight(1f).padding(horizontal = d.u(22))) {
-            Tabs(listOf("이전 드라이브", "사진 카드"), tab) { tab = it }
+            Tabs(listOf("이전 드라이브", "드라이브 카드"), tab) { tab = it }
             Spacer(Modifier.height(d.u(12)))
             Crossfade(tab, Modifier.fillMaxSize(), tween(if (LocalMotionEnabled.current) 220 else 0), label = "history tab") { shownTab ->
             when {
@@ -366,9 +366,6 @@ fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<R
                     sorted.forEachIndexed { index, record -> DriveRow(record, index) { onRecord(record) } }
                 }
                 else -> Column(Modifier.fillMaxSize()) {
-                    if (!BuildConfig.PHONE_LINK_ENABLED) {
-                        T("사진은 휴대폰 연동을 추가한 뒤 넣을 수 있어요. 지금은 경로로 카드를 만들어요", d.t(16), Modifier.testTag("photo-note"), color = muted(), maxLines = 2)
-                    }
                     // Sending the area of a drive to an outside service is stated where its result appears.
                     T("지도는 정차 중에만 받아요. 이때 주행 지역이 지도 서비스(OpenFreeMap)로 전달돼요", d.t(16), Modifier.testTag("map-privacy-note"), color = muted(), maxLines = 2)
                     Spacer(Modifier.height(d.u(10)))

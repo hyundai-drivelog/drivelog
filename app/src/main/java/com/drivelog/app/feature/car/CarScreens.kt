@@ -75,7 +75,15 @@ fun withDirectionParticle(name: String): String {
     return name + if (finalConsonant == 0 || finalConsonant == 8) "로" else "으로"
 }
 private fun pad(value: Long) = value.toString().padStart(2, '0')
-fun clock(seconds: Long) = "${pad(seconds / 3600)}:${pad(seconds % 3600 / 60)}:${pad(seconds % 60)}"
+/** Whole minutes: this is the largest thing on the driving screen, and a number changing every second draws the eye. */
+fun elapsedText(seconds: Long): String {
+    val total = seconds / 60
+    return when {
+        total < 1 -> "1분 미만"
+        total < 60 -> "${total}분"
+        else -> "${total / 60}시간 ${total % 60}분"
+    }
+}
 fun minutes(seconds: Long) = (seconds / 60).toString()
 fun distanceText(km: Double?) = km?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "—"
 fun distanceLabel(source: String) = if (source == DistanceSource.VEHICLE) "차량 주행거리" else "추정 거리"
@@ -128,8 +136,16 @@ fun RecordingScreen(
 ) {
     val d = LocalCarDimens.current
     val distance = if (recording.points.size >= 2) distanceText(recording.distanceKm) else "—"
+    // While moving only a change worth a glance is shown; the reminder to stop first is spoken on reaching P.
+    val status = when {
+        parked -> null
+        routeEnded -> "안내가 끝났어요 · 정차하면 저장해요"
+        recording.locationStale -> "위치 신호를 기다리는 중이에요"
+        recording.arrived -> if (d.stacked) "목적지 근처예요" else "목적지 근처예요 · 정차 후 기록을 종료할 수 있어요"
+        else -> null
+    }
     Box(Modifier.fillMaxSize().padding(horizontal = d.u(22), vertical = d.u(8))) {
-        if (!d.stacked) RoadLines(Modifier.fillMaxSize())
+        if (!d.stacked && parked) RoadLines(Modifier.fillMaxSize())
         Column(Modifier.align(Alignment.TopStart).fillMaxWidth()) {
             TopBar(if (parked) onEnd else null, null, if (recording.simulated) ({ SimulationBadge() }) else null)
         }
@@ -140,7 +156,7 @@ fun RecordingScreen(
             if (d.stacked) {
                 T("드라이브 기록 중", d.t(30), bold = true)
                 Spacer(Modifier.height(d.u(18)))
-                T(clock(recording.elapsedSeconds), d.t(82), Modifier.testTag("elapsed"), bold = true, maxLines = 1)
+                T(elapsedText(recording.elapsedSeconds), d.t(82), Modifier.testTag("elapsed"), bold = true, maxLines = 1)
                 Spacer(Modifier.height(d.u(18)))
                 T(recording.place.name, d.t(30), bold = true, align = TextAlign.Center)
                 Spacer(Modifier.height(d.u(6)))
@@ -153,32 +169,27 @@ fun RecordingScreen(
                     Spacer(Modifier.width(d.u(10)))
                     T("기록 중", d.t(18))
                 }
-                T(clock(recording.elapsedSeconds), d.t(84), Modifier.testTag("elapsed"), bold = true, maxLines = 1)
-                T("기록 경과 시간", d.t(17), color = muted())
+                T(elapsedText(recording.elapsedSeconds), d.t(84), Modifier.testTag("elapsed"), bold = true, maxLines = 1)
                 Spacer(Modifier.height(d.u(14)))
-                T("$distance km", d.t(36), Modifier.testTag("distance"), bold = true)
-                T("추정 거리", d.t(17), color = muted())
+                T("$distance km · 추정 거리", d.t(36), Modifier.testTag("distance"), bold = true)
             }
-            Spacer(Modifier.height(d.u(10)))
-            Box(Modifier.width(d.u(if (d.stacked) 420 else 190)).height(1.dp).background(line()))
-            Spacer(Modifier.height(d.u(8)))
-            when {
-                parked -> {
-                    PrimaryButton("기록 종료", "end-recording", Modifier.width(d.u(280)), onClick = onEnd)
-                    if (naviAvailable) {
-                        Spacer(Modifier.height(d.u(8)))
-                        SecondaryButton("내비 화면 보기", "open-navigation", Modifier.width(d.u(280)), onClick = onOpenNavigation)
-                    }
-                    if (routeMessage != null) {
-                        Spacer(Modifier.height(d.u(6)))
-                        T(routeMessage, d.t(15), color = muted(), align = TextAlign.Center)
-                    }
+            if (parked || status != null) {
+                Spacer(Modifier.height(d.u(10)))
+                Box(Modifier.width(d.u(if (d.stacked) 420 else 190)).height(1.dp).background(line()))
+                Spacer(Modifier.height(d.u(8)))
+            }
+            if (parked) {
+                PrimaryButton("기록 종료", "end-recording", Modifier.width(d.u(280)), onClick = onEnd)
+                if (naviAvailable) {
+                    Spacer(Modifier.height(d.u(8)))
+                    SecondaryButton("내비 화면 보기", "open-navigation", Modifier.width(d.u(280)), onClick = onOpenNavigation)
                 }
-                routeEnded -> T("안내가 끝났어요 · 정차하면 저장해요", d.t(if (d.stacked) 22 else 17), color = muted(), align = TextAlign.Center)
-                recording.locationStale -> T("위치 신호를 기다리는 중이에요", d.t(17), color = muted())
-                d.stacked -> T("정차 후 종료 가능", d.t(22), color = muted())
-                recording.arrived -> T("목적지 근처예요 · 정차 후 기록을 종료할 수 있어요", d.t(17), color = muted(), align = TextAlign.Center)
-                else -> T("정차 후 기록을 종료할 수 있어요", d.t(17), color = muted())
+                if (routeMessage != null) {
+                    Spacer(Modifier.height(d.u(6)))
+                    T(routeMessage, d.t(15), color = muted(), align = TextAlign.Center)
+                }
+            } else if (status != null) {
+                T(status, d.t(if (d.stacked) 22 else 17), color = muted(), align = TextAlign.Center)
             }
         }
         if (showSimControls) SimGearControl(gear, onSimGear, Modifier.align(Alignment.BottomEnd))
