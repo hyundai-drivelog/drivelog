@@ -130,8 +130,8 @@ fun routeBounds(points: List<MapPoint>, margin: Double = 0.22, minSpanDegrees: D
 class RouteMapCache(context: Context) {
     private val context = context.applicationContext
     // The folder name carries the map style's version, so older images are drawn again in the current style.
-    private val directory = File(this.context.filesDir, "route-maps-v6").apply {
-        listOf("route-maps", "route-maps-v2", "route-maps-v3", "route-maps-v4", "route-maps-v5").forEach { File(this@RouteMapCache.context.filesDir, it).deleteRecursively() }
+    private val directory = File(this.context.filesDir, "route-maps-v7").apply {
+        listOf("route-maps", "route-maps-v2", "route-maps-v3", "route-maps-v4", "route-maps-v5", "route-maps-v6").forEach { File(this@RouteMapCache.context.filesDir, it).deleteRecursively() }
         mkdirs()
     }
     private val client = OkHttpClient.Builder().callTimeout(10, TimeUnit.SECONDS).build()
@@ -204,9 +204,8 @@ class RouteMapCache(context: Context) {
         return runCatching {
             val southWest = snapshot.pixelForLatLng(LatLng(box[0], box[1]))
             val northEast = snapshot.pixelForLatLng(LatLng(box[2], box[3]))
-            val image = snapshot.bitmap.copy(Bitmap.Config.ARGB_8888, true)
-            val note = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xCCFFFFFF.toInt(); textSize = 28f }
-            Canvas(image).drawText(ATTRIBUTION, 16f, image.height - 16f, note)
+            // The credit is drawn on screen, not into the image, so cropping the map to any frame cannot cut it.
+            val image = snapshot.bitmap.copy(Bitmap.Config.ARGB_8888, false)
             val projection = JsonObject().apply {
                 add("box", JsonParser.parseString(box.joinToString(",", "[", "]")))
                 add("sw", JsonParser.parseString("[${southWest.x},${southWest.y}]"))

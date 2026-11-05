@@ -29,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -93,8 +94,11 @@ fun keepWordsTogether(text: String): String = buildString(text.length * 2) {
 fun T(
     text: String, size: TextUnit, modifier: Modifier = Modifier, color: Color = fg(), bold: Boolean = false,
     align: TextAlign? = null, maxLines: Int = Int.MAX_VALUE, display: Boolean = false, tracking: Float = 0f,
+    /** Equal-width digits, so numbers in a column line up. */
+    tabular: Boolean = false,
 ) = Text(
     keepWordsTogether(text), modifier, color = color, fontSize = size,
+    style = if (tabular) LocalTextStyle.current.copy(fontFeatureSettings = "tnum") else LocalTextStyle.current,
     // Display text is what the mockups lead with: the heaviest weight, set slightly tight.
     fontWeight = if (display) FontWeight.ExtraBold else if (bold) FontWeight.Bold else FontWeight.Normal,
     letterSpacing = (if (display) -0.02f else tracking).em,
@@ -197,11 +201,12 @@ private fun CarButton(
 fun TopBar(onBack: (() -> Unit)?, onTitleHold: (() -> Unit)? = null, trailing: (@Composable () -> Unit)? = null, title: String = "여정") {
     val d = LocalCarDimens.current
     Row(Modifier.fillMaxWidth().heightIn(min = maxOf(d.u(44), MinTouch)), verticalAlignment = Alignment.CenterVertically) {
-        Box(
+        // No empty slot without a back button, so the title lines up with the content below it.
+        if (onBack != null) Box(
             Modifier.size(maxOf(d.u(44), MinTouch)).clip(RoundedCornerShape(16.dp))
-                .then(if (onBack != null) Modifier.pressClick(onClick = onBack).semantics { contentDescription = "뒤로" }.testTag("back") else Modifier),
+                .pressClick(onClick = onBack).semantics { contentDescription = "뒤로" }.testTag("back"),
             contentAlignment = Alignment.Center,
-        ) { if (onBack != null) CarIcon(CarGlyph.CHEVRON_LEFT, 48.dp, fg()) }
+        ) { CarIcon(CarGlyph.CHEVRON_LEFT, 48.dp, fg()) }
         Box(Modifier.heightIn(min = MinTouch).combinedClickable(interactionSource = null, indication = null, onClick = {}, onLongClick = onTitleHold).padding(horizontal = d.u(4)).testTag("title"), contentAlignment = Alignment.Center) {
             T(title, d.t(18), bold = true)
         }
@@ -241,8 +246,12 @@ fun placeImage(name: String): Int = when {
     else -> R.drawable.demo_coastal_road
 }
 
-/** A photo beside a place must really be of that place, so anything else keeps the map. */
-fun placeHasPhoto(name: String) = placeImage(name) != R.drawable.demo_coastal_road
+/**
+ * A photo beside a place must really be of that place, so anything else keeps the map. The bundled place banners
+ * are greyscale at source and clash with the colour photos, so none is shown until they are replaced.
+ */
+@Suppress("UNUSED_PARAMETER")
+fun placeHasPhoto(name: String) = false
 
 /** A photo sharp enough to fill a whole poster. The other bundled ones are small and only suit a banner. */
 @DrawableRes
@@ -287,7 +296,8 @@ fun Stat(value: String, unit: String, label: String, modifier: Modifier = Modifi
     Column(modifier) {
         Row(verticalAlignment = Alignment.Bottom) {
             T(value, d.t(54), maxLines = 1, display = true)
-            if (unit.isNotEmpty()) T(unit, d.t(28), Modifier.padding(start = d.u(6), bottom = d.u(6)), bold = true)
+            // Units at 0.4 of the number, as on every screen and card.
+            if (unit.isNotEmpty()) T(unit, d.t(22), Modifier.padding(start = d.u(6), bottom = d.u(8)), bold = true)
         }
         T(label, d.t(17), color = muted())
     }

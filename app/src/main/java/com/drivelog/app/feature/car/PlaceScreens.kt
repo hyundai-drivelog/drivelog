@@ -29,7 +29,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -82,7 +85,6 @@ import java.util.Locale
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
-private fun recordDate(millis: Long) = SimpleDateFormat("M월 d일 a h:mm", Locale.KOREA).format(Date(millis))
 internal fun posterDate(millis: Long) = SimpleDateFormat("yyyy.MM.dd", Locale.KOREA).format(Date(millis))
 
 /** Controls on the left with the map beside them; narrow windows scroll one column with the map below. */
@@ -117,16 +119,41 @@ private fun PlaceMap(routeMaps: RouteMapCache, current: MapPoint?, destination: 
     }
 }
 
-/** The navigation app's figures for its chosen route. Its duration is reported in seconds. */
-fun routeSummaryText(summary: RouteSummary): String {
+/** The navigation app's distance, at one decimal under 10 km. Its distance is reported in metres. */
+fun routeKmText(summary: RouteSummary): String {
     val km = summary.distanceMeters / 1000.0
-    val distance = if (km < 10) String.format(java.util.Locale.US, "%.1f km", km) else "${km.roundToInt()} km"
-    val minutes = ((summary.durationSeconds + 59) / 60).coerceAtLeast(1)
-    val time = if (minutes < 60) "${minutes}분" else "${minutes / 60}시간 ${minutes % 60}분"
-    return "내비 추천 경로 · $distance · 약 $time"
+    return if (km < 10) String.format(java.util.Locale.US, "%.1f", km) else "${km.roundToInt()}"
 }
 
-/** The last few real drives under the home photo, or a line saying where they will appear. All remain in 내 기록. */
+/** The navigation app's estimate, rounded up to whole minutes. Its duration is reported in seconds. */
+fun routeTimeText(summary: RouteSummary): String {
+    val minutes = ((summary.durationSeconds + 59) / 60).coerceAtLeast(1)
+    return if (minutes < 60) "${minutes}분" else "${minutes / 60}시간 ${minutes % 60}분"
+}
+
+fun routeSummaryText(summary: RouteSummary) = "내비 추천 경로 · ${routeKmText(summary)} km · 약 ${routeTimeText(summary)}"
+
+/** The latest drive as its card on the home screen: the same layout as every card, over its stored map. */
+@Composable
+private fun LatestDriveCard(routeMaps: RouteMapCache, record: RecordV, modifier: Modifier, onClick: () -> Unit) {
+    val d = LocalCarDimens.current
+    Column(
+        modifier.clip(RoundedCornerShape(d.u(14))).background(DriveCardBackground).pressClick(onClick = onClick)
+            .padding(d.u(18)).testTag("latest-drive"),
+    ) {
+        T("최근 드라이브", d.t(13), color = DriveCardMuted, maxLines = 1)
+        Spacer(Modifier.height(d.u(2)))
+        T("${shortName(record.placeName)}에 남긴 하루", d.t(26), color = DriveCardText, maxLines = 1, display = true)
+        Spacer(Modifier.height(d.u(10)))
+        RouteVisual(routeMaps, record, null, Modifier.fillMaxWidth().weight(1f))
+        Spacer(Modifier.height(d.u(10)))
+        PosterDistance(record, 48)
+        Spacer(Modifier.height(d.u(4)))
+        PosterFooter(record)
+    }
+}
+
+/** The last few real drives under the home card, or a line saying where they will appear. All remain in 내 기록. */
 @Composable
 private fun RecentDrives(records: List<RecordV>, onRecord: (RecordV) -> Unit) {
     val d = LocalCarDimens.current
@@ -243,7 +270,11 @@ fun HomeScreen(
     query: String, speech: SpeechState, canSearch: Boolean, simulation: Boolean, note: String?, recents: List<NaviPlace>, saved: List<NaviPlace>, records: List<RecordV>,
     actions: SearchActions, onPlace: (NaviPlace) -> Unit, onRecord: (RecordV) -> Unit, onHistory: () -> Unit, onHold: () -> Unit, linkControl: (@Composable () -> Unit)?,
     onCommunity: (() -> Unit)? = null,
+    routeMaps: RouteMapCache? = null,
 ) {
+    val latest = remember(records) {
+        records.filterNot { barelyMoved(it.distanceKm, it.route.size >= 2) }.maxByOrNull { it.startedAtMillis }
+    }
     val d = LocalCarDimens.current
     var tab by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize().padding(horizontal = d.u(22), vertical = d.u(8))) {
@@ -292,9 +323,15 @@ fun HomeScreen(
                 }
             }, stackedHeight = 360) { modifier ->
                 Column(modifier, verticalArrangement = Arrangement.spacedBy(d.u(8))) {
-                    // A mood image, not a place, so it is the one photo that names nowhere.
-                    PlacePhoto("", Modifier.fillMaxWidth().weight(1f))
-                    RecentDrives(records, onRecord)
+                    // The driver's own latest drive is worth more here than a picture; the mood photo waits for the first one.
+                    if (latest != null && routeMaps != null) {
+                        LatestDriveCard(routeMaps, latest, Modifier.fillMaxWidth().weight(1f)) { onRecord(latest) }
+                        RecentDrives(records.filter { it.id != latest.id }, onRecord)
+                    } else {
+                        // A mood image, not a place, so it is the one photo that names nowhere.
+                        PlacePhoto("", Modifier.fillMaxWidth().weight(1f))
+                        RecentDrives(records, onRecord)
+                    }
                 }
             }
         }
@@ -333,7 +370,16 @@ fun PlaceConfirmScreen(
                 Spacer(Modifier.height(d.u(14)))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(line()))
                 Spacer(Modifier.height(d.u(14)))
-                T(if (BuildConfig.PHONE_LINK_ENABLED) "이번 드라이브를 사진과 함께 남겨보세요" else "이번 드라이브를 경로와 시간으로 남겨보세요", d.t(20))
+                // The navigation app's own figures lead when it is already guiding: they are what the driver decides on.
+                if (guidanceActive && routeSummary != null) {
+                    Row(Modifier.height(IntrinsicSize.Min).testTag("route-summary")) {
+                        Stat(routeKmText(routeSummary), "km", "내비 추천 경로")
+                        Spacer(Modifier.width(d.u(32)))
+                        VerticalRule(Modifier.fillMaxHeight())
+                        Spacer(Modifier.width(d.u(32)))
+                        Stat(routeTimeText(routeSummary), "", "예상 시간")
+                    }
+                } else T(if (BuildConfig.PHONE_LINK_ENABLED) "이번 드라이브를 사진과 함께 남겨보세요" else "이번 드라이브를 경로와 시간으로 남겨보세요", d.t(20))
                 Spacer(Modifier.height(d.u(16)))
                 PrimaryButton(if (naviAvailable) "길 안내 및 기록 시작" else "기록 시작", "start-drive", Modifier.fillMaxWidth(), chevron = true, onClick = onStart)
                 Spacer(Modifier.height(d.u(8)))
@@ -351,10 +397,6 @@ fun PlaceConfirmScreen(
                 }
                 // Choosing a place in the navigation app has already started guidance, which may not be wanted yet.
                 if (guidanceActive) {
-                    if (routeSummary != null) {
-                        Spacer(Modifier.height(d.u(10)))
-                        T(routeSummaryText(routeSummary), d.t(18), Modifier.fillMaxWidth().testTag("route-summary"), bold = true, align = TextAlign.Center, maxLines = 1)
-                    }
                     Spacer(Modifier.height(d.u(6)))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(d.u(10))) {
                         // The route the navigation app chose, shown by it: the only way to see that exact line.
@@ -381,10 +423,12 @@ fun PlaceConfirmScreen(
 fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<RecordV>, onRecord: (RecordV) -> Unit, onBack: () -> Unit) {
     val d = LocalCarDimens.current
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var shortOpen by rememberSaveable { mutableStateOf(false) }
     val sorted = remember(records) { records.sortedByDescending { it.startedAtMillis } }
+    val (drives, shortDrives) = remember(sorted) { sorted.partition { !barelyMoved(it.distanceKm, it.route.size >= 2) } }
     Column(Modifier.fillMaxSize().padding(horizontal = d.u(22), vertical = d.u(8))) {
         TopBar(onBack, null, if (sorted.any { it.simulated }) ({ SimulationBadge() }) else null, title = "내 기록")
-        Column(Modifier.fillMaxWidth().weight(1f).padding(horizontal = d.u(22))) {
+        Column(Modifier.fillMaxWidth().weight(1f)) {
             Tabs(listOf("이전 드라이브", "드라이브 카드"), tab) { tab = it }
             Spacer(Modifier.height(d.u(12)))
             Crossfade(tab, Modifier.fillMaxSize(), tween(if (LocalMotionEnabled.current) 220 else 0), label = "history tab") { shownTab ->
@@ -395,7 +439,11 @@ fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<R
                 // Lazy, as every row converts and draws a whole route and the list only ever grows.
                 shownTab == 0 -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(d.u(8))) {
                     item(key = "summary") { HistorySummary(sorted) }
-                    itemsIndexed(sorted, key = { _, record -> record.id }) { index, record -> DriveRow(record, index) { onRecord(record) } }
+                    driveTimeline(drives, onRecord)
+                    if (shortDrives.isNotEmpty()) {
+                        item(key = "short") { ShortDrivesRow(shortDrives.size, shortOpen) { shortOpen = !shortOpen } }
+                        if (shortOpen) items(shortDrives, key = { "short-" + it.id }) { record -> DriveRow(record, 0) { onRecord(record) } }
+                    }
                 }
                 else -> Column(Modifier.fillMaxSize()) {
                     // Sending the area of a drive to an outside service is stated where its result appears.
@@ -438,7 +486,25 @@ private fun HistorySummary(records: List<RecordV>) {
         Spacer(Modifier.width(d.u(36)))
         VerticalRule(Modifier.fillMaxHeight())
         Spacer(Modifier.width(d.u(36)))
-        Stat(minutes(shownSeconds.roundToLong()), "분", "기록 시간")
+        Stat(elapsedText(shownSeconds.roundToLong()), "", "기록 시간")
+    }
+}
+
+private fun recordDay(millis: Long) = SimpleDateFormat("M월 d일 (E)", Locale.KOREA).format(Date(millis))
+private fun recordClock(millis: Long) = SimpleDateFormat("a h:mm", Locale.KOREA).format(Date(millis))
+
+/** Drives by day, newest first, as a timeline reads. Order is time only: nothing is ranked. */
+private fun LazyListScope.driveTimeline(records: List<RecordV>, onRecord: (RecordV) -> Unit) {
+    var index = 0
+    records.groupBy { recordDay(it.startedAtMillis) }.forEach { (day, drives) ->
+        item(key = "day-$day") {
+            val d = LocalCarDimens.current
+            T(day, d.t(16), Modifier.padding(top = d.u(10), bottom = d.u(2)).testTag("day-header"), color = muted(), bold = true)
+        }
+        drives.forEach { record ->
+            val shown = index++
+            item(key = record.id) { DriveRow(record, shown) { onRecord(record) } }
+        }
     }
 }
 
@@ -450,18 +516,31 @@ private fun DriveRow(record: RecordV, index: Int, onClick: () -> Unit) {
             .pressClick(onClick = onClick).padding(horizontal = d.u(14)).testTag("drive-row"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RouteGlyph(remember(record.id) { record.route.toMapPoints() }, Modifier.size(d.u(52)))
+        // A single point drawn as a ring looked like a radio button, so a drive without a route shows a pin.
+        if (record.route.size >= 2) RouteGlyph(remember(record.id) { record.route.toMapPoints() }, Modifier.size(d.u(52)))
+        else Box(Modifier.size(d.u(52)), contentAlignment = Alignment.Center) { CarIcon(CarGlyph.PIN, d.u(28), muted()) }
         Spacer(Modifier.width(d.u(14)))
         Column(Modifier.weight(1f)) {
             T(record.placeName, d.t(20), bold = true, maxLines = 1)
-            T(recordDate(record.startedAtMillis) + labels(record), d.t(15), color = muted(), maxLines = 1)
+            T(recordClock(record.startedAtMillis) + " · " + elapsedText(record.elapsedSeconds) + labels(record), d.t(15), color = muted(), maxLines = 1)
         }
-        Column(horizontalAlignment = Alignment.End) {
-            T(if (record.distanceKm != null) "${distanceText(record.distanceKm)} km" else "거리 없음", d.t(24), maxLines = 1, display = true)
-            T("${minutes(record.elapsedSeconds)}분 · ${distanceLabel(record.distanceSource)}", d.t(14), color = muted(), maxLines = 1)
-        }
+        T(if (record.distanceKm != null) "${distanceText(record.distanceKm)} km" else "—", d.t(24), maxLines = 1, display = true, tabular = true)
         Spacer(Modifier.width(d.u(14)))
         CarIcon(CarGlyph.CHEVRON_RIGHT, d.u(20), fg())
+    }
+}
+
+/** Starts pressed by mistake, gathered under one row so the drives themselves lead the list. Nothing is deleted. */
+@Composable
+private fun ShortDrivesRow(count: Int, open: Boolean, onToggle: () -> Unit) {
+    val d = LocalCarDimens.current
+    Row(
+        Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(d.u(10))).pressClick(onClick = onToggle)
+            .padding(horizontal = d.u(14)).testTag("short-drives"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        T("짧은 기록 ${count}개", d.t(18), Modifier.weight(1f), color = muted(), bold = true)
+        T(if (open) "접기" else "펼치기", d.t(16), color = muted())
     }
 }
 
@@ -496,7 +575,7 @@ private fun DrivePoster(store: JourneyStore, routeMaps: RouteMapCache, record: R
 private fun posterLabel(record: RecordV) = distanceLabel(record.distanceSource) + labels(record)
 
 @Composable
-private fun PosterDistance(record: RecordV, size: Int) {
+internal fun PosterDistance(record: RecordV, size: Int) {
     val d = LocalCarDimens.current
     val shown = rememberCountUp(record.distanceKm ?: 0.0)
     Row(verticalAlignment = Alignment.Bottom) {
@@ -505,11 +584,12 @@ private fun PosterDistance(record: RecordV, size: Int) {
     }
 }
 
+/** One footer for every card, in the car and on the phone: place · time · date. */
 @Composable
-private fun PosterFooter(record: RecordV) {
+internal fun PosterFooter(record: RecordV) {
     val d = LocalCarDimens.current
     Row(verticalAlignment = Alignment.CenterVertically) {
-        T("${shortName(record.placeName)} | ${minutes(record.elapsedSeconds)}분 기록 | ${posterDate(record.startedAtMillis)}", d.t(14), Modifier.weight(1f), color = DriveCardText, maxLines = 1)
+        T("${shortName(record.placeName)} · ${elapsedText(record.elapsedSeconds)} · ${posterDate(record.startedAtMillis)}", d.t(14), Modifier.weight(1f), color = DriveCardText, maxLines = 1)
         Spacer(Modifier.width(d.u(6)))
         T("여정", d.t(15), color = DriveCardText, bold = true, maxLines = 1)
     }
@@ -521,12 +601,15 @@ private fun BoxScope.PhotoPoster(record: RecordV, photo: ImageBitmap?, bundled: 
     PosterPhoto(record.placeName, photo, bundled, Modifier.matchParentSize())
     // White type stays readable over any photo, and the middle is left clear for the picture and the route.
     Box(Modifier.matchParentSize().background(PosterScrim))
+    // The same order as every other card: title, route, the distance, then the footer.
     Column(Modifier.matchParentSize().padding(d.u(18))) {
-        T(posterLabel(record), d.t(15), color = DriveCardText, maxLines = 1)
-        PosterDistance(record, 68)
+        T("나의 드라이브", d.t(13), color = DriveCardText, maxLines = 1)
+        Spacer(Modifier.height(d.u(2)))
+        T("${shortName(record.placeName)}에 남긴 하루", d.t(26), color = DriveCardText, maxLines = 1, display = true)
         RouteGlyph(remember(record.id) { record.route.toMapPoints() }, Modifier.fillMaxWidth().weight(1f).padding(vertical = d.u(8)), DriveCardText, d.u(3), trace = true)
-        T("${shortName(record.placeName)}에 남긴 하루", d.t(28), color = DriveCardText, maxLines = 1, display = true)
-        Spacer(Modifier.height(d.u(8)))
+        T(posterLabel(record), d.t(14), color = DriveCardText, maxLines = 1)
+        PosterDistance(record, 58)
+        Spacer(Modifier.height(d.u(4)))
         PosterFooter(record)
     }
 }

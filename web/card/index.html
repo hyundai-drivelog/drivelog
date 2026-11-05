@@ -61,8 +61,10 @@ function shortName(name) {
   return trimmed || name;
 }
 
+// As in the car: under a minute is said so, never "0분".
 function minutesText(seconds) {
   const m = Math.floor(seconds / 60);
+  if (m < 1) return "1분 미만";
   return m < 60 ? `${m}분` : `${Math.floor(m / 60)}시간 ${m % 60}분`;
 }
 
@@ -170,7 +172,8 @@ function draw() {
   }
   const date = `${started.getFullYear()}.${String(started.getMonth() + 1).padStart(2, "0")}.${String(started.getDate()).padStart(2, "0")}`;
   ctx.font = font(400, 30); ctx.fillStyle = "#ffffff";
-  ctx.fillText(`${shortName(name)} | ${minutesText(seconds)} 기록 | ${date}`, pad, 1270, W - pad * 2 - 120);
+  // The same footer as the cards in the car: place · time · date.
+  ctx.fillText(`${shortName(name)} · ${minutesText(seconds)} · ${date}`, pad, 1270, W - pad * 2 - 120);
   ctx.textAlign = "end"; ctx.font = font(800, 34);
   ctx.fillText("여정", W - pad, 1270);
   ctx.textAlign = "start";

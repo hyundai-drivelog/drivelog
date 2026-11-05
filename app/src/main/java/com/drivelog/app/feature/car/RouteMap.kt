@@ -97,7 +97,17 @@ fun RouteMap(
     val surface = colors.background
     val palette = if (surface.luminance() < 0.5f) NightMap else DayMap
     val measurer = rememberTextMeasurer()
-    val labelStyle = TextStyle(color = ink, fontSize = d.t(14), fontWeight = FontWeight.Bold)
+    // Map marker labels at 20 or more on a plate of the surface colour, readable over any street.
+    val labelStyle = TextStyle(color = ink, fontSize = d.t(20), fontWeight = FontWeight.Bold)
+    fun DrawScope.label(layout: androidx.compose.ui.text.TextLayoutResult, topLeft: Offset, alpha: Float = 1f) {
+        val pad = 6f * d.scale * density
+        drawRoundRect(
+            surface.copy(alpha = 0.88f * alpha), topLeft - Offset(pad, pad / 2),
+            androidx.compose.ui.geometry.Size(layout.size.width + pad * 2, layout.size.height + pad),
+            androidx.compose.ui.geometry.CornerRadius(pad, pad),
+        )
+        drawText(layout, topLeft = topLeft, alpha = alpha)
+    }
     val art = remember(seed) { generateBackdrop(seed) }
     val real = (backdrop as? MapBackdrop.Real)?.frame
     // The pin lands with the map it belongs to, not unseen while that is still loading.
@@ -153,7 +163,7 @@ fun RouteMap(
                 drawCircle(surface, routeWidth * 1.4f, from)
                 drawCircle(ink, routeWidth * 1.4f, from, style = Stroke(routeWidth * 0.5f))
                 val layout = measurer.measure("위치 정보 없음", labelStyle)
-                drawText(layout, topLeft = Offset((mid.x - layout.size.width).coerceAtLeast(pad / 4), (mid.y - layout.size.height * 1.8f).coerceAtLeast(0f)))
+                label(layout, Offset((mid.x - layout.size.width).coerceAtLeast(pad / 4), (mid.y - layout.size.height * 1.8f).coerceAtLeast(0f)))
             }
             points.firstOrNull()?.let { first ->
                 val at = project(first)
@@ -161,7 +171,7 @@ fun RouteMap(
                 drawCircle(surface, routeWidth * 0.9f, at)
                 if (startLabel != null) {
                     val layout = measurer.measure(startLabel, labelStyle)
-                    drawText(layout, topLeft = Offset((at.x - layout.size.width / 2).coerceIn(2f, (size.width - layout.size.width - 2f).coerceAtLeast(2f)), (at.y - layout.size.height - routeWidth * 3f).coerceAtLeast(2f)))
+                    label(layout, Offset((at.x - layout.size.width / 2).coerceIn(8f, (size.width - layout.size.width - 8f).coerceAtLeast(8f)), (at.y - layout.size.height - routeWidth * 3f).coerceAtLeast(8f)))
                 }
             }
             if (destination != null) {
@@ -176,7 +186,7 @@ fun RouteMap(
                     val gap = 18f * d.scale * density
                     val right = tip.x + gap
                     val x = if (right + layout.size.width <= size.width - 6f) right else (tip.x - gap - layout.size.width).coerceAtLeast(6f)
-                    drawText(layout, topLeft = Offset(x, (tip.y - pinHeight * 0.95f).coerceAtLeast(2f)), alpha = opacity)
+                    label(layout, Offset(x, (tip.y - pinHeight * 0.95f).coerceAtLeast(8f)), opacity)
                 }
             } else if (last != null) {
                 val at = project(last)

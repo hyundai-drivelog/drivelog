@@ -173,7 +173,12 @@ fun RecordingScreen(
                 }
                 T(elapsedText(recording.elapsedSeconds), d.t(84), Modifier.testTag("elapsed"), bold = true, maxLines = 1)
                 Spacer(Modifier.height(d.u(14)))
-                T("$distance km · 추정 거리", d.t(36), Modifier.testTag("distance"), bold = true)
+                // The label is quieter than the number, so it never competes with the time above.
+                Row(verticalAlignment = Alignment.Bottom) {
+                    T("$distance km", d.t(36), Modifier.testTag("distance"), bold = true, maxLines = 1)
+                    Spacer(Modifier.width(d.u(10)))
+                    T("추정 거리", d.t(18), Modifier.padding(bottom = d.u(6)), color = muted(), maxLines = 1)
+                }
             }
             if (parked || status != null) {
                 Spacer(Modifier.height(d.u(10)))
@@ -264,14 +269,15 @@ fun StopConfirmScreen(routeMaps: RouteMapCache, recording: Recording, onEnd: () 
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 Panes(0.5f, left = {
-                    Column(Modifier.padding(start = d.u(42))) {
-                        Heading("드라이브를 마칠까요?", 40)
+                    Column {
+                        Heading(if (barelyMoved) "기록할 만큼 움직이지 않았어요" else "드라이브를 마칠까요?", 40)
                         Spacer(Modifier.height(d.u(22)))
                         Row(Modifier.height(IntrinsicSize.Min)) {
                             Stat(if (hasRoute) distanceText(recording.distanceKm) else "—", if (hasRoute) "km" else "", "추정 거리")
-                            VerticalRule(Modifier.fillMaxHeight().padding(horizontal = d.u(2)).padding(start = d.u(40)))
-                            Spacer(Modifier.width(d.u(40)))
-                            Stat(minutes(recording.elapsedSeconds), "분", "기록 경과 시간")
+                            Spacer(Modifier.width(d.u(32)))
+                            VerticalRule(Modifier.fillMaxHeight())
+                            Spacer(Modifier.width(d.u(32)))
+                            Stat(elapsedText(recording.elapsedSeconds), "", "기록 시간")
                         }
                         Spacer(Modifier.height(d.u(22)))
                         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -292,16 +298,21 @@ fun StopConfirmScreen(routeMaps: RouteMapCache, recording: Recording, onEnd: () 
                         }
                     }
                 }, right = {
-                    LiveRouteMap(routeMaps, routePoints, null, null, paneFill(280))
+                    // Without a route there is nothing to place on a map, so none is requested.
+                    if (hasRoute) LiveRouteMap(routeMaps, routePoints, null, null, paneFill(280))
+                    else Box(paneFill(280).clip(RoundedCornerShape(d.u(14))).background(soft()), contentAlignment = Alignment.Center) {
+                        T("기록된 경로가 없어요", d.t(18), Modifier.testTag("no-route"), color = muted())
+                    }
                 })
             }
             Spacer(Modifier.height(d.u(14)))
+            // The irreversible choice sits last, away from the main one.
             Row(Modifier.fillMaxWidth().padding(bottom = d.u(10)), horizontalArrangement = Arrangement.spacedBy(d.u(14))) {
-                PrimaryButton("기록 종료", "confirm-end", Modifier.weight(1f), onClick = onEnd)
+                PrimaryButton("저장하고 마치기", "confirm-end", Modifier.weight(1f), onClick = onEnd)
+                SecondaryButton("계속 기록", "keep-recording", Modifier.weight(1f), onClick = onContinue)
                 if (barelyMoved) SecondaryButton(if (confirmDiscard) "한 번 더 누르면 삭제" else "저장 안 함", "discard-recording", Modifier.weight(1f), danger = confirmDiscard) {
                     if (confirmDiscard) onDiscard() else confirmDiscard = true
                 }
-                SecondaryButton("계속 기록", "keep-recording", Modifier.weight(1f), onClick = onContinue)
             }
         }
     }
@@ -446,7 +457,7 @@ fun ContinueOnPhoneScreen(record: RecordV?, onBackToGoal: () -> Unit, preview: B
                 if (record != null) {
                     Spacer(Modifier.height(d.u(10)))
                     Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(d.u(10))).background(soft()).padding(vertical = d.u(12)).height(IntrinsicSize.Min)) {
-                        listOf(record.placeName, "${distanceText(record.distanceKm)} km", "${minutes(record.elapsedSeconds)}분").forEachIndexed { i, value ->
+                        listOf(record.placeName, "${distanceText(record.distanceKm)} km", elapsedText(record.elapsedSeconds)).forEachIndexed { i, value ->
                             if (i > 0) VerticalRule(Modifier.fillMaxHeight())
                             T(value, d.t(17), Modifier.weight(1f), bold = true, align = TextAlign.Center, maxLines = 1)
                         }
@@ -500,12 +511,11 @@ fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String,
     val splits = remember(record?.id) { record?.route?.toMapPoints()?.let(::kmSplits).orEmpty() }
     Frame(onBack, simulated = record?.simulated == true) {
         Panes(0.38f, left = {
-            Column(Modifier.padding(start = d.u(22))) {
-                Heading(title, 32, Modifier.testTag("record-saved"))
+            Column {
+                // The place is the poster's title, so it is not repeated here.
+                Heading(title, 28, Modifier.testTag("record-saved"))
                 if (record != null) {
-                    Spacer(Modifier.height(d.u(8)))
-                    T(record.placeName, d.t(22), color = muted(), maxLines = 1)
-                    Spacer(Modifier.height(d.u(22)))
+                    Spacer(Modifier.height(d.u(18)))
                     RecordStats(record)
                     if (splits.size >= 2) {
                         Spacer(Modifier.height(d.u(18)))
@@ -513,56 +523,74 @@ fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String,
                     }
                 }
                 Spacer(Modifier.height(d.u(22)))
-                if (record != null && record.route.size >= 2) {
-                    // Motion is parked-only like every effect, and this screen is never shown while moving.
-                    SecondaryButton("경로 다시 보기", "replay-route", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, icon = CarGlyph.REFRESH) { replay++ }
-                    Spacer(Modifier.height(d.u(8)))
-                }
-                // Medium, and few: the poster is what this screen is for, not the list of what to do next.
+                // One size and the main action first: the poster is what this screen is for, not the list of what to do next.
                 if (onHistory != null) {
                     PrimaryButton("내 기록 보기", "open-history-after", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onHistory)
                     Spacer(Modifier.height(d.u(8)))
                 }
                 SecondaryButton(if (onHistory != null) "홈으로" else "돌아가기", "back-from-record", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onBack)
+                if (onPhonePreview != null) {
+                    Spacer(Modifier.height(d.u(8)))
+                    SecondaryButton("휴대폰으로 보내기", "open-phone-preview", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onPhonePreview)
+                }
+                if (onRecommend != null) {
+                    Spacer(Modifier.height(d.u(8)))
+                    SecondaryButton("코스 추천하기", "open-course-share", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onRecommend)
+                }
                 if (onDelete != null) {
                     Spacer(Modifier.height(d.u(8)))
                     SecondaryButton(if (confirmDelete) "한 번 더 누르면 삭제" else "기록 삭제", "delete-record", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, danger = confirmDelete) {
                         if (confirmDelete) onDelete() else confirmDelete = true
                     }
                 }
-                if (onPhonePreview != null) {
-                    Spacer(Modifier.height(d.u(8)))
-                    SecondaryButton("휴대폰으로 보내기", "open-phone-preview", Modifier.fillMaxWidth(), size = ButtonSize.SMALL, onClick = onPhonePreview)
-                }
-                if (onRecommend != null) {
-                    Spacer(Modifier.height(d.u(8)))
-                    SecondaryButton("코스 추천하기", "open-course-share", Modifier.fillMaxWidth(), size = ButtonSize.SMALL, onClick = onRecommend)
-                }
             }
         }, right = {
             // A fixed slice in the scrolling column would be shorter than the image, which then spills over the buttons.
             val frame = if (d.stacked) Modifier.fillMaxWidth() else paneFill(280)
-            RecordPoster(routeMaps, record, frame.padding(bottom = d.u(8)), fillHeight = !d.stacked, replay = replay)
+            // Motion is parked-only like every effect, and this screen is never shown while moving.
+            val onReplay: (() -> Unit)? = if (record != null && record.route.size >= 2) ({ replay += 1 }) else null
+            RecordPoster(routeMaps, record, frame.padding(bottom = d.u(8)), fillHeight = !d.stacked, replay = replay, onReplay = onReplay)
         }, rightFirstWhenStacked = true)
     }
 }
 
 /** The drive as a keepsake, as the mockup cards set it, and dark in either theme like the cards. */
 @Composable
-private fun RecordPoster(routeMaps: RouteMapCache, record: RecordV?, modifier: Modifier, fillHeight: Boolean, replay: Int = 0) {
+private fun RecordPoster(routeMaps: RouteMapCache, record: RecordV?, modifier: Modifier, fillHeight: Boolean, replay: Int = 0, onReplay: (() -> Unit)? = null) {
     val d = LocalCarDimens.current
     val shape = RoundedCornerShape(d.u(14))
+    // The same order as the cards and the phone card: title, route, the distance, then a footer line.
     Column(modifier.clip(shape).background(DriveCardBackground).border(1.dp, line(), shape).padding(d.u(20)).testTag("record-poster")) {
         T("나의 드라이브", d.t(14), color = DriveCardMuted, maxLines = 1)
         Spacer(Modifier.height(d.u(4)))
         if (record != null) T("${shortName(record.placeName)}에 남긴 하루", d.t(30), color = DriveCardText, maxLines = 1, display = true)
-        if (fillHeight) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(d.u(12)))
-        RouteVisual(routeMaps, record, record?.placeName, Modifier.align(Alignment.CenterHorizontally).aspectRatio(ROUTE_IMAGE_ASPECT), drawRoute = true, replay = replay)
-        if (fillHeight) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(d.u(12)))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            if (record != null) T("${record.placeName} · ${posterDate(record.startedAtMillis)}", d.t(16), Modifier.weight(1f), color = DriveCardMuted, maxLines = 1)
-            T("여정", d.t(18), color = DriveCardText, bold = true, maxLines = 1)
+        Spacer(Modifier.height(d.u(14)))
+        Box(Modifier.align(Alignment.CenterHorizontally).aspectRatio(ROUTE_IMAGE_ASPECT)) {
+            RouteVisual(routeMaps, record, record?.placeName, Modifier.matchParentSize(), drawRoute = true, replay = replay)
+            if (onReplay != null) ReplayButton(onReplay, Modifier.align(Alignment.TopEnd).padding(d.u(10)))
         }
+        if (fillHeight) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(d.u(14)))
+        if (record != null) {
+            T(distanceLabel(record.distanceSource) + if (record.simulated) " · 시뮬레이션" else "", d.t(15), color = DriveCardMuted, maxLines = 1)
+            PosterDistance(record, 58)
+            Spacer(Modifier.height(d.u(6)))
+            PosterFooter(record)
+        }
+    }
+}
+
+/** Over the map, where the replay happens. Dark and translucent, so the map stays the subject. */
+@Composable
+private fun ReplayButton(onClick: () -> Unit, modifier: Modifier) {
+    val d = LocalCarDimens.current
+    Row(
+        modifier.heightIn(min = 64.dp).clip(RoundedCornerShape(d.u(12))).background(DriveCardBackground.copy(alpha = 0.78f))
+            .pressClick(onClick = onClick).padding(horizontal = d.u(14)).testTag("replay-route"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CarIcon(CarGlyph.REFRESH, d.u(22), DriveCardText)
+        Spacer(Modifier.width(d.u(8)))
+        T("다시 보기", d.t(16), color = DriveCardText, bold = true, maxLines = 1)
     }
 }
 
@@ -583,23 +611,40 @@ private fun splitRange(split: KmSplit): String {
     return "${km(split.fromKm)}–${km(split.toKm)} km"
 }
 
-/** Time per stretch of the drive, from its own recorded points. A record of the drive, not a ranking of it. */
+/**
+ * Time per stretch of the drive, from its own recorded points. Each row carries the same numbered marker as the
+ * map, so the list and the route read together. A record of the drive, not a ranking of it.
+ */
 @Composable
 private fun SplitList(splits: List<KmSplit>) {
     val d = LocalCarDimens.current
     Column(Modifier.fillMaxWidth().testTag("splits")) {
-        T("구간 기록", d.t(17), color = muted())
+        T("구간 기록", d.t(16), color = muted())
         Spacer(Modifier.height(d.u(6)))
         splits.forEach { split ->
             Row(Modifier.fillMaxWidth().padding(vertical = d.u(3)), verticalAlignment = Alignment.CenterVertically) {
-                T(splitRange(split), d.t(18), Modifier.weight(1f), maxLines = 1)
-                T(splitTime(split.seconds), d.t(18), bold = true, maxLines = 1)
+                val whole = split.toKm == Math.floor(split.toKm)
+                Box(Modifier.size(d.u(28)).clip(CircleShape).background(fg()), contentAlignment = Alignment.Center) {
+                    if (whole) T(split.toKm.toInt().toString(), d.t(13), color = MaterialTheme.colorScheme.background, bold = true, maxLines = 1)
+                    else Box(Modifier.size(d.u(10)).clip(CircleShape).background(MaterialTheme.colorScheme.background))
+                }
+                Spacer(Modifier.width(d.u(12)))
+                T(splitRange(split), d.t(18), Modifier.weight(1f), color = muted(), maxLines = 1, tabular = true)
+                T(splitTime(split.seconds), d.t(18), bold = true, maxLines = 1, tabular = true)
             }
         }
     }
 }
 
-/** The distance is the drive's headline, as on the cards. Time follows as a supporting line. */
+private fun clockTime(millis: Long) = java.text.SimpleDateFormat("a h:mm", java.util.Locale.KOREA).format(java.util.Date(millis))
+
+/** "오전 4:44–4:48": the period is said once when both ends share it. */
+fun clockRange(start: String, end: String): String {
+    val startPeriod = start.substringBefore(' ')
+    return if (end.startsWith("$startPeriod ")) "$start–${end.substringAfter(' ')}" else "$start–$end"
+}
+
+/** The distance is the headline, as on the cards. Below it, the other figures share one cell form: value over label. */
 @Composable
 private fun RecordStats(record: RecordV) {
     val d = LocalCarDimens.current
@@ -607,15 +652,26 @@ private fun RecordStats(record: RecordV) {
     Column {
         Row(verticalAlignment = Alignment.Bottom) {
             T(if (record.distanceKm != null) distanceText(shown) else distanceText(null), d.t(84), maxLines = 1, display = true)
-            if (record.distanceKm != null) T("km", d.t(36), Modifier.padding(start = d.u(8), bottom = d.u(12)), bold = true)
+            if (record.distanceKm != null) T("km", d.t(34), Modifier.padding(start = d.u(8), bottom = d.u(12)), bold = true)
         }
-        T(distanceLabel(record.distanceSource), d.t(18), color = muted())
-        Spacer(Modifier.height(d.u(14)))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            T("${minutes(record.elapsedSeconds)}분", d.t(28), bold = true)
-            Spacer(Modifier.width(d.u(10)))
-            T("기록 경과 시간", d.t(18), color = muted())
+        T(distanceLabel(record.distanceSource), d.t(16), color = muted())
+        Spacer(Modifier.height(d.u(16)))
+        Row(Modifier.height(IntrinsicSize.Min)) {
+            StatCell(elapsedText(record.elapsedSeconds), "기록 시간")
+            Spacer(Modifier.width(d.u(24)))
+            VerticalRule(Modifier.fillMaxHeight())
+            Spacer(Modifier.width(d.u(24)))
+            StatCell(clockRange(clockTime(record.startedAtMillis), clockTime(record.endedAtMillis)), "출발–도착 시각")
         }
+    }
+}
+
+@Composable
+private fun StatCell(value: String, label: String) {
+    val d = LocalCarDimens.current
+    Column {
+        T(value, d.t(26), bold = true, maxLines = 1, tabular = true)
+        T(label, d.t(15), color = muted(), maxLines = 1)
     }
 }
 
@@ -626,7 +682,7 @@ fun OfflineSavedScreen(record: RecordV?, destination: MapPoint?, linked: Boolean
     val d = LocalCarDimens.current
     Frame(onBackToGoal, simulated = record?.simulated == true) {
         Panes(0.5f, left = {
-            Column(Modifier.padding(start = d.u(22)), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Heading("기록은 안전하게 보관했어요", 32, Modifier.fillMaxWidth())
                 Spacer(Modifier.height(d.u(10)))
                 CarIcon(CarGlyph.CLOUD_OFF, d.u(70), fg())
@@ -641,7 +697,7 @@ fun OfflineSavedScreen(record: RecordV?, destination: MapPoint?, linked: Boolean
                         CarIcon(CarGlyph.PIN, d.u(26), fg())
                         Spacer(Modifier.width(d.u(18)))
                         Column {
-                            T("${record.placeName}  ·  ${minutes(record.elapsedSeconds)}분", d.t(19), bold = true, maxLines = 1)
+                            T("${record.placeName} · ${elapsedText(record.elapsedSeconds)}", d.t(19), bold = true, maxLines = 1)
                             T(if (syncing) "다시 전송 중" else "동기화 대기", d.t(16), color = muted())
                         }
                     }
@@ -668,7 +724,7 @@ fun RecoveryScreen(routeMaps: RouteMapCache, record: RecordV, destination: MapPo
     var confirmDelete by rememberConfirmState()
     Frame(null, simulated = record.simulated) {
         Panes(0.5f, left = {
-            Column(Modifier.padding(start = d.u(22))) {
+            Column {
                 Heading("저장된 기록을 찾았어요", 32)
                 Spacer(Modifier.height(d.u(12)))
                 Row(
@@ -687,7 +743,7 @@ fun RecoveryScreen(routeMaps: RouteMapCache, record: RecordV, destination: MapPo
                     Spacer(Modifier.width(d.u(32)))
                     VerticalRule(Modifier.fillMaxHeight())
                     Spacer(Modifier.width(d.u(32)))
-                    Stat(minutes(record.elapsedSeconds), "분", "저장된 경과 시간")
+                    Stat(elapsedText(record.elapsedSeconds), "", "기록 시간")
                 }
                 Spacer(Modifier.height(d.u(24)))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(d.u(12))) {
