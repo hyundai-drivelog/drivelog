@@ -12,6 +12,7 @@ import com.drivelog.app.feature.car.roundedRoute
 import com.drivelog.app.feature.car.routeSummaryText
 import com.drivelog.app.feature.car.kmSplits
 import com.drivelog.app.feature.car.splitTime
+import com.drivelog.app.feature.car.clockRange
 import com.drivelog.app.feature.car.encodePolyline
 import com.drivelog.app.feature.car.cardShareUrl
 import com.drivelog.app.core.journey.RecordV
@@ -86,6 +87,11 @@ class JourneyRulesTest {
         assertEquals(2.5, splits[2].toKm, 0.05)
         assertEquals(60.0, splits[2].seconds.toDouble(), 2.0)
         assertTrue(kmSplits(points.map { it.copy(atMillis = 0) }).isEmpty())
+    }
+
+    @Test fun aTimeRangeSaysAmOrPmOnceWhenBothEndsShareIt() {
+        assertEquals("오전 4:44–4:48", clockRange("오전 4:44", "오전 4:48"))
+        assertEquals("오전 11:50–오후 12:10", clockRange("오전 11:50", "오후 12:10"))
     }
 
     @Test fun splitTimesReadNaturally() {

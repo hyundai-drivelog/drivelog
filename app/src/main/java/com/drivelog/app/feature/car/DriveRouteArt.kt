@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.layout.padding
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -195,6 +197,7 @@ fun DriveRouteArt(
                 drawCircle(DriveCardText, width * 1.8f, end)
             }
         }
+        if (map != null) T(ATTRIBUTION, d.t(12), Modifier.align(Alignment.BottomStart).padding(d.u(8)), color = DriveCardMuted, maxLines = 1)
     }
 }
 

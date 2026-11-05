@@ -127,6 +127,7 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                 if (BuildConfig.PHONE_LINK_ENABLED) ({ LinkControl(store.token != null, model::openLink, model::unlink) }) else null,
                 // A mockup of a community: a submitted build must not offer it.
                 if (BuildConfig.DEBUG) model::openCommunity else null,
+                model.routeMaps,
             )
         }
     }
