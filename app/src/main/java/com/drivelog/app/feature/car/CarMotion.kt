@@ -34,6 +34,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameMillis
 import androidx.compose.ui.Modifier
@@ -59,12 +62,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /**
- * The Pleos guide uses animation "to explain state", and forbids it while driving. So every effect here marks
- * a change of state rather than decorating, and asks this first. It defaults to off, and CarApp turns it on
- * only while parked: leaving P stops everything at once.
+ * The Pleos guide uses animation "to explain state", and forbids it while driving. Effects here run once when
+ * something appears or changes, as anything that keeps running costs a parked app its CPU budget, and all of
+ * them ask this first. It defaults to off, and CarApp turns it on only while parked: leaving P stops everything.
  */
 val LocalMotionEnabled = staticCompositionLocalOf { false }
 
@@ -73,10 +77,11 @@ private const val LOOP_UPDATE_MS = 50L
 /** How far along the drive flow a screen sits. Moving to a higher one slides forward, to a lower one back. */
 fun routeDepth(route: Screen): Int = when (route) {
     Screen.HOME, Screen.LOCKED, Screen.RECOVERY -> 0
-    Screen.PLACE, Screen.HISTORY, Screen.DIAGNOSTICS -> 1
-    Screen.RECORDING, Screen.RECORD -> 2
+    Screen.PLACE, Screen.HISTORY, Screen.DIAGNOSTICS, Screen.COMMUNITY -> 1
+    Screen.RECORDING, Screen.RECORD, Screen.COURSE_DETAIL -> 2
+    Screen.COURSE_SHARE -> 3
     Screen.STOP -> 3
-    Screen.DONE, Screen.SYNCING, Screen.LINK, Screen.OFFLINE, Screen.PHONE_PREVIEW_LINK -> 4
+    Screen.DONE, Screen.SYNCING, Screen.LINK, Screen.OFFLINE, Screen.PHONE_PREVIEW_LINK, Screen.CARD_QR -> 4
     Screen.PHONE_PREVIEW_DONE -> 5
 }
 
@@ -102,6 +107,58 @@ fun rememberProgress(key: Any?, spec: AnimationSpec<Float> = tween(800, easing =
     val progress = remember(key) { Animatable(if (motion) 0f else 1f) }
     LaunchedEffect(progress) { progress.animateTo(1f, spec) }
     return progress.asState()
+}
+
+private const val REVEAL_STAGGER_MS = 60
+private const val REVEAL_LATEST_MS = 300
+
+/** Like [rememberProgress], but scrolling a list item away and back does not play it again. */
+@Composable
+fun rememberOnceProgress(key: Any?, spec: AnimationSpec<Float> = tween(800, easing = FastOutSlowInEasing), enabled: Boolean = true): State<Float> {
+    var played by rememberSaveable(key) { mutableStateOf(false) }
+    val progress = rememberProgress(key, spec, enabled && !played)
+    LaunchedEffect(progress) {
+        snapshotFlow { progress.value }.first { it >= 1f }
+        played = true
+    }
+    return progress
+}
+
+/** Settles into place in list order the first time it appears. */
+@Composable
+fun Modifier.revealOnce(index: Int = 0): Modifier {
+    val delayMillis = minOf(index * REVEAL_STAGGER_MS, REVEAL_LATEST_MS)
+    val progress = rememberOnceProgress(Unit, tween(320, delayMillis = delayMillis, easing = FastOutSlowInEasing))
+    return graphicsLayer {
+        alpha = progress.value
+        translationY = (1f - progress.value) * 16.dp.toPx()
+    }
+}
+
+/** A number that climbs to [target] once. It always ends exactly on the real value. */
+@Composable
+fun rememberCountUp(target: Double): Double {
+    val progress by rememberOnceProgress(target, tween(800, easing = FastOutSlowInEasing))
+    return target * progress
+}
+
+/** A ring that closes and a check that draws itself: something has just finished. */
+@Composable
+fun AnimatedCheck(size: Dp, modifier: Modifier = Modifier, color: Color = fg()) {
+    val progress = rememberProgress(Unit, tween(700, easing = FastOutSlowInEasing))
+    Canvas(modifier.size(size)) {
+        val width = this.size.minDimension * 0.05f
+        val inset = width / 2
+        drawArc(
+            color, -90f, 360f * (progress.value / 0.6f).coerceAtMost(1f), false, Offset(inset, inset),
+            Size(this.size.width - width, this.size.height - width), style = Stroke(width, cap = StrokeCap.Round),
+        )
+        val w = this.size.width
+        val check = listOf(Offset(w * 0.29f, w * 0.52f), Offset(w * 0.44f, w * 0.67f), Offset(w * 0.72f, w * 0.36f))
+        trimLines(listOf(check), ((progress.value - 0.5f) / 0.5f).coerceAtLeast(0f)).forEach { line ->
+            line.zipWithNext().forEach { (a, b) -> drawLine(color, a, b, width, StrokeCap.Round) }
+        }
+    }
 }
 
 /**
@@ -157,16 +214,24 @@ enum class LoadingStyle { LINEAR, TENSION }
  */
 @Composable
 fun LoadingIndicator(style: LoadingStyle, size: Dp = 64.dp, color: Color = fg(), modifier: Modifier = Modifier) {
-    val motion = LocalMotionEnabled.current
+    if (!LocalMotionEnabled.current) {
+        // No transition at all: one that is merely not drawn would still ask for every frame.
+        Canvas(modifier.size(size).semantics { contentDescription = "불러오는 중" }) {
+            val unit = this.size.width / 64f
+            drawCircle(color.copy(alpha = 0.1f), 24f * unit, style = Stroke(8f * unit))
+            drawArc(color.copy(alpha = 0.84f), -90f, 100.8f, false, Offset(8f * unit, 8f * unit), Size(48f * unit, 48f * unit), style = Stroke(8f * unit, cap = StrokeCap.Round))
+        }
+        return
+    }
     val transition = rememberInfiniteTransition(label = "loading")
     val turning by transition.animateFloat(0f, 1080f, infiniteRepeatable(tween(2000, easing = LinearEasing)), label = "loading turn")
     val breathing by transition.animateFloat(3.6f, 216f, infiniteRepeatable(tween(1000, easing = LinearEasing), RepeatMode.Reverse), label = "loading sweep")
     Canvas(modifier.size(size).semantics { contentDescription = "불러오는 중" }) {
         val unit = this.size.width / 64f
         drawCircle(color.copy(alpha = 0.1f), 24f * unit, style = Stroke(8f * unit))
-        val sweep = if (style == LoadingStyle.TENSION && motion) breathing else 100.8f
+        val sweep = if (style == LoadingStyle.TENSION) breathing else 100.8f
         drawArc(
-            color.copy(alpha = 0.84f), -90f + (if (motion) turning else 0f), sweep, false, Offset(8f * unit, 8f * unit), Size(48f * unit, 48f * unit),
+            color.copy(alpha = 0.84f), -90f + turning, sweep, false, Offset(8f * unit, 8f * unit), Size(48f * unit, 48f * unit),
             style = Stroke(8f * unit, cap = StrokeCap.Round),
         )
     }

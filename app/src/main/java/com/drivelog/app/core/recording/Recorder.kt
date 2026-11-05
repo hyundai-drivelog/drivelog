@@ -35,6 +35,7 @@ data class Recording(
     val goalId: String?,
     val place: PlaceV,
     val startedAtMillis: Long,
+    /** Published when the shown minute changes, so read the clock rather than this for an exact duration. */
     val elapsedSeconds: Long = 0,
     val points: List<RoutePoint> = emptyList(),
     val distanceKm: Double = 0.0,
@@ -90,11 +91,7 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         val now = System.currentTimeMillis()
         val recording = Recording(UUID.randomUUID().toString(), goalId, place, now, simulated = simulated)
         if (!simulated) {
-            val accepted = platform.startLocation(
-                onPoint = { latitude, longitude -> scope.launch { addPoint(latitude, longitude) } },
-                onError = { Log.w(TAG, "location error: $it") },
-            )
-            if (!accepted) return false
+            if (!startLocationUpdates()) return false
             platform.watchArrival(place.latitude, place.longitude, 500f) { markArrived() }
         }
         metaFile.writeText(gson.toJson(Meta(recording.id, goalId, place, now, simulated)))
@@ -108,11 +105,19 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         return true
     }
 
+    private fun startLocationUpdates() = platform.startLocation(
+        onPoint = { latitude, longitude -> scope.launch { addPoint(latitude, longitude) } },
+        onError = { Log.w(TAG, "location error: $it") },
+    )
+
+    private fun elapsedSeconds() = (SystemClock.elapsedRealtime() - startedElapsed) / 1000
+
     private suspend fun tick(simulated: Boolean) {
         var step = 0
         var lastSaved = 0L
+        var lastRestart = 0L
         while (scope.isActive) {
-            val elapsed = (SystemClock.elapsedRealtime() - startedElapsed) / 1000
+            val elapsed = elapsedSeconds()
             val current = mutableState.value ?: return
             if (simulated && simulatedGear() != CarGear.PARK && step <= SIM_STEPS) {
                 val (latitude, longitude) = simulatedPoint(current.place, step++)
@@ -121,7 +126,15 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
             val latest = mutableState.value ?: return
             val lastFix = latest.points.lastOrNull()?.atMillis ?: latest.startedAtMillis
             val stale = !simulated && System.currentTimeMillis() - lastFix > STALE_AFTER_MS
-            mutableState.value = latest.copy(elapsedSeconds = elapsed, locationStale = stale)
+            // Time is shown in whole minutes, so a second passing is no reason to redraw while driving.
+            if (latest.elapsedSeconds / 60 != elapsed / 60 || latest.locationStale != stale) {
+                mutableState.value = latest.copy(elapsedSeconds = elapsed, locationStale = stale)
+            }
+            // A location error is never followed by another fix on its own, so ask again while none arrive.
+            if (stale && System.currentTimeMillis() - maxOf(lastFix, lastRestart) > STALE_AFTER_MS) {
+                lastRestart = System.currentTimeMillis()
+                if (!startLocationUpdates()) Log.w(TAG, "location restart refused")
+            }
             if (elapsed - lastSaved >= 5) {
                 lastSaved = elapsed
                 runCatching { tickFile.writeText(System.currentTimeMillis().toString()) }
@@ -168,11 +181,12 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         val end = platform.odometerRaw()
         val start = odometerStart
         val delta = if (start != null && end != null && end >= start) (end - start).toDouble() else null
+        val elapsed = elapsedSeconds()
         stop()
         clearFiles()
         val (distance, source) = resolveDistance(current.distanceKm, current.points.size >= 2, delta)
         return toRecord(current.id, current.goalId, current.place, current.startedAtMillis, System.currentTimeMillis(),
-            current.elapsedSeconds, current.points, distance, source, RecordStatus.COMPLETE, current.simulated)
+            elapsed, current.points, distance, source, RecordStatus.COMPLETE, current.simulated)
     }
 
     /** Ends the recording and leaves nothing behind, neither a record nor anything to recover. */

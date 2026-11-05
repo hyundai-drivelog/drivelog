@@ -1,6 +1,8 @@
 package com.drivelog.app.feature.car
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -23,15 +25,18 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.material3.MaterialTheme
 import kotlin.math.cos
@@ -59,7 +64,7 @@ private const val LIVE_MAP_TIMEOUT_MS = 15_000L
 @Composable
 fun LiveRouteMap(
     cache: RouteMapCache, points: List<MapPoint>, destination: MapPoint?, destinationLabel: String?, modifier: Modifier = Modifier,
-    unfinished: Boolean = false,
+    unfinished: Boolean = false, startLabel: String? = null,
 ) {
     val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -72,7 +77,7 @@ fun LiveRouteMap(
         val frame = withTimeoutOrNull(LIVE_MAP_TIMEOUT_MS) { cache.liveFrame(framed, size.width, size.height, dark) }
         backdrop = if (frame != null) MapBackdrop.Real(frame) else MapBackdrop.Art
     }
-    RouteMap(points, destination, destinationLabel, modifier.onSizeChanged { size = it }, unfinished, backdrop = backdrop)
+    RouteMap(points, destination, destinationLabel, modifier.onSizeChanged { size = it }, unfinished, startLabel = startLabel, backdrop = backdrop)
 }
 
 /**
@@ -94,10 +99,12 @@ fun RouteMap(
     val measurer = rememberTextMeasurer()
     val labelStyle = TextStyle(color = ink, fontSize = d.t(14), fontWeight = FontWeight.Bold)
     val art = remember(seed) { generateBackdrop(seed) }
-    val pinDrop = rememberProgress(destination, spring(dampingRatio = 0.55f, stiffness = 320f))
-    Box(modifier.clip(RoundedCornerShape(d.u(14))).semantics { contentDescription = "주행 경로 지도" }) {
-        Canvas(Modifier.matchParentSize()) {
-            val real = (backdrop as? MapBackdrop.Real)?.frame
+    val real = (backdrop as? MapBackdrop.Real)?.frame
+    // The pin lands with the map it belongs to, not unseen while that is still loading.
+    val pinDrop = rememberProgress(destination to (backdrop == MapBackdrop.Loading), spring(dampingRatio = 0.55f, stiffness = 320f))
+    val mapFade = rememberProgress(real, tween(360), enabled = real != null)
+    Box(modifier.clip(RoundedCornerShape(d.u(14))).background(palette.land).semantics { contentDescription = "주행 경로 지도" }) {
+        Canvas(Modifier.matchParentSize().graphicsLayer { alpha = mapFade.value }) {
             when {
                 real != null -> drawImage(real.image)
                 backdrop == MapBackdrop.Loading -> {
@@ -176,6 +183,7 @@ fun RouteMap(
                 drawCircle(ink, routeWidth * 2f, at)
             }
         }
+        if (backdrop == MapBackdrop.Loading) LoadingIndicator(LoadingStyle.TENSION, modifier = Modifier.align(Alignment.Center).testTag("map-loading"))
         // Art looks like geography but is not, so it says so. A real map credits its data instead.
         if (backdrop != MapBackdrop.Loading) T(
             if (backdrop is MapBackdrop.Real) ATTRIBUTION else "지도 배경은 예시예요", d.t(14),
@@ -187,6 +195,40 @@ fun RouteMap(
 }
 
 private const val GAP_MS = 60_000L
+
+private const val GLYPH_MAX_POINTS = 150
+
+/**
+ * The shape of a drive with no map behind it: a small signature drawn only from its own coordinates, so a list
+ * needs no network. A drive that never moved is just its start ring.
+ */
+@Composable
+fun RouteGlyph(points: List<MapPoint>, modifier: Modifier = Modifier, color: Color = MaterialTheme.colorScheme.onBackground, stroke: Dp? = null, trace: Boolean = false) {
+    val line = remember(points) {
+        val moved = points.filterIndexed { index, point ->
+            index == 0 || point.latitude != points[index - 1].latitude || point.longitude != points[index - 1].longitude
+        }
+        val stride = moved.size / GLYPH_MAX_POINTS + 1
+        moved.filterIndexed { index, _ -> index % stride == 0 || index == moved.lastIndex }
+    }
+    val traced = rememberOnceProgress(line, tween(1100, easing = FastOutSlowInEasing), enabled = trace)
+    Canvas(modifier.clearAndSetSemantics {}) {
+        val width = stroke?.toPx() ?: (minOf(size.width, size.height) * 0.055f)
+        val ring = Stroke(width)
+        if (line.size < 2) {
+            drawCircle(color, width * 2f, center, style = ring)
+            return@Canvas
+        }
+        val project = projector(line, size.width, size.height, width * 3.2f)
+        val path = Path()
+        trimLines(listOf(line.map(project)), traced.value).firstOrNull()?.forEachIndexed { index, at ->
+            if (index == 0) path.moveTo(at.x, at.y) else path.lineTo(at.x, at.y)
+        }
+        drawPath(path, color, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        drawCircle(color, width * 1.5f, project(line.first()), style = ring)
+        if (traced.value >= 1f) drawCircle(color, width * 1.5f, project(line.last()))
+    }
+}
 
 private fun projector(points: List<MapPoint>, width: Float, height: Float, pad: Float): (MapPoint) -> Offset {
     val k = cos(Math.toRadians(points.map { it.latitude }.average()))

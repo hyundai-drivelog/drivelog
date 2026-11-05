@@ -14,6 +14,7 @@ import ai.pleos.playground.navi.data.DestinationInfo
 import ai.pleos.playground.navi.data.NavigationScreenRequest
 import ai.pleos.playground.navi.data.RecentDestinationInfo
 import ai.pleos.playground.navi.data.RouteInfo
+import ai.pleos.playground.navi.data.RouteOverviewShowInfo
 import ai.pleos.playground.navi.data.RouteStartInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
@@ -88,9 +89,10 @@ class PleosCarPlatform(context: Context) : CarPlatform {
         override fun onDestinationChanged() { runCatching { helper?.getDestinationInfo() } }
         // Side by side the app never returns to the foreground, and the navigation app was seen sending only these.
         override fun onRouteStarted(routeStartInfo: RouteStartInfo) {
-            Log.i(TAG, "route event: started")
+            Log.i(TAG, "route event: started, distance=${routeStartInfo.distance} duration=${routeStartInfo.duration}")
             replacingRoute = false
-            mutableNavi.update { it.copy(routeEnd = null) }
+            val summary = RouteSummary(routeStartInfo.distance, routeStartInfo.duration).takeIf { it.distanceMeters > 0 }
+            mutableNavi.update { it.copy(routeEnd = null, routeSummary = summary) }
             route("내비에서 경로를 찾고 있어요")
             runCatching { helper?.getDestinationInfo() }
         }
@@ -103,7 +105,7 @@ class PleosCarPlatform(context: Context) : CarPlatform {
             Log.i(TAG, "route event: cancelled, replacing=$replacingRoute")
             // Our own new route replacing an old one also cancels it. That is not the driver ending guidance.
             val end = if (replacingRoute) null else RouteEnd.STOPPED
-            mutableNavi.update { state -> state.copy(currentDestination = null, routeMessage = null, routeEnd = state.routeEnd ?: end) }
+            mutableNavi.update { state -> state.copy(currentDestination = null, routeMessage = null, routeSummary = null, routeEnd = state.routeEnd ?: end) }
         }
         // Not onRouteEnded: the navigation app sends it right after onRouteStarted, while guidance is starting.
         override fun onDestinationArrived(destinationArrivedInfo: DestinationArrivedInfo) {
@@ -132,6 +134,16 @@ class PleosCarPlatform(context: Context) : CarPlatform {
 
     private fun granted(permission: String) = context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
+    /** Forgets a failed connection so that the next [connect] starts a new one instead of waiting on this one. */
+    private fun dropNavi(sdk: NaviHelper) {
+        if (helper !== sdk) return
+        helper = null
+        naviConnected = false
+        runCatching { sdk.removeListener(naviListener) }
+        runCatching { sdk.release() }
+        mutableNavi.update { it.copy(available = false) }
+    }
+
     /** Each service is optional: model availability differs, so a missing one only hides its feature. */
     override fun connect() {
         if (vehicle == null && serviceExists(VEHICLE_ACTION)) {
@@ -149,9 +161,12 @@ class PleosCarPlatform(context: Context) : CarPlatform {
                     refreshNaviPlaces()
                 }, { failure ->
                     Log.w(TAG, "navi connection failed: ${failure.javaClass.simpleName}")
-                    mutableNavi.update { it.copy(available = false) }
+                    dropNavi(sdk)
                 })
-            }.onFailure { Log.w(TAG, "navi unavailable: ${it.javaClass.simpleName}") }
+            }.onFailure {
+                Log.w(TAG, "navi unavailable: ${it.javaClass.simpleName}")
+                helper?.let(::dropNavi)
+            }
         }
         if (tts == null && serviceExists(SPEECH_ACTION)) {
             runCatching {
@@ -412,6 +427,12 @@ class PleosCarPlatform(context: Context) : CarPlatform {
         val sdk = helper?.takeIf { naviConnected } ?: return
         runCatching { sdk.requestNavigationScreen(NavigationScreenRequest.Foreground) }
             .onFailure { Log.w(TAG, "navi screen failed: ${it.javaClass.simpleName}") }
+    }
+
+    override fun showRouteOverview() {
+        val sdk = helper?.takeIf { naviConnected } ?: run { route("내비게이션에 연결할 수 없어요"); return }
+        runCatching { sdk.requestNavigationScreen(NavigationScreenRequest.OverviewRoute(RouteOverviewShowInfo())) }
+            .onFailure { Log.w(TAG, "route overview failed: ${it.javaClass.simpleName}") }
     }
 
     override fun clearRouteMessage() = mutableNavi.update { it.copy(routeMessage = null) }

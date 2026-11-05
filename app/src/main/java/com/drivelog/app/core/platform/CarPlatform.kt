@@ -18,8 +18,13 @@ data class NaviPlace(
 /** Why guidance stopped. A new route replaces a stopped one, so this only stands while nothing is being guided. */
 enum class RouteEnd { ARRIVED, STOPPED }
 
+/** The navigation app's own figures for the route it chose. Its line is not exposed by the SDK. */
+data class RouteSummary(val distanceMeters: Int, val durationSeconds: Int)
+
 data class NaviState(
     val available: Boolean = false,
+    /** Set while the navigation app guides a route it reported starting, and cleared when that ends. */
+    val routeSummary: RouteSummary? = null,
     val bookmarks: List<NaviPlace> = emptyList(),
     val recents: List<NaviPlace> = emptyList(),
     val currentDestination: NaviPlace? = null,
@@ -64,6 +69,9 @@ interface CarPlatform {
     /** Sent only on an explicit user action. The result arrives through [NaviState.routeMessage]. */
     fun requestRoute(place: NaviPlace)
     fun openNavigation()
+
+    /** The navigation app's own overview of the route it is guiding, since the SDK gives no line to draw here. */
+    fun showRouteOverview()
     fun clearRouteMessage()
 
     /** Opens the navigation app's own search with this keyword. The SDK offers no search that returns results. */

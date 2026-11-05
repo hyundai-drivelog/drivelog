@@ -1,7 +1,10 @@
 package com.drivelog.app.feature.car
 
 import android.app.Application
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -27,9 +30,11 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** RECORDING and LOCKED follow from vehicle state (see routeFor); nothing navigates to them. */
-enum class Screen { HOME, PLACE, HISTORY, RECORD, STOP, SYNCING, LINK, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE }
+enum class Screen { HOME, PLACE, HISTORY, RECORD, STOP, SYNCING, LINK, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE, COMMUNITY, COURSE_DETAIL, COURSE_SHARE, CARD_QR }
 
 private const val PHONE_PREVIEW_CODE_MS = 5 * 60 * 1000L
+private const val NAVI_RETRY_COUNT = 6
+private const val NAVI_RETRY_MS = 10_000L
 
 /** A code that connects to nothing, for the phone screens' preview. */
 fun previewLinkCode(random: Random = Random.Default) = random.nextInt(100_000, 1_000_000).toString()
@@ -96,6 +101,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var syncing by mutableStateOf(false)
         private set
+    var locationRefused by mutableStateOf(false)
+        private set
 
     var searchQuery by mutableStateOf("")
     var currentLocation by mutableStateOf<MapPoint?>(null)
@@ -115,6 +122,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     private var simGear by mutableStateOf(CarGear.PARK)
     private var returnAfterLink = Screen.HOME
     private var linkJob: Job? = null
+    private var naviRetry: Job? = null
 
     val gear: CarGear get() = if (simulation) simGear else realGear
 
@@ -181,8 +189,15 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
                 when (action) {
                     RouteEndAction.SAVE -> {
                         platform.clearRouteEnd()
-                        platform.speak("안내가 끝나 드라이브를 저장했어요.")
-                        endRecording()
+                        val current = recorder.state.value
+                        // Guidance switched off before setting out says nothing about a drive worth keeping.
+                        if (current != null && barelyMoved(current.distanceKm, current.points.size >= 2)) {
+                            screen = Screen.STOP
+                            platform.speak("거의 움직이지 않았어요. 저장할지 골라 주세요.")
+                        } else {
+                            platform.speak("안내가 끝나 드라이브를 저장했어요.")
+                            endRecording()
+                        }
                     }
                     RouteEndAction.ANNOUNCE -> platform.speak("안내가 끝났어요. 정차하면 드라이브를 저장해요.")
                     RouteEndAction.NONE -> {}
@@ -195,6 +210,22 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         platform.refreshNaviPlaces()
         refreshLocation()
         fillRouteMaps()
+        retryNaviConnection()
+    }
+
+    /**
+     * The navigation service can come up after this app, and without it a first-time driver cannot search at all.
+     * Tries for a minute while on screen, since a vehicle without navigation never connects.
+     */
+    private fun retryNaviConnection() {
+        naviRetry?.cancel()
+        naviRetry = viewModelScope.launch {
+            repeat(NAVI_RETRY_COUNT) {
+                if (platform.navi.value.available) return@launch
+                platform.connect()
+                delay(NAVI_RETRY_MS)
+            }
+        }
     }
 
     /** Parked and not recording only. A failure simply leaves the map-free card until the next attempt. */
@@ -205,6 +236,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     /** The map's position request must not outlive the screen when no fix has arrived yet. */
     fun onBackground() {
+        naviRetry?.cancel()
         if (recorder.state.value == null) platform.stopLocation()
     }
 
@@ -213,6 +245,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     fun go(target: Screen) {
         message = null
+        locationRefused = false
         awaitingNavi = false
         platform.stopListening()
         platform.clearSpeech()
@@ -237,6 +270,9 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             Screen.HOME, Screen.RECOVERY, Screen.SYNCING -> return false
             Screen.LINK -> leaveLink()
             Screen.PHONE_PREVIEW_LINK, Screen.PHONE_PREVIEW_DONE -> leavePhonePreview()
+            Screen.CARD_QR -> leaveCardQr()
+            Screen.COURSE_DETAIL -> go(Screen.COMMUNITY)
+            Screen.COURSE_SHARE -> go(returnAfterCourseShare)
             Screen.RECORD -> go(Screen.HISTORY)
             else -> home()
         }
@@ -322,8 +358,11 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         platform.clearRouteEnd()
         if (!recorder.start(null, place.toPlace(), simulation)) {
             message = "위치 권한을 허용하면 기록할 수 있어요. 경로는 드라이브 카드를 만드는 데 쓰여요."
+            // After a permanent refusal the system stops asking, and this is the only way left to allow it.
+            locationRefused = missingLocationPermissions().isNotEmpty()
             return
         }
+        locationRefused = false
         val navi = platform.navi.value
         val guiding = navi.currentDestination?.sameLocation(place) == true
         go(Screen.HOME)
@@ -334,7 +373,15 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun openAppSettings() {
+        val context = getApplication<Application>()
+        val details = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+        runCatching { context.startActivity(details.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+            .onFailure { message = "설정 화면을 열 수 없어요. 차량 설정에서 위치 권한을 허용해 주세요." }
+    }
+
     fun openNavigation() = platform.openNavigation()
+    fun showRouteOverview() { if (parked) platform.showRouteOverview() }
     fun cancelRoute() = platform.cancelRoute()
 
     fun askToStop() { if (parked) go(Screen.STOP) }
@@ -455,6 +502,66 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     fun showPhonePreviewDone() = go(Screen.PHONE_PREVIEW_DONE)
 
     fun leavePhonePreview() = go(returnAfterPhonePreview)
+
+    // --- A drive card handed to the phone by QR code: nothing leaves the car any other way ------------
+
+    var cardQrRecord by mutableStateOf<RecordV?>(null)
+        private set
+    private var returnAfterCardQr = Screen.HOME
+
+    fun openCardQr(record: RecordV) {
+        if (!parked) return
+        cardQrRecord = record
+        returnAfterCardQr = screen
+        go(Screen.CARD_QR)
+    }
+
+    fun leaveCardQr() = go(returnAfterCardQr)
+
+    // --- Community as a preview: example courses, and recommendations kept only in memory -------------
+
+    var postedCourses by mutableStateOf(emptyList<CommunityCourse>())
+        private set
+    val communityCourses get() = postedCourses + SampleCourses
+    var courseOriginFilter by mutableStateOf<String?>(null)
+    var courseDestinationFilter by mutableStateOf<String?>(null)
+    var openedCourse by mutableStateOf<CommunityCourse?>(null)
+        private set
+    var courseDraft by mutableStateOf<CourseDraft?>(null)
+        private set
+    private var returnAfterCourseShare = Screen.HOME
+    private var courseDraftRecordId: String? = null
+
+    fun openCommunity() {
+        courseOriginFilter = null
+        courseDestinationFilter = null
+        go(Screen.COMMUNITY)
+    }
+
+    fun openCourse(course: CommunityCourse) {
+        openedCourse = course
+        go(Screen.COURSE_DETAIL)
+    }
+
+    fun openCourseShare(record: RecordV) {
+        courseDraft = courseDraftFrom(record)
+        courseDraftRecordId = record.id
+        returnAfterCourseShare = screen
+        go(Screen.COURSE_SHARE)
+    }
+
+    /** One recommendation per drive: posting again replaces it, as tapping twice must not list a course twice. */
+    fun publishCourse(tags: List<String>) {
+        val draft = courseDraft ?: return
+        val id = "mine-$courseDraftRecordId"
+        postedCourses = listOf(draft.toCourse(id, tags)) + postedCourses.filter { it.id != id }
+        openCommunity()
+    }
+
+    fun removeCourse(course: CommunityCourse) {
+        postedCourses = postedCourses.filter { it.id != course.id }
+        go(Screen.COMMUNITY)
+    }
 
     fun startLink() {
         linkJob?.cancel()
