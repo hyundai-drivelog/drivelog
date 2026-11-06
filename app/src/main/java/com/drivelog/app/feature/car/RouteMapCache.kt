@@ -66,12 +66,37 @@ private const val IMAGE_HEIGHT = 800
 private const val RENDER_TIMEOUT_MS = 30_000L
 private const val RENDER_RETRY_MS = 1_000L
 const val ROUTE_IMAGE_ASPECT = IMAGE_WIDTH.toFloat() / IMAGE_HEIGHT
+private const val TALL_IMAGE_WIDTH = 900
+private const val TALL_IMAGE_HEIGHT = 1125
+const val TALL_ROUTE_IMAGE_ASPECT = TALL_IMAGE_WIDTH.toFloat() / TALL_IMAGE_HEIGHT
+
+/**
+ * True when a drive is taller than it is wide on the map (Web Mercator, as the tiles are drawn). Such a drive gets a
+ * tall map, as on the phone card, so a coast road north is not a thin strip down the middle of a wide one.
+ */
+fun runsNorthSouth(points: List<MapPoint>): Boolean {
+    if (points.size < 2) return false
+    val ys = points.map { ln(tan(PI / 4 + Math.toRadians(it.latitude) / 2)) }
+    val xs = points.map { Math.toRadians(it.longitude) }
+    return ys.max() - ys.min() > (xs.max() - xs.min()) * 0.95
+}
+
+/** What the stored map covers: the drive, and its destination when that is close enough to share the frame. */
+fun framedPoints(record: RecordV): List<MapPoint> {
+    val points = record.route.toMapPoints()
+    return points + listOfNotNull(record.destinationPoint().takeIf { destinationFitsFrame(points, it) })
+}
+
+/** The shape of a drive's stored map, and so of the frame that shows it whole. */
+fun routeImageAspect(record: RecordV?): Float =
+    if (record != null && runsNorthSouth(framedPoints(record))) TALL_ROUTE_IMAGE_ASPECT else ROUTE_IMAGE_ASPECT
 
 private fun roadLayer(id: String, classes: String, color: String, narrow: Double, wide: Double) = """
     {"id":"$id","type":"line","source":"openmaptiles","source-layer":"transportation",
      "filter":["in","class",$classes],
      "layout":{"line-cap":"round","line-join":"round"},
-     "paint":{"line-color":"$color","line-width":["interpolate",["exponential",1.5],["zoom"],10,$narrow,16,$wide]}}
+     "paint":{"line-color":"$color","line-width":["interpolate",["exponential",1.5],["zoom"],10,$narrow,16,$wide],
+              "line-opacity":["interpolate",["linear"],["zoom"],6,0.35,10,0.75,12,1]}}
 """
 
 private fun mapLayers(land: String, green: String, water: String, minor: String, mid: String, major: String, motorway: String) = """[
@@ -133,8 +158,8 @@ fun routeBounds(points: List<MapPoint>, margin: Double = 0.22, minSpanDegrees: D
 class RouteMapCache(context: Context) {
     private val context = context.applicationContext
     // The folder name carries the map style's version, so older images are drawn again in the current style.
-    private val directory = File(this.context.filesDir, "route-maps-v7").apply {
-        listOf("route-maps", "route-maps-v2", "route-maps-v3", "route-maps-v4", "route-maps-v5", "route-maps-v6").forEach { File(this@RouteMapCache.context.filesDir, it).deleteRecursively() }
+    private val directory = File(this.context.filesDir, "route-maps-v8").apply {
+        listOf("route-maps", "route-maps-v2", "route-maps-v3", "route-maps-v4", "route-maps-v5", "route-maps-v6", "route-maps-v7").forEach { File(this@RouteMapCache.context.filesDir, it).deleteRecursively() }
         mkdirs()
     }
     private val client = OkHttpClient.Builder().callTimeout(10, TimeUnit.SECONDS).build()
@@ -200,10 +225,10 @@ class RouteMapCache(context: Context) {
      */
     private suspend fun render(record: RecordV): Boolean {
         val style = loadStyle(dark = true) ?: return false
-        val points = record.route.toMapPoints()
-        val pin = record.destinationPoint().takeIf { destinationFitsFrame(points, it) }
-        val box = routeBounds(points + listOfNotNull(pin))
-        val snapshot = capture(box, IMAGE_WIDTH, IMAGE_HEIGHT, style) ?: return false
+        val framed = framedPoints(record)
+        val box = routeBounds(framed)
+        val tall = runsNorthSouth(framed)
+        val snapshot = capture(box, if (tall) TALL_IMAGE_WIDTH else IMAGE_WIDTH, if (tall) TALL_IMAGE_HEIGHT else IMAGE_HEIGHT, style) ?: return false
         return runCatching {
             val southWest = snapshot.pixelForLatLng(LatLng(box[0], box[1]))
             val northEast = snapshot.pixelForLatLng(LatLng(box[2], box[3]))

@@ -283,10 +283,6 @@ fun placeImage(name: String): Int = when {
 @Suppress("UNUSED_PARAMETER")
 fun placeHasPhoto(name: String) = false
 
-/** A photo sharp enough to fill a whole poster. The other bundled ones are small and only suit a banner. */
-@DrawableRes
-fun posterImage(name: String): Int? = if (name.contains("광안리")) R.drawable.place_gwangalli_poster else null
-
 @Composable
 fun PlacePhoto(name: String, modifier: Modifier = Modifier, bitmap: ImageBitmap? = null) {
     val d = LocalCarDimens.current
