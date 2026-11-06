@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -99,7 +99,8 @@ fun StampLine(result: StampResult) {
             .padding(horizontal = d.u(14), vertical = d.u(10)).testTag("stamp-line"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        StampArt(result.place, true, d.u(64))
+        // A stamp just earned is pressed down; one already held is simply there.
+        StampArt(result.place, true, d.u(64), Modifier.stampPress(result.place.id, enabled = result.isNew))
         Spacer(Modifier.width(d.u(12)))
         Column(Modifier.weight(1f)) {
             T(if (result.isNew) "새 스탬프" else "다시 찾은 곳", d.t(14), color = muted(), maxLines = 1)
@@ -123,10 +124,10 @@ fun StampBoard(records: List<RecordV>) {
             GridCells.Fixed(if (d.stacked) 2 else 4), Modifier.fillMaxSize(),
             horizontalArrangement = Arrangement.spacedBy(d.u(12)), verticalArrangement = Arrangement.spacedBy(d.u(12)),
         ) {
-            items(StampPlaces, key = { it.id }) { place ->
+            itemsIndexed(StampPlaces, key = { _, it -> it.id }) { index, place ->
                 val stamp = stamps[place.id]
                 Column(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(d.u(12))).background(soft()).padding(d.u(14)).testTag("stamp-${place.id}"),
+                    Modifier.revealOnce(index).fillMaxWidth().clip(RoundedCornerShape(d.u(12))).background(soft()).padding(d.u(14)).testTag("stamp-${place.id}"),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     StampArt(place, stamp != null, d.u(if (d.stacked) 96 else 112))

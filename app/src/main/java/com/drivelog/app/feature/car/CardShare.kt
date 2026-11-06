@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import com.drivelog.app.core.journey.DistanceSource
 import com.drivelog.app.core.journey.RecordV
@@ -102,10 +103,17 @@ fun CardQrScreen(record: RecordV, baseUrl: String, onBack: () -> Unit) {
     val d = LocalCarDimens.current
     val url = remember(record.id) { cardShareUrl(baseUrl, record) }
     val qr = remember(url) { qrImage(url, 720) }
+    // The code settles in once it is ready to scan; nothing about it moves after that.
+    val ready = rememberProgress(url, androidx.compose.animation.core.tween(420, easing = androidx.compose.animation.core.FastOutSlowInEasing))
     Frame(onBack, simulated = record.simulated) {
         val code = @Composable { modifier: Modifier ->
             Image(
-                qr, "드라이브 카드 QR 코드", modifier.aspectRatio(1f).clip(RoundedCornerShape(d.u(12))).background(Color.White).testTag("card-qr"),
+                qr, "드라이브 카드 QR 코드", modifier.aspectRatio(1f).graphicsLayer {
+                    alpha = ready.value
+                    val scale = 0.92f + 0.08f * ready.value
+                    scaleX = scale
+                    scaleY = scale
+                }.clip(RoundedCornerShape(d.u(12))).background(Color.White).testTag("card-qr"),
                 filterQuality = FilterQuality.None,
             )
         }

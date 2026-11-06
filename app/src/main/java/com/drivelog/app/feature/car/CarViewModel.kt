@@ -104,6 +104,16 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     var locationRefused by mutableStateOf(false)
         private set
 
+    /** What just happened, said once at the foot of the screen (Pleos Toast). Shown only while parked. */
+    var toast by mutableStateOf<CarToast?>(null)
+        private set
+    fun toastShown(shown: CarToast) { if (toast?.id == shown.id) toast = null }
+    private fun say(text: String) { toast = CarToast(text) }
+
+    /** The drive is being written out: the save button shows the guide's Loading state until it is done. */
+    var saving by mutableStateOf(false)
+        private set
+
     var searchQuery by mutableStateOf("")
     var currentLocation by mutableStateOf<MapPoint?>(null)
         private set
@@ -349,7 +359,12 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     fun isSaved(place: NaviPlace) = store.state.value.savedPlaces.any { it.toNaviPlace().sameLocation(place) }
 
-    fun toggleSaved() { selectedPlace?.let { store.toggleSavedPlace(it.toPlace()) } }
+    fun toggleSaved() {
+        val place = selectedPlace ?: return
+        val wasSaved = isSaved(place)
+        store.toggleSavedPlace(place.toPlace())
+        say(if (wasSaved) "저장한 장소에서 뺐어요" else "저장한 장소에 넣었어요")
+    }
 
     // --- Recording --------------------------------------------------------------------------------
 
@@ -399,14 +414,19 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     fun keepRecording() { go(Screen.HOME) }
 
     fun endRecording() {
-        if (!parked) return
+        if (!parked || saving) return
+        saving = true
         viewModelScope.launch {
-            val record = recorder.finish() ?: return@launch
-            RecordingService.stop(getApplication())
-            store.addRecord(record)
-            finishedRecord = record
-            fillRouteMaps()
-            continueAfterRecord()
+            try {
+                val record = recorder.finish() ?: return@launch
+                RecordingService.stop(getApplication())
+                store.addRecord(record)
+                finishedRecord = record
+                fillRouteMaps()
+                continueAfterRecord()
+            } finally {
+                saving = false
+            }
         }
     }
 
@@ -417,6 +437,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         RecordingService.stop(getApplication())
         routeMaps.clearTiles() // The stop screen fetched the map of this spot.
         home()
+        say("저장하지 않고 끝냈어요")
     }
 
     /** Outcome of the upload decides what the driver is told; "arrived" is never claimed in advance. */
@@ -455,6 +476,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         recoveredRecord = null
         recoveredPlace = null
         home()
+        say("남은 기록을 지웠어요")
     }
 
     // --- 내 기록 ----------------------------------------------------------------------------------
@@ -477,6 +499,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         }
         openedRecordId = null
         go(Screen.HISTORY)
+        say("기록을 지웠어요")
     }
 
     // --- Phone link -------------------------------------------------------------------------------

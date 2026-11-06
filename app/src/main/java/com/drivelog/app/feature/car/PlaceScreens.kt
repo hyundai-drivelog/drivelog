@@ -302,7 +302,10 @@ fun HomeScreen(
                 }
                 if (line != null) {
                     Spacer(Modifier.height(d.u(6)))
-                    T(line, d.t(16), Modifier.testTag("search-note"), color = if (!canSearch) MaterialTheme.colorScheme.error else muted(), bold = !canSearch, maxLines = 2)
+                    // Listening, heard, not found: each new word of state replaces the last in place.
+                    Crossfade(line, label = "search note", animationSpec = motionTween<Float>(MOTION_ENTER_MS)) { shownLine ->
+                        T(shownLine, d.t(16), Modifier.testTag("search-note"), color = if (!canSearch) MaterialTheme.colorScheme.error else muted(), bold = !canSearch, maxLines = 2)
+                    }
                 }
                 Spacer(Modifier.height(d.u(12)))
                 Tabs(listOf("최근 검색", "저장한 장소"), tab) { tab = it }
@@ -506,8 +509,11 @@ private fun HistorySummary(records: List<RecordV>) {
 private fun MonthLine(records: List<RecordV>) {
     val d = LocalCarDimens.current
     val month = remember(records) { thisMonth(records) }
+    // Counts up with the totals above it, so the month reads as part of the same summary.
+    val shownCount = rememberCountUp(month.size.toDouble())
+    val shownKm = rememberCountUp(month.sumOf { it.distanceKm ?: 0.0 })
     val text = if (month.isEmpty()) "이번 달은 아직 드라이브가 없어요"
-    else "이번 달 ${month.size}회 · ${distanceText(month.sumOf { it.distanceKm ?: 0.0 })} km"
+    else "이번 달 ${shownCount.roundToInt()}회 · ${distanceText(shownKm)} km"
     T(text, d.t(16), Modifier.padding(bottom = d.u(4)).testTag("history-month"), color = muted(), maxLines = 1)
 }
 
