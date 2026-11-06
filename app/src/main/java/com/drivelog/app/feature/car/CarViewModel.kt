@@ -541,11 +541,15 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     var cardQrRecord by mutableStateOf<RecordV?>(null)
         private set
+    /** The same QR screen recommending the drive as a course: trimmed ends, no date. */
+    var cardQrCourse by mutableStateOf(false)
+        private set
     private var returnAfterCardQr = Screen.HOME
 
-    fun openCardQr(record: RecordV) {
+    fun openCardQr(record: RecordV, course: Boolean = false) {
         if (!parked) return
         cardQrRecord = record
+        cardQrCourse = course
         returnAfterCardQr = screen
         go(Screen.CARD_QR)
     }

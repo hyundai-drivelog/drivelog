@@ -523,6 +523,11 @@ fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String,
                     if (stamp != null) {
                         Spacer(Modifier.height(d.u(14)))
                         StampLine(stamp)
+                        // A mockup of the partner model: debug builds only, and it changes nothing.
+                        if (com.drivelog.app.BuildConfig.DEBUG) {
+                            Spacer(Modifier.height(d.u(8)))
+                            BenefitPreview(stamp.place)
+                        }
                     }
                     if (splits.size >= 2) {
                         Spacer(Modifier.height(d.u(18)))

@@ -52,6 +52,17 @@ private fun CarViewModel.sendToPhone(record: RecordV): (() -> Unit)? = when {
     else -> null
 }
 
+/**
+ * Recommending a course: a real QR hand-off once the card page has an address, otherwise the community mockup in
+ * debug builds. A drive too short to keep anything after trimming both ends offers neither.
+ */
+private fun CarViewModel.recommend(record: RecordV): (() -> Unit)? = when {
+    courseDraftFrom(record) == null -> null
+    cardQrOffered -> { { openCardQr(record, course = true) } }
+    BuildConfig.DEBUG -> { { openCourseShare(record) } }
+    else -> null
+}
+
 @OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
@@ -92,7 +103,7 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
             Screen.RECORD -> RecordSavedScreen(
                 model.routeMaps, shown.opened, "드라이브 기록", { model.goBack() }, null, model::deleteOpenedRecord,
                 shown.opened?.let { model.sendToPhone(it) },
-                shown.opened?.takeIf { BuildConfig.DEBUG }?.let { record -> { model.openCourseShare(record) } },
+                shown.opened?.let { model.recommend(it) },
                 shown.opened?.let { stampResultFor(it, store.journey.records) },
             )
             Screen.COMMUNITY -> CommunityScreen(
@@ -109,7 +120,7 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
             )
             Screen.PHONE_PREVIEW_DONE -> ContinueOnPhoneScreen(shown.phonePreview, model::leavePhonePreview, preview = true)
             Screen.SYNCING -> SyncingScreen()
-            Screen.CARD_QR -> model.cardQrRecord?.let { record -> CardQrScreen(record, BuildConfig.CARD_WEB_URL, model::leaveCardQr) }
+            Screen.CARD_QR -> model.cardQrRecord?.let { record -> CardQrScreen(record, BuildConfig.CARD_WEB_URL, model::leaveCardQr, model.cardQrCourse) }
             Screen.LINK -> PhoneLinkScreen(
                 model.linkCode?.code, model.linkCode?.expiresAtMillis ?: 0, model.linkCode?.webUrl, model.linkError,
                 model::leaveLink, model::startLink,
@@ -118,7 +129,7 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
             else RecordSavedScreen(
                 model.routeMaps, shown.finished, "드라이브를 기록했어요", model::home, model::openHistory, null,
                 shown.finished?.let { model.sendToPhone(it) },
-                shown.finished?.takeIf { BuildConfig.DEBUG }?.let { record -> { model.openCourseShare(record) } },
+                shown.finished?.let { model.recommend(it) },
                 shown.finished?.let { stampResultFor(it, store.journey.records) },
             )
             Screen.OFFLINE -> OfflineSavedScreen(shown.finished, shown.finished?.destinationPoint(), store.token != null, model.syncing, model::retrySync, model::home)

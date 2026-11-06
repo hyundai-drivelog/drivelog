@@ -38,6 +38,9 @@ import com.drivelog.app.feature.car.thisMonth
 import com.drivelog.app.feature.car.collectedStamps
 import com.drivelog.app.feature.car.stampPlaceFor
 import com.drivelog.app.feature.car.stampResultFor
+import com.drivelog.app.feature.car.StampRegions
+import com.drivelog.app.feature.car.StampPlaces
+import com.drivelog.app.feature.car.courseShareUrl
 import com.drivelog.app.core.recording.resolveDistance
 import com.drivelog.app.feature.car.CarDimens
 import com.drivelog.app.feature.car.CarLayoutMode
@@ -344,5 +347,40 @@ class JourneyRulesTest {
         assertFalse(stampResultFor(again, records)!!.isNew)
         // Deleting the first drive hands the stamp to the next one.
         assertTrue(stampResultFor(again, listOf(again))!!.isNew)
+    }
+
+    @Test fun onlyARegionWithPlacesIsReadyAndEveryStampBelongsToOne() {
+        assertEquals(listOf("busan"), StampRegions.filter { it.ready }.map { it.id })
+        // A region still being prepared shows no place, so nothing there can look like a stamp to earn.
+        assertTrue(StampRegions.filterNot { it.ready }.all { it.places.isEmpty() })
+        assertEquals(StampPlaces.map { it.id }.toSet(), StampRegions.flatMap { it.places }.map { it.id }.toSet())
+    }
+
+    private fun decodeFirstPoint(polyline: String): Pair<Double, Double> {
+        var index = 0
+        fun next(): Int {
+            var shift = 0; var result = 0; var byte: Int
+            do { byte = polyline[index++].code - 63; result = result or ((byte and 0x1f) shl shift); shift += 5 } while (byte >= 0x20)
+            return if (result and 1 != 0) (result shr 1).inv() else result shr 1
+        }
+        return next() / 1e5 to next() / 1e5
+    }
+
+    @Test fun aCourseLinkCarriesTheTrimmedRouteAndNoTime() {
+        // About 3.3 km north from a start that could be a home.
+        val route = (0..300).map { listOf(35.1534 + it * 0.0001, 129.1183, (1_000_000L + it * 2000L).toDouble()) }
+        val record = RecordV("c", null, null, "해운대 해수욕장", 1_793_900_000_000, 1_793_903_000_000, 600, 3.3, DistanceSource.GPS,
+            RecordStatus.COMPLETE, false, route, destinationLatitude = 35.1587, destinationLongitude = 129.1604)
+        val url = courseShareUrl("https://example.org/card/", record)!!
+        val fields = url.substringAfter('#').split('&').associate { it.substringBefore('=') to it.substringAfter('=') }
+        assertEquals("c", fields["t"])
+        // No date or start time travels with a course.
+        assertNull(fields["s"])
+        val first = decodeFirstPoint(java.net.URLDecoder.decode(fields.getValue("p"), "UTF-8").substringBefore('.'))
+        val fromStart = com.drivelog.app.core.recording.haversineKm(35.1534, 129.1183, first.first, first.second)
+        assertTrue("course starts ${fromStart} km from the real start", fromStart >= 0.49)
+        assertEquals("35.15870", fields["dl"])
+        // Too short to keep anything once both ends are cut: no course at all.
+        assertNull(courseShareUrl("https://example.org/card/", record.copy(route = route.take(8))))
     }
 }
