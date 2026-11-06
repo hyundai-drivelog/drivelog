@@ -66,6 +66,8 @@ fun encodePolyline(points: List<MapPoint>): String = buildString {
 fun cardShareUrl(baseUrl: String, record: RecordV): String {
     fun encode(text: String) = URLEncoder.encode(text, Charsets.UTF_8.name())
     val points = record.route.toMapPoints()
+    // The stamp this drive earned, pressed on the card at the same tilt as in the car. Null for simulated drives.
+    val stamp = stampPlaceFor(record)
     var limit = SHARE_POINTS
     while (true) {
         val pieces = styledRoute(points, limit).pieces.filter { it.size >= 2 }
@@ -77,6 +79,8 @@ fun cardShareUrl(baseUrl: String, record: RecordV): String {
             "e=" + record.elapsedSeconds,
             if (record.distanceSource == DistanceSource.VEHICLE) "d=v" else "d=g",
             if (record.simulated) "m=1" else null,
+            stamp?.let { "st=" + encode(it.name) },
+            stamp?.let { "sr=" + it.tilt.toInt() },
             "p=" + encode(pieces.joinToString(".") { encodePolyline(it) }),
         )
         val url = baseUrl + "#" + fields.joinToString("&")
@@ -108,6 +112,7 @@ fun courseShareUrl(baseUrl: String, record: RecordV): String? {
             "dl=" + coordinate(draft.destination.latitude),
             "dn=" + coordinate(draft.destination.longitude),
             stamp?.let { "st=" + encode(it.name) },
+            stamp?.let { "sr=" + it.tilt.toInt() },
             if (record.simulated) "m=1" else null,
             "p=" + encode(pieces.joinToString(".") { encodePolyline(it) }),
         )

@@ -26,11 +26,13 @@
 <a id="guide" class="action" hidden rel="noreferrer" target="_blank">목적지로 길 안내</a>
 <button id="share" type="button" hidden>친구에게 코스 보내기</button>
 <button id="save" type="button">이미지로 저장</button>
-<p id="note">이 카드는 차량에서 보낸 QR 코드의 주소에서만 만들어져요. 주소의 # 뒤에 담긴 경로는 서버로 전송되지 않아요.</p>
+<p id="note">이 카드는 차량에서 보낸 QR 코드의 주소에서만 만들어져요. 경로는 이 휴대폰에서 그리고 어디로도 보내지 않아요. 지도를 그리려고 주행 지역의 지도 조각을 지도 서비스(OpenFreeMap)에서 받아요.</p>
 <script>
 "use strict";
 // Everything comes from the part of the address after #, which the browser never sends to any server.
-// No map, font or script is fetched, so the drive is not revealed to anyone by opening this page.
+// The route is drawn here and never sent anywhere. The map under it is the one thing fetched: the map library
+// (pinned, integrity-checked) and the map tiles of the drive's area from OpenFreeMap, as the car does when parked.
+// No font is fetched and no referrer is sent.
 const params = new URLSearchParams(location.hash.slice(1));
 // A recommended course: ends trimmed in the car, a neighbourhood instead of the start, and no date or start time.
 const course = params.get("t") === "c";
@@ -83,133 +85,355 @@ function showError(message) {
   document.body.appendChild(p);
 }
 
-function draw() {
+const font = (weight, size) => `${weight} ${size}px -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif`;
+
+// The look, after benchmarking share cards (Nike Run Club, Strava, Garmin, map posters, postcards): one hero number,
+// the route on open space instead of a box, three shades of white only, and the brand small in a corner. What is ours
+// is the stamp: a drive that ends at a stamp place gets a postage stamp pressed on it, as in the car.
+const INK = "#ffffff", BG = "#131417", MUTED = "#b4b6ba", FAINT = "rgba(255,255,255,0.4)";
+
+function drawBackground(W, H) {
+  const fade = ctx.createLinearGradient(0, 0, 0, H);
+  fade.addColorStop(0, BG); fade.addColorStop(1, "#0b0c0e");
+  ctx.fillStyle = fade; ctx.fillRect(0, 0, W, H);
+  // A soft light under the route, so the line reads as lit rather than printed on flat black.
+  const glow = ctx.createRadialGradient(W / 2, 580, 0, W / 2, 580, 560);
+  glow.addColorStop(0, "rgba(255,255,255,0.06)"); glow.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H);
+}
+
+// A dot grid that thins out towards the edges: plainly not a map, and no box around the drive.
+function drawDots(box) {
+  const cx = box.x + box.w / 2, cy = box.y + box.h / 2, reach = Math.hypot(box.w, box.h) / 2;
+  for (let y = box.y + 20; y < box.y + box.h; y += 40) for (let x = box.x + 20; x < box.x + box.w; x += 40) {
+    const a = 0.14 * Math.max(0, 1 - Math.hypot(x - cx, y - cy) / reach);
+    if (a < 0.01) continue;
+    ctx.fillStyle = `rgba(255,255,255,${a.toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+// The line between the route and the figures, cut like the tear line of a ticket stub.
+function drawTearLine(W, y) {
+  ctx.save();
+  ctx.setLineDash([2, 14]); ctx.lineCap = "round"; ctx.lineWidth = 4; ctx.strokeStyle = "rgba(255,255,255,0.28)";
+  ctx.beginPath(); ctx.moveTo(48, y); ctx.lineTo(W - 48, y); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = BG;
+  for (const x of [0, W]) { ctx.beginPath(); ctx.arc(x, y, 24, 0, Math.PI * 2); ctx.fill(); }
+}
+
+function wave(x0, x1, y, amplitude, period, phase) {
+  ctx.beginPath();
+  for (let x = x0; x <= x1; x += 3) {
+    const at = y + Math.sin((x + phase) / period) * amplitude;
+    if (x === x0) ctx.moveTo(x, at); else ctx.lineTo(x, at);
+  }
+  ctx.stroke();
+}
+
+// A postage stamp: perforated paper, the sea every Busan stamp place sits by, and the place name, at the place's own
+// tilt as in the car. A stamp still to be collected (a course) is the faded dotted outline the car uses for it.
+function drawStamp(cx, cy, name, tilt, collected) {
+  const w = 208, h = 244, r = 9;
+  ctx.save();
+  ctx.translate(cx, cy); ctx.rotate(tilt * Math.PI / 180);
+  if (collected) {
+    ctx.fillStyle = INK; ctx.fillRect(-w / 2, -h / 2, w, h);
+    ctx.fillStyle = BG;
+    const across = 8, down = 9;
+    for (let i = 0; i <= across; i++) for (const y of [-h / 2, h / 2]) {
+      ctx.beginPath(); ctx.arc(-w / 2 + i * w / across, y, r, 0, Math.PI * 2); ctx.fill();
+    }
+    for (let i = 0; i <= down; i++) for (const x of [-w / 2, w / 2]) {
+      ctx.beginPath(); ctx.arc(x, -h / 2 + i * h / down, r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillRect(-w / 2 + 18, -h / 2 + 18, w - 36, h - 36);
+  } else {
+    ctx.setLineDash([6, 10]); ctx.lineWidth = 3; ctx.strokeStyle = FAINT;
+    ctx.strokeRect(-w / 2 + 8, -h / 2 + 8, w - 16, h - 16); ctx.setLineDash([]);
+  }
+  const ink = collected ? INK : FAINT;
+  ctx.textAlign = "center"; ctx.fillStyle = collected ? MUTED : FAINT; ctx.font = font(700, 20);
+  ctx.fillText(collected ? "부산 스탬프" : "받을 수 있는 스탬프", 0, -h / 2 + 62, w - 44);
+  ctx.strokeStyle = ink; ctx.lineWidth = 4; ctx.lineCap = "round";
+  for (let row = 0; row < 3; row++) wave(-62, 62, -14 + row * 18, 5, 11, row * 14);
+  ctx.fillStyle = ink; ctx.font = font(800, 36);
+  ctx.fillText(shortName(name), 0, h / 2 - 42, w - 52);
+  ctx.restore();
+  if (collected) {
+    // The postmark's cancel lines, running off the stamp's left edge.
+    ctx.save(); ctx.strokeStyle = "rgba(255,255,255,0.35)"; ctx.lineWidth = 3; ctx.lineCap = "round";
+    for (let row = 0; row < 3; row++) wave(cx - 200, cx - 40, cy + 26 + row * 20, 6, 13, 0);
+    ctx.restore();
+  }
+  ctx.textAlign = "start";
+}
+
+function drawPill(text, right, top) {
+  ctx.font = font(700, 24);
+  const w = ctx.measureText(text).width + 36;
+  ctx.strokeStyle = FAINT; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.roundRect(right - w, top, w, 46, 23); ctx.stroke();
+  ctx.fillStyle = MUTED; ctx.textBaseline = "middle"; ctx.fillText(text, right - w + 18, top + 24);
+  ctx.textBaseline = "alphabetic";
+}
+
+const MAP_CREDIT = "지도 OpenFreeMap · © OpenMapTiles · © OpenStreetMap 기여자";
+const MAP_INSET = 60;
+// Pinned and checked, so a changed copy of the map library never runs on a page that holds someone's drive.
+const MAPLIBRE = {
+  src: "https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js",
+  integrity: "sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj",
+};
+let lastRoute = null;
+
+// The car's night map (RouteMapCache.kt DARK_MAP_LAYERS): land, green and sea, then roads brightening with
+// importance. No labels, so no fonts or icons are fetched; only the map tiles themselves.
+function mapStyle() {
+  const road = (id, classes, color, narrow, wide) => ({
+    id, type: "line", source: "openmaptiles", "source-layer": "transportation", filter: ["in", "class", ...classes],
+    layout: { "line-cap": "round", "line-join": "round" },
+    // Zoomed out over a long drive the whole road network shows; it fades, so the route stays the brightest line.
+    paint: {
+      "line-color": color, "line-width": ["interpolate", ["exponential", 1.5], ["zoom"], 10, narrow, 16, wide],
+      "line-opacity": ["interpolate", ["linear"], ["zoom"], 6, 0.35, 10, 0.75, 12, 1],
+    },
+  });
+  return {
+    version: 8,
+    sources: { openmaptiles: { type: "vector", url: "https://tiles.openfreemap.org/planet" } },
+    layers: [
+      { id: "land", type: "background", paint: { "background-color": "#1B1C1F" } },
+      { id: "green", type: "fill", source: "openmaptiles", "source-layer": "landcover", filter: ["in", "class", "wood", "grass"], paint: { "fill-color": "#17181B" } },
+      { id: "water", type: "fill", source: "openmaptiles", "source-layer": "water", filter: ["!=", "brunnel", "tunnel"], paint: { "fill-color": "#08090A" } },
+      road("road-minor", ["minor", "service"], "#3A3C41", 0.35, 2.0),
+      road("road-mid", ["secondary", "tertiary"], "#5E6168", 0.7, 4.5),
+      road("road-major", ["primary", "trunk"], "#8F9198", 1.1, 7.0),
+      road("road-motorway", ["motorway"], "#B4B6BC", 1.6, 8.0),
+    ],
+  };
+}
+
+function loadMapLibrary() {
+  if (window.maplibregl) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = MAPLIBRE.src; script.integrity = MAPLIBRE.integrity;
+    script.crossOrigin = "anonymous"; script.referrerPolicy = "no-referrer";
+    script.onload = resolve; script.onerror = reject;
+    document.head.appendChild(script);
+  });
+}
+
+/**
+ * The map under the route, drawn on this phone. Only the tiles of the area are requested from OpenFreeMap; the
+ * route itself never leaves the page. Null when the map does not arrive in time, and the card stays as it is.
+ */
+async function loadMap(box, all) {
+  await loadMapLibrary();
+  const ratio = 2;
+  const holder = document.createElement("div");
+  holder.setAttribute("aria-hidden", "true");
+  holder.style.cssText = `position:fixed;left:-10000px;top:0;width:${box.w / ratio}px;height:${box.h / ratio}px`;
+  document.body.appendChild(holder);
+  const lats = all.map(p => p[0]), lons = all.map(p => p[1]);
+  const map = new maplibregl.Map({
+    container: holder, style: mapStyle(), interactive: false, attributionControl: false, preserveDrawingBuffer: true,
+    pixelRatio: ratio, fadeDuration: 0,
+    bounds: [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]],
+    fitBoundsOptions: { padding: MAP_INSET / ratio, maxZoom: 16 },
+  });
+  const ready = await new Promise(resolve => {
+    const timer = setTimeout(() => resolve(false), 12000);
+    map.once("idle", () => { clearTimeout(timer); resolve(true); });
+  });
+  if (!ready) { map.remove(); holder.remove(); return null; }
+  const image = document.createElement("canvas");
+  image.width = box.w; image.height = box.h;
+  image.getContext("2d").drawImage(map.getCanvas(), 0, 0, box.w, box.h);
+  // map.project answers in CSS pixels of the holder; the image is ratio times that.
+  const project = p => { const q = map.project([p[1], p[0]]); return [box.x + q.x * ratio, box.y + q.y * ratio]; };
+  return { image, project, zoom: map.getZoom() };
+}
+
+// The navigation arrow the mockups put where the car is: a white disc with a dark arrowhead pointing the way it went.
+function drawArrival(at, from) {
+  const angle = Math.atan2(at[1] - from[1], at[0] - from[0]);
+  ctx.save();
+  ctx.translate(...at);
+  ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 16;
+  ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(0, 0, 32, 0, Math.PI * 2); ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.rotate(angle + Math.PI / 2);
+  ctx.fillStyle = BG; ctx.beginPath();
+  ctx.moveTo(0, -17); ctx.lineTo(13, 14); ctx.lineTo(0, 7); ctx.lineTo(-13, 14); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+/** Where the route goes: [x, y] on the card for [lat, lon]. Fitted to the box when there is no map to follow. */
+function fitProjection(all, box) {
+  const k = Math.cos(all.reduce((s, p) => s + p[0], 0) / all.length * Math.PI / 180);
+  const xs = all.map(p => p[1] * k), ys = all.map(p => -p[0]);
+  const minX = Math.min(...xs), minY = Math.min(...ys);
+  const spanX = Math.max(Math.max(...xs) - minX, 1e-6), spanY = Math.max(Math.max(...ys) - minY, 1e-6);
+  const scale = Math.min((box.w - MAP_INSET * 2) / spanX, (box.h - MAP_INSET * 2) / spanY);
+  const ox = box.x + (box.w - spanX * scale) / 2, oy = box.y + (box.h - spanY * scale) / 2;
+  return p => [ox + (p[1] * k - minX) * scale, oy + (-p[0] - minY) * scale];
+}
+
+// As the mockups draw it: one clean white line over the dark map, no glow and no marks along it, a small start
+// and the arrow where the drive ended. One colour, whatever the speed.
+function drawRouteArea(box, pieces, destination, map) {
+  const all = pieces.flat().concat(destination ? [destination] : []);
+  if (map) {
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 28); ctx.clip();
+    ctx.drawImage(map.image, box.x, box.y, box.w, box.h);
+    ctx.restore();
+    ctx.strokeStyle = "rgba(255,255,255,0.08)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 28); ctx.stroke();
+  } else drawDots(box);
+  if (all.length < 2) return;
+  const at = map ? map.project : fitProjection(all, box);
+  ctx.save();
+  ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 28); ctx.clip();
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  // A recording gap is not driving: it is drawn dotted, never as a solid road.
+  ctx.setLineDash([2, 18]); ctx.lineWidth = 7; ctx.strokeStyle = "rgba(255,255,255,0.6)";
+  for (let i = 1; i < pieces.length; i++) {
+    ctx.beginPath(); ctx.moveTo(...at(pieces[i - 1][pieces[i - 1].length - 1])); ctx.lineTo(...at(pieces[i][0])); ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  // Thinner over a zoomed-out map, where a thick line would bury the coast road it follows.
+  ctx.lineWidth = map && map.zoom < 10 ? 7 : 10; ctx.strokeStyle = INK;
+  for (const piece of pieces) {
+    ctx.beginPath();
+    piece.forEach((p, i) => i === 0 ? ctx.moveTo(...at(p)) : ctx.lineTo(...at(p)));
+    ctx.stroke();
+  }
+  const line = pieces.flat();
+  if (line.length >= 2) {
+    const start = at(line[0]), end = at(line[line.length - 1]);
+    ctx.fillStyle = BG; ctx.beginPath(); ctx.arc(...start, 15, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(...start, 9, 0, Math.PI * 2); ctx.fill();
+    if (destination) {
+      // The place itself: the trimmed line stops short of it, so the last stretch is left dotted.
+      const pin = at(destination);
+      ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(...end, 9, 0, Math.PI * 2); ctx.fill();
+      ctx.setLineDash([2, 16]); ctx.lineWidth = 7; ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.beginPath(); ctx.moveTo(...end); ctx.lineTo(...pin); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(pin[0], pin[1] - 36, 28, Math.PI * 0.85, Math.PI * 2.15);
+      ctx.lineTo(pin[0], pin[1]); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = BG; ctx.beginPath(); ctx.arc(pin[0], pin[1] - 36, 11, 0, Math.PI * 2); ctx.fill();
+    } else {
+      // The heading comes from a point a little way back, so a last jittery fix does not turn the arrow.
+      let from = start;
+      for (let i = line.length - 2; i >= 0; i--) {
+        const p = at(line[i]);
+        if (Math.hypot(p[0] - end[0], p[1] - end[1]) >= 24) { from = p; break; }
+      }
+      drawArrival(end, from);
+    }
+  }
+  ctx.restore();
+}
+
+/** True when the drive is taller than it is wide on the map (Web Mercator, as the map tiles are drawn). */
+function runsNorthSouth(all) {
+  if (all.length < 2) return false;
+  const y = lat => Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360));
+  const ys = all.map(p => y(p[0])), xs = all.map(p => p[1] * Math.PI / 180);
+  return Math.max(...ys) - Math.min(...ys) > (Math.max(...xs) - Math.min(...xs)) * 0.95;
+}
+
+// Where the map ends and the figures sit. The figure keeps its unit at 0.4 of its size and its label beneath it.
+function layoutFor(all) {
+  return runsNorthSouth(all)
+    ? { mapBottom: 1040, tear: 1068, figure: 156, figureY: 1214, labelY: 1251, footerY: 1292, creditY: 1328 }
+    : { mapBottom: 910, tear: 950, figure: 210, figureY: 1150, labelY: 1198, footerY: 1262, creditY: 1314 };
+}
+
+function draw(map) {
   if (params.get("v") !== "1") { showError("드라이브 카드 정보가 없어요. 차량의 QR 코드를 다시 찍어 주세요."); return false; }
   const name = params.get("n") || "드라이브";
   const started = new Date(Number(params.get("s") || 0) * 1000);
   const km = params.get("k");
   const seconds = Number(params.get("e") || 0);
+  const simulated = params.get("m") === "1";
+  const stamp = params.get("st");
   const pieces = (params.get("p") || "").split(".").filter(Boolean).map(decodePolyline).filter(p => p.length >= 2);
   const destination = course && params.get("dl") && params.get("dn") ? [Number(params.get("dl")), Number(params.get("dn"))] : null;
   const W = canvas.width, H = canvas.height, pad = 72;
-  const font = (weight, size) => `${weight} ${size}px -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif`;
 
-  ctx.fillStyle = "#131417";
-  ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = "#b4b6ba";
-  ctx.font = font(400, 30);
-  ctx.fillText(course ? "추천 코스" : "나의 드라이브", pad, 110);
-  ctx.fillStyle = "#ffffff";
-  ctx.font = font(800, 64);
-  ctx.fillText(course ? `${shortName(name)}까지 가는 길` : `${shortName(name)}에 남긴 하루`, pad, 190, W - pad * 2);
+  drawBackground(W, H);
 
-  // The route area: a dot grid, plainly not a map, with the drive fitted inside it.
-  const box = { x: pad, y: 250, w: W - pad * 2, h: 700 };
-  ctx.save();
-  ctx.beginPath();
-  ctx.roundRect(box.x, box.y, box.w, box.h, 24);
-  ctx.clip();
-  ctx.fillStyle = "#0e0f11";
-  ctx.fillRect(box.x, box.y, box.w, box.h);
-  ctx.fillStyle = "rgba(255,255,255,0.09)";
-  for (let y = box.y + 18; y < box.y + box.h; y += 36) for (let x = box.x + 18; x < box.x + box.w; x += 36) {
-    ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
-  }
-  // The destination is fitted too, so the trimmed line and where it leads are both in view.
-  const all = pieces.flat().concat(destination ? [destination] : []);
-  if (all.length >= 2) {
-    const k = Math.cos(all.reduce((s, p) => s + p[0], 0) / all.length * Math.PI / 180);
-    const xs = all.map(p => p[1] * k), ys = all.map(p => -p[0]);
-    const minX = Math.min(...xs), minY = Math.min(...ys);
-    const spanX = Math.max(Math.max(...xs) - minX, 1e-6), spanY = Math.max(Math.max(...ys) - minY, 1e-6);
-    const inner = 70;
-    const scale = Math.min((box.w - inner * 2) / spanX, (box.h - inner * 2) / spanY);
-    const ox = box.x + (box.w - spanX * scale) / 2, oy = box.y + (box.h - spanY * scale) / 2;
-    const at = p => [ox + (p[1] * k - minX) * scale, oy + (-p[0] - minY) * scale];
-    ctx.lineCap = "round"; ctx.lineJoin = "round";
-    // A recording gap is not driving: it is drawn dashed, never as a solid road.
-    ctx.setLineDash([16, 16]); ctx.lineWidth = 5; ctx.strokeStyle = "rgba(180,182,186,0.8)";
-    for (let i = 1; i < pieces.length; i++) {
-      const a = at(pieces[i - 1][pieces[i - 1].length - 1]), b = at(pieces[i][0]);
-      ctx.beginPath(); ctx.moveTo(...a); ctx.lineTo(...b); ctx.stroke();
-    }
-    ctx.setLineDash([]);
-    for (const [width, style] of [[30, "rgba(255,255,255,0.16)"], [10, "#ffffff"]]) {
-      ctx.lineWidth = width; ctx.strokeStyle = style;
-      for (const piece of pieces) {
-        ctx.beginPath();
-        piece.forEach((p, i) => i === 0 ? ctx.moveTo(...at(p)) : ctx.lineTo(...at(p)));
-        ctx.stroke();
-      }
-    }
-    // Distance marks every km, or wider for a long drive, as in the car.
-    const total = pieces.reduce((s, piece) => s + piece.slice(1).reduce((t, p, i) => t + haversineKm(piece[i], p), 0), 0);
-    const step = total <= 10 ? 1 : total <= 20 ? 2 : total <= 50 ? 5 : total <= 100 ? 10 : total <= 200 ? 20 : 50;
-    let driven = 0, next = step;
-    ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = font(800, 26);
-    for (const piece of pieces) for (let i = 1; i < piece.length; i++) {
-      const len = haversineKm(piece[i - 1], piece[i]);
-      while (len > 0 && driven + len >= next) {
-        const t = (next - driven) / len;
-        if (total - next >= step * 0.3) {
-          const p = at([piece[i - 1][0] + (piece[i][0] - piece[i - 1][0]) * t, piece[i - 1][1] + (piece[i][1] - piece[i - 1][1]) * t]);
-          ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(...p, 24, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = "#131417"; ctx.fillText(String(next), ...p);
-        }
-        next += step;
-      }
-      driven += len;
-    }
-    const line = pieces.flat();
-    const start = at(line[0]), end = at(line[line.length - 1]);
-    ctx.fillStyle = "#131417"; ctx.beginPath(); ctx.arc(...start, 24, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 8; ctx.stroke();
-    ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(...start, 9, 0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(...end, 18, 0, Math.PI * 2); ctx.fill();
-    if (destination) {
-      // The place itself: the trimmed line stops short of it, so the last stretch is left dashed.
-      const pin = at(destination);
-      ctx.setLineDash([12, 14]); ctx.lineWidth = 5; ctx.strokeStyle = "rgba(255,255,255,0.6)";
-      ctx.beginPath(); ctx.moveTo(...end); ctx.lineTo(...pin); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(pin[0], pin[1] - 34, 26, Math.PI * 0.85, Math.PI * 2.15);
-      ctx.lineTo(pin[0], pin[1]); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = "#131417"; ctx.beginPath(); ctx.arc(pin[0], pin[1] - 34, 10, 0, Math.PI * 2); ctx.fill();
-    }
-    ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
-  }
-  ctx.restore();
+  // Title. The stamp or the simulation mark takes the top right, so the title keeps clear of it.
+  const corner = stamp ? 250 : simulated ? 200 : 0;
+  ctx.fillStyle = MUTED; ctx.font = font(700, 28);
+  ctx.fillText(course ? "추천 코스" : "나의 드라이브", pad, 116);
+  ctx.fillStyle = INK; ctx.font = font(800, 66);
+  ctx.fillText(course ? `${shortName(name)}까지 가는 길` : `${shortName(name)}에 남긴 하루`, pad, 196, W - pad * 2 - corner);
 
-  const label = course ? "코스 거리 · 앞뒤 500m 제외" : params.get("d") === "v" ? "차량 주행거리" : "추정 거리";
-  ctx.fillStyle = "#b4b6ba"; ctx.font = font(400, 30);
-  ctx.fillText(label + (params.get("m") === "1" ? " · 시뮬레이션" : ""), pad, 1030);
-  ctx.fillStyle = "#ffffff"; ctx.font = font(800, 150);
+  // The route, over the map once it has arrived and over the dot grid until then (or if it never does).
+  // The destination is fitted too, so a trimmed course and where it leads both show. The top right is left to the stamp.
+  // A drive that runs north–south gets a taller map and a more compact figure below it, so the route is not a
+  // thin strip down the middle of a wide map.
+  const L = layoutFor(pieces.flat().concat(destination ? [destination] : []));
+  const top = stamp ? 300 : 250;
+  const box = { x: pad, y: top, w: W - pad * 2, h: L.mapBottom - top };
+  drawRouteArea(box, pieces, destination, map);
+  lastRoute = { box, all: pieces.flat().concat(destination ? [destination] : []) };
+  if (stamp) drawStamp(W - pad - 104, 160, stamp, Number(params.get("sr") || -4), !course);
+  else if (simulated) drawPill("시뮬레이션", W - pad, 82);
+
+  drawTearLine(W, L.tear);
+
+  // The figure, its unit at 0.4 of its size and its label beneath it.
   const value = km ?? "—";
-  ctx.fillText(value, pad, 1180);
+  ctx.fillStyle = INK; ctx.font = font(800, L.figure);
+  ctx.fillText(value, pad - 8, L.figureY);
   if (km) {
     const w = ctx.measureText(value).width;
-    ctx.font = font(800, 60); ctx.fillText("km", pad + w + 16, 1180);
+    ctx.font = font(800, L.figure * 0.4); ctx.fillStyle = MUTED; ctx.fillText("km", pad - 8 + w + 18, L.figureY);
   }
-  const date = `${started.getFullYear()}.${String(started.getMonth() + 1).padStart(2, "0")}.${String(started.getDate()).padStart(2, "0")}`;
-  ctx.font = font(400, 30); ctx.fillStyle = "#ffffff";
+  const label = course ? "코스 거리 · 앞뒤 500m 제외" : params.get("d") === "v" ? "차량 주행거리" : "추정 거리";
+  ctx.fillStyle = MUTED; ctx.font = font(500, 28);
+  ctx.fillText(label + (simulated ? " · 시뮬레이션" : ""), pad, L.labelY);
+
   // The same footer as the cards in the car: place · time · date. A course has no date, only where it sets out from.
-  const stamp = params.get("st");
-  const footer = course
-    ? [`${params.get("a") || "출발지 주변"} 출발`, `약 ${minutesText(seconds)}`].concat(stamp ? [`스탬프 ${shortName(stamp)}`] : []).join(" · ")
-    : `${shortName(name)} · ${minutesText(seconds)} · ${date}`;
-  ctx.fillText(footer, pad, 1270, W - pad * 2 - 120);
-  ctx.textAlign = "end"; ctx.font = font(800, 34);
-  ctx.fillText("여정", W - pad, 1270);
+  const date = `${started.getFullYear()}.${String(started.getMonth() + 1).padStart(2, "0")}.${String(started.getDate()).padStart(2, "0")}`;
+  const parts = course
+    ? [`${params.get("a") || "출발지 주변"} 출발`, `약 ${minutesText(seconds)}`]
+    : [shortName(name), minutesText(seconds), date];
+  ctx.font = font(500, 30);
+  let x = pad;
+  const right = W - pad - 110;
+  parts.forEach((part, i) => {
+    if (i > 0) { ctx.fillStyle = FAINT; ctx.fillText(" · ", x, L.footerY); x += ctx.measureText(" · ").width; }
+    ctx.fillStyle = INK; ctx.fillText(part, x, L.footerY, Math.max(40, right - x)); x += Math.min(ctx.measureText(part).width, Math.max(40, right - x));
+  });
+  ctx.textAlign = "end"; ctx.font = font(800, 36); ctx.fillStyle = INK;
+  ctx.fillText("여정", W - pad, L.footerY);
   ctx.textAlign = "start";
+  // The map's credit cannot be left off. It goes under the card, not over the map, as in the car.
+  if (map) { ctx.fillStyle = FAINT; ctx.font = font(500, 20); ctx.fillText(MAP_CREDIT, pad, L.creditY, W - pad * 2); }
   return true;
 }
 
-if (draw() && course) {
+const drawn = draw(null);
+// The card shows at once on its dot grid, then again over the map when the map has arrived.
+if (drawn && lastRoute && lastRoute.all.length >= 2) {
+  loadMap(lastRoute.box, lastRoute.all).then(map => { if (map) draw(map); }).catch(() => {});
+}
+
+if (drawn && course) {
   const name = params.get("n") || "목적지";
   document.title = `여정 추천 코스 · ${shortName(name)}`;
   canvas.setAttribute("aria-label", "추천 코스");
   document.getElementById("save").classList.add("secondary");
   document.getElementById("note").textContent =
-    "출발과 도착 주변 500m를 뺀 경로예요. 길 안내를 누르면 목적지 이름과 위치만 카카오맵으로 전달돼요.";
+    "출발과 도착 주변 500m를 뺀 경로예요. 지도 조각은 OpenFreeMap에서 받고, 길 안내를 누르면 목적지 이름과 위치만 카카오맵으로 전달돼요.";
   const dl = params.get("dl"), dn = params.get("dn");
   if (dl && dn) {
     const guide = document.getElementById("guide");

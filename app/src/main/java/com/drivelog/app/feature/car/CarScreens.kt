@@ -573,18 +573,23 @@ private fun RecordPoster(routeMaps: RouteMapCache, record: RecordV?, modifier: M
     val shape = RoundedCornerShape(d.u(14))
     // The same order as the cards and the phone card: title, route, the distance, then a footer line.
     Column(modifier.clip(shape).background(DriveCardBackground).border(1.dp, line(), shape).padding(d.u(20)).testTag("record-poster")) {
-        T("나의 드라이브", d.t(14), color = DriveCardMuted, maxLines = 1)
-        Spacer(Modifier.height(d.u(4)))
-        if (record != null) T("${shortName(record.placeName)}에 남긴 하루", d.t(30), color = DriveCardText, maxLines = 1, display = true)
+        CardHeading(record, "나의 드라이브", 30)
         Spacer(Modifier.height(d.u(14)))
-        Box(Modifier.align(Alignment.CenterHorizontally).aspectRatio(ROUTE_IMAGE_ASPECT)) {
+        // The map's own shape. A north–south drive's tall map takes the height the pane has, centred.
+        val aspect = routeImageAspect(record)
+        val tall = aspect < 1f && fillHeight
+        Box(
+            if (tall) Modifier.align(Alignment.CenterHorizontally).weight(1f).aspectRatio(aspect, matchHeightConstraintsFirst = true)
+            else Modifier.align(Alignment.CenterHorizontally).aspectRatio(aspect),
+        ) {
             RouteVisual(routeMaps, record, record?.placeName, Modifier.matchParentSize(), drawRoute = true, replay = replay)
             if (onReplay != null) ReplayButton(onReplay, Modifier.align(Alignment.TopEnd).padding(d.u(10)))
         }
-        if (fillHeight) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(d.u(14)))
+        if (tall) Spacer(Modifier.height(d.u(14))) else if (fillHeight) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(d.u(14)))
         if (record != null) {
+            CardTearLine(d.u(20), Modifier.padding(bottom = d.u(4)))
+            PosterDistance(record, 58, DriveCardMuted)
             T(distanceLabel(record.distanceSource) + if (record.simulated) " · 시뮬레이션" else "", d.t(15), color = DriveCardMuted, maxLines = 1)
-            PosterDistance(record, 58)
             Spacer(Modifier.height(d.u(6)))
             PosterFooter(record)
             MapCredit(routeMaps, record)

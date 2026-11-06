@@ -215,7 +215,7 @@
     return [bar('기록 상세', '#/'), el('h1', {}, record.placeName), el('p', { class: 'muted' }, DriveCard.date(record.startedAtMillis)), el('div', {}, statusTags(record)),
       el('div', { class: 'stats' },
         el('div', {}, el('b', {}, record.distanceKm == null ? '—' : `${record.distanceKm.toFixed(1)} km`), el('span', {}, DriveCard.distanceLabel(record))),
-        el('div', {}, el('b', {}, DriveCard.minutes(record)), el('span', {}, '기록 경과 시간')),
+        el('div', {}, el('b', {}, DriveCard.minutes(record)), el('span', {}, '기록 시간')),
         el('div', {}, el('b', {}, isVisit ? '확인' : '미확인'), el('span', {}, '방문'))),
       record.status === 'PARTIAL' ? el('p', { class: 'notice' }, '앱이 중단되기 전까지 저장된 구간이에요. 위치가 없는 구간은 점선으로 표시하며 임의로 채우지 않습니다.') : null,
       preview, el('h2', {}, '사진'), photoSlot, file,

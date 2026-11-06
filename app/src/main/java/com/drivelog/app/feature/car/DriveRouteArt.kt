@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -35,8 +36,6 @@ val DriveCardBackground = Color(0xFF131417)
 val DriveCardPressed = Color(0xFF313236)
 val DriveCardText = Color.White
 val DriveCardMuted = Color(0xFFB4B6BA)
-private val GridDot = Color.White.copy(alpha = 0.09f)
-private val RouteGlow = Color.White.copy(alpha = 0.16f)
 
 private const val GAP_MS = 60_000L
 private const val MAX_DRAWN_POINTS = 240
@@ -142,11 +141,21 @@ fun DriveRouteArt(
                 )
                 return@Canvas
             }
+            // A soft light under the route, and dots that thin out towards the edges: no box, and plainly not a map.
+            drawCircle(
+                androidx.compose.ui.graphics.Brush.radialGradient(listOf(Color.White.copy(alpha = 0.06f), Color.Transparent), center, size.maxDimension * 0.6f),
+                size.maxDimension * 0.6f, center,
+            )
             val spacing = 22f * d.scale * density
+            val reach = kotlin.math.hypot(size.width, size.height) / 2f
             var y = spacing / 2
             while (y < size.height) {
                 var x = spacing / 2
-                while (x < size.width) { drawCircle(GridDot, 1.2f * density, Offset(x, y)); x += spacing }
+                while (x < size.width) {
+                    val fade = 1f - (Offset(x, y) - center).getDistance() / reach
+                    if (fade > 0.07f) drawCircle(Color.White.copy(alpha = 0.14f * fade), 1.2f * density, Offset(x, y))
+                    x += spacing
+                }
                 y += spacing
             }
         }
@@ -155,7 +164,7 @@ fun DriveRouteArt(
             val all = route.pieces.flatten() + listOfNotNull(pin)
             if (all.isEmpty()) return@Canvas
             val traced = trace.value
-            val width = 4f * d.scale * density
+            val width = 5f * d.scale * density
             val project: (MapPoint) -> Offset = if (map != null) {
                 val (scale, offset) = cropOf(map, size.width, size.height)
                 ({ point -> map.project(point) * scale + offset })
@@ -164,20 +173,13 @@ fun DriveRouteArt(
             lines.zipWithNext().forEach { (before, after) ->
                 drawLine(DriveCardMuted, before.last(), after.first(), width * 0.6f, StrokeCap.Round, dashedEffect(width))
             }
+            // As the mockups draw it over the map: one clean white line, no glow and no marks along it. One colour,
+            // whatever the speed. The km splits are listed beside the card instead.
             lines.forEach { line ->
-                val path = pathOf(line)
-                drawPath(path, RouteGlow, style = Stroke(width * 3.2f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-                drawPath(path, DriveCardText, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
-            }
-            if (traced >= 1f) route.marks.forEach { mark ->
-                val at = project(mark.point)
-                drawCircle(DriveCardText, width * 2.4f, at)
-                val number = measurer.measure(mark.km.toString(), TextStyle(color = DriveCardBackground, fontSize = d.t(12), fontWeight = FontWeight.Bold), maxLines = 1)
-                drawText(number, topLeft = at - Offset(number.size.width / 2f, number.size.height / 2f))
+                drawPath(pathOf(line), DriveCardText, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
             }
             lines.firstOrNull()?.firstOrNull()?.let { start ->
-                drawCircle(DriveCardBackground, width * 2.4f, start)
-                drawCircle(DriveCardText, width * 2.4f, start, style = Stroke(width * 0.8f))
+                drawCircle(DriveCardBackground, width * 1.5f, start)
                 drawCircle(DriveCardText, width * 0.9f, start)
             }
             val landing = ((traced - PIN_LANDS_AT) / (1f - PIN_LANDS_AT)).coerceIn(0f, 1f)
@@ -192,12 +194,34 @@ fun DriveRouteArt(
                     drawText(layout, topLeft = Offset(x, (tip.y - 34f * d.scale * density).coerceAtLeast(4f)), alpha = landing)
                 }
             }
-            // The moving end while tracing, and where the drive stopped when no pin marks it.
-            if (pin == null || traced < 1f) lines.lastOrNull()?.lastOrNull()?.let { end ->
-                drawCircle(DriveCardText, width * 1.8f, end)
+            // The car's arrow, as the navigation mockups show it: moving along while tracing, and where the drive
+            // stopped when no pin marks it.
+            if (pin == null || traced < 1f) lines.lastOrNull()?.let { line ->
+                val end = line.last()
+                // Heading from a little way back, so a last jittery fix does not turn the arrow.
+                val from = line.asReversed().firstOrNull { (it - end).getDistance() >= width * 5f } ?: lines.first().first()
+                drawArrival(end, from, width * 3.2f)
             }
         }
         // The map's credit sits under the card (MapCredit), not over the map: a caption beside it is enough.
+    }
+}
+
+/** A white disc with a dark arrowhead pointing the way the car went. */
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawArrival(at: Offset, from: Offset, radius: Float) {
+    val heading = Math.toDegrees(kotlin.math.atan2((at.y - from.y).toDouble(), (at.x - from.x).toDouble())).toFloat() + 90f
+    drawCircle(Color.Black.copy(alpha = 0.35f), radius * 1.18f, at)
+    drawCircle(DriveCardText, radius, at)
+    rotate(heading, at) {
+        val r = radius * 0.55f
+        val arrow = Path().apply {
+            moveTo(at.x, at.y - r)
+            lineTo(at.x + r * 0.78f, at.y + r * 0.85f)
+            lineTo(at.x, at.y + r * 0.42f)
+            lineTo(at.x - r * 0.78f, at.y + r * 0.85f)
+            close()
+        }
+        drawPath(arrow, DriveCardBackground)
     }
 }
 

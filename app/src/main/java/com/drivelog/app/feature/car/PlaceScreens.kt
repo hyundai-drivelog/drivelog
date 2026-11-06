@@ -141,15 +141,19 @@ private fun LatestDriveCard(routeMaps: RouteMapCache, record: RecordV, modifier:
         modifier.clip(RoundedCornerShape(d.u(14))).background(DriveCardBackground).pressClick(onClick = onClick)
             .padding(d.u(18)).testTag("latest-drive"),
     ) {
-        T("최근 드라이브", d.t(13), color = DriveCardMuted, maxLines = 1)
-        Spacer(Modifier.height(d.u(2)))
-        T("${shortName(record.placeName)}에 남긴 하루", d.t(26), color = DriveCardText, maxLines = 1, display = true)
+        CardHeading(record, "최근 드라이브", 26)
         Spacer(Modifier.height(d.u(10)))
-        RouteVisual(routeMaps, record, null, Modifier.fillMaxWidth().weight(1f))
-        Spacer(Modifier.height(d.u(10)))
+        // A north–south drive keeps its tall map whole, as tall as the card allows and centred.
+        val aspect = routeImageAspect(record)
+        RouteVisual(
+            routeMaps, record, null,
+            if (aspect < 1f) Modifier.weight(1f).aspectRatio(aspect, matchHeightConstraintsFirst = true).align(Alignment.CenterHorizontally)
+            else Modifier.fillMaxWidth().weight(1f),
+        )
+        CardTearLine(d.u(18), Modifier.padding(vertical = d.u(4)))
         // The same label as every card, so a simulated or estimated number is named as one here too.
+        PosterDistance(record, 48, DriveCardMuted)
         T(posterLabel(record), d.t(14), Modifier.testTag("latest-drive-label"), color = DriveCardMuted, maxLines = 1)
-        PosterDistance(record, 48)
         Spacer(Modifier.height(d.u(4)))
         PosterFooter(record)
         MapCredit(routeMaps, record)
@@ -592,14 +596,15 @@ private val PosterScrim = Brush.verticalGradient(
 private fun DrivePoster(store: JourneyStore, routeMaps: RouteMapCache, record: RecordV, index: Int, onClick: () -> Unit) {
     val d = LocalCarDimens.current
     val photo = rememberRecordPhoto(store, record)
-    val bundled = posterImage(record.placeName)
     val press = remember { MutableInteractionSource() }
     val pressed by press.collectIsPressedAsState()
     Box(
         Modifier.revealOnce(index).fillMaxWidth().aspectRatio(POSTER_ASPECT).clip(RoundedCornerShape(d.u(14))).background(DriveCardBackground)
             .pressClick(source = press, indication = null, onClick = onClick).testTag("drive-card"),
     ) {
-        if (photo != null || bundled != null) PhotoPoster(record, photo, bundled) else BlackPoster(routeMaps, record)
+        // The driver's own photo makes a photo poster. Otherwise the drive is shown on its map, as the mockups draw
+        // it; a bundled photo of the place is only an example, so it stays a small banner under the map.
+        if (photo != null) PhotoPoster(record, photo) else BlackPoster(routeMaps, record)
         if (pressed) Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 0.28f)))
     }
 }
@@ -608,12 +613,12 @@ private fun DrivePoster(store: JourneyStore, routeMaps: RouteMapCache, record: R
 private fun posterLabel(record: RecordV) = distanceLabel(record.distanceSource) + labels(record)
 
 @Composable
-internal fun PosterDistance(record: RecordV, size: Int) {
+internal fun PosterDistance(record: RecordV, size: Int, unitColor: Color = DriveCardText) {
     val d = LocalCarDimens.current
     val shown = rememberCountUp(record.distanceKm ?: 0.0)
     Row(verticalAlignment = Alignment.Bottom) {
         T(if (record.distanceKm != null) distanceText(shown) else distanceText(null), d.t(size), color = DriveCardText, maxLines = 1, display = true)
-        if (record.distanceKm != null) T("km", d.t(size * 2 / 5), Modifier.padding(start = d.u(6), bottom = d.u(size / 8)), color = DriveCardText, maxLines = 1, display = true)
+        if (record.distanceKm != null) T("km", d.t(size * 2 / 5), Modifier.padding(start = d.u(6), bottom = d.u(size / 8)), color = unitColor, maxLines = 1, display = true)
     }
 }
 
@@ -622,27 +627,24 @@ internal fun PosterDistance(record: RecordV, size: Int) {
 internal fun PosterFooter(record: RecordV) {
     val d = LocalCarDimens.current
     Row(verticalAlignment = Alignment.CenterVertically) {
-        T("${shortName(record.placeName)} · ${elapsedText(record.elapsedSeconds)} · ${posterDate(record.startedAtMillis)}", d.t(14), Modifier.weight(1f), color = DriveCardText, maxLines = 1)
+        CardFooterText(listOf(shortName(record.placeName), elapsedText(record.elapsedSeconds), posterDate(record.startedAtMillis)), Modifier.weight(1f))
         Spacer(Modifier.width(d.u(6)))
         T("여정", d.t(15), color = DriveCardText, bold = true, maxLines = 1)
     }
 }
 
 @Composable
-private fun BoxScope.PhotoPoster(record: RecordV, photo: ImageBitmap?, bundled: Int?) {
+private fun BoxScope.PhotoPoster(record: RecordV, photo: ImageBitmap) {
     val d = LocalCarDimens.current
-    PosterPhoto(record.placeName, photo, bundled, Modifier.matchParentSize())
+    PosterPhoto(record.placeName, photo, null, Modifier.matchParentSize())
     // White type stays readable over any photo, and the middle is left clear for the picture and the route.
     Box(Modifier.matchParentSize().background(PosterScrim))
     // The same order as every other card: title, route, the distance, then the footer.
     Column(Modifier.matchParentSize().padding(d.u(18))) {
-        // A bundled photo is of the place, not of this drive, and must not pass for the driver's own.
-        T(if (photo == null) "나의 드라이브 · 예시 사진" else "나의 드라이브", d.t(13), Modifier.testTag("poster-title"), color = DriveCardText, maxLines = 1)
-        Spacer(Modifier.height(d.u(2)))
-        T("${shortName(record.placeName)}에 남긴 하루", d.t(26), color = DriveCardText, maxLines = 1, display = true)
+        CardHeading(record, "나의 드라이브", 26, eyebrowColor = DriveCardText)
         RouteGlyph(remember(record.id) { record.route.toMapPoints() }, Modifier.fillMaxWidth().weight(1f).padding(vertical = d.u(8)), DriveCardText, d.u(3), trace = true)
-        T(posterLabel(record), d.t(14), color = DriveCardText, maxLines = 1)
         PosterDistance(record, 58)
+        T(posterLabel(record), d.t(14), color = DriveCardText, maxLines = 1)
         Spacer(Modifier.height(d.u(4)))
         PosterFooter(record)
     }
@@ -652,20 +654,25 @@ private fun BoxScope.PhotoPoster(record: RecordV, photo: ImageBitmap?, bundled: 
 private fun BlackPoster(routeMaps: RouteMapCache, record: RecordV) {
     val d = LocalCarDimens.current
     Column(Modifier.fillMaxSize().padding(d.u(18))) {
-        T("나의 드라이브", d.t(13), color = DriveCardMuted, maxLines = 1)
-        Spacer(Modifier.height(d.u(2)))
-        T("${shortName(record.placeName)}에 남긴 하루", d.t(26), color = DriveCardText, maxLines = 1, display = true)
+        CardHeading(record, "나의 드라이브", 26)
         Spacer(Modifier.height(d.u(10)))
         // The image's own shape, so the map is shown whole; its credit is the caption at the foot of the card.
-        RouteVisual(routeMaps, record, null, Modifier.fillMaxWidth().aspectRatio(ROUTE_IMAGE_ASPECT))
-        if (placeHasPhoto(record.placeName)) {
+        // A north–south drive's tall map takes the height the card has, centred, with no banner under it.
+        val aspect = routeImageAspect(record)
+        val tall = aspect < 1f
+        if (tall) RouteVisual(
+            routeMaps, record, null,
+            Modifier.weight(1f).aspectRatio(aspect, matchHeightConstraintsFirst = true).align(Alignment.CenterHorizontally),
+        ) else RouteVisual(routeMaps, record, null, Modifier.fillMaxWidth().aspectRatio(aspect))
+        if (!tall && placeHasPhoto(record.placeName)) {
             Spacer(Modifier.height(d.u(8)))
             // A banner, because these bundled photos blur at any larger size.
             PlacePhoto(record.placeName, Modifier.fillMaxWidth().aspectRatio(4.2f))
         }
-        Spacer(Modifier.weight(1f))
+        if (!tall) Spacer(Modifier.weight(1f))
+        CardTearLine(d.u(18), Modifier.padding(vertical = d.u(4)))
+        PosterDistance(record, 58, DriveCardMuted)
         T(posterLabel(record), d.t(14), color = DriveCardMuted, maxLines = 1)
-        PosterDistance(record, 58)
         Spacer(Modifier.height(d.u(4)))
         PosterFooter(record)
         MapCredit(routeMaps, record)

@@ -26,10 +26,16 @@ import androidx.compose.ui.unit.Dp
  * picture faintly inside a dashed ring, so the driver can see what is there to collect. It never moves.
  */
 @Composable
-fun StampArt(place: StampPlace, collected: Boolean, size: Dp, modifier: Modifier = Modifier) {
-    val ink = if (collected) fg() else line()
+fun StampArt(
+    place: StampPlace, collected: Boolean, size: Dp, modifier: Modifier = Modifier,
+    /** The drive card's stamp is always white on its dark paper, whatever the theme. */
+    ink: Color? = null,
+    /** False where the stamp sits on a postage stamp that is tilted already. */
+    tilted: Boolean = true,
+) {
+    val ink = ink ?: if (collected) fg() else line()
     Canvas(
-        modifier.size(size).rotate(if (collected) place.tilt else 0f).testTag("stamp-art-${place.id}")
+        modifier.size(size).rotate(if (collected && tilted) place.tilt else 0f).testTag("stamp-art-${place.id}")
             .semantics { contentDescription = place.name + if (collected) " 스탬프" else " 스탬프, 아직 방문 전" },
     ) {
         val u = this.size.width / 100f

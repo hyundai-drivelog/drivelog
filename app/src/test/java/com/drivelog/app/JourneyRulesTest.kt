@@ -383,4 +383,15 @@ class JourneyRulesTest {
         // Too short to keep anything once both ends are cut: no course at all.
         assertNull(courseShareUrl("https://example.org/card/", record.copy(route = route.take(8))))
     }
+
+    @Test fun aDriveUpTheCoastGetsATallMapAndOneAlongItAWideOne() {
+        fun line(vararg points: Pair<Double, Double>) = points.map { com.drivelog.app.feature.car.MapPoint(it.first, it.second) }
+        // Haeundae to Gyeongpo: 2.6 degrees north, 0.26 west.
+        assertTrue(com.drivelog.app.feature.car.runsNorthSouth(line(35.1587 to 129.1604, 37.7519 to 128.8961)))
+        // Gwangalli to Haeundae: mostly east.
+        assertFalse(com.drivelog.app.feature.car.runsNorthSouth(line(35.1532 to 129.1186, 35.1587 to 129.1604)))
+        // A square drive is not tall: a degree of latitude near 35N is longer on the map than a degree of longitude.
+        assertTrue(com.drivelog.app.feature.car.runsNorthSouth(line(35.0 to 129.0, 35.1 to 129.1)))
+        assertFalse(com.drivelog.app.feature.car.runsNorthSouth(line(35.0 to 129.0)))
+    }
 }
