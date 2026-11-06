@@ -197,7 +197,7 @@ fun DriveRouteArt(
                 drawCircle(DriveCardText, width * 1.8f, end)
             }
         }
-        if (map != null) T(ATTRIBUTION, d.t(12), Modifier.align(Alignment.BottomStart).padding(d.u(8)), color = DriveCardMuted, maxLines = 1)
+        // The map's credit sits under the card (MapCredit), not over the map: a caption beside it is enough.
     }
 }
 

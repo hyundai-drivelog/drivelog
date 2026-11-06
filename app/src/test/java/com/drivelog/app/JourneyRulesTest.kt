@@ -34,6 +34,10 @@ import com.drivelog.app.feature.car.previewLinkCode
 import com.drivelog.app.feature.car.routeMapStyle
 import com.drivelog.app.feature.car.thinnedForDrawing
 import com.drivelog.app.feature.car.mergePlaces
+import com.drivelog.app.feature.car.thisMonth
+import com.drivelog.app.feature.car.collectedStamps
+import com.drivelog.app.feature.car.stampPlaceFor
+import com.drivelog.app.feature.car.stampResultFor
 import com.drivelog.app.core.recording.resolveDistance
 import com.drivelog.app.feature.car.CarDimens
 import com.drivelog.app.feature.car.CarLayoutMode
@@ -307,5 +311,38 @@ class JourneyRulesTest {
         assertEquals(CarLayoutMode.STACKED, carDimensFor(853f, 1210f).mode)
         // Very short panels shrink but stay within bounds.
         assertTrue(carDimensFor(800f, 300f).scale >= 0.6f)
+    }
+
+    @Test fun theMonthLineCountsOnlyDrivesStartedThisCalendarMonth() {
+        fun at(text: String) = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.KOREA).parse(text)!!.time
+        fun drive(id: String, start: String) = RecordV(id, null, null, "광안리", at(start), at(start) + 60_000, 60, 1.0, DistanceSource.GPS, RecordStatus.COMPLETE, false, emptyList())
+        val records = listOf(drive("a", "2026-11-01 00:05"), drive("b", "2026-10-31 23:55"), drive("c", "2025-11-10 12:00"))
+        assertEquals(listOf("a"), thisMonth(records, at("2026-11-06 09:00")).map { it.id })
+    }
+
+    private fun stampDrive(id: String, start: Long, endLat: Double, endLon: Double, km: Double = 5.0, simulated: Boolean = false) =
+        RecordV(id, null, null, "목적지", start, start + 600_000, 600, km, DistanceSource.GPS, RecordStatus.COMPLETE, simulated,
+            listOf(listOf(35.1534, 129.1183, 0.0), listOf(endLat, endLon, 1.0)))
+
+    @Test fun aStampNeedsOnlyARealDriveThatEndedAtThePlace() {
+        // The demo route's last point, about 70 m from the beach's point.
+        assertEquals("haeundae", stampPlaceFor(stampDrive("a", 1, 35.159297, 129.160109))?.id)
+        // Two kilometres short is not a visit.
+        assertNull(stampPlaceFor(stampDrive("b", 1, 35.170, 129.180)))
+        // A simulated drive and a start pressed by mistake never count, wherever they ended.
+        assertNull(stampPlaceFor(stampDrive("c", 1, 35.159297, 129.160109, simulated = true)))
+        assertNull(stampPlaceFor(stampDrive("d", 1, 35.159297, 129.160109, km = 0.05)))
+    }
+
+    @Test fun theFirstVisitHoldsTheStampAndAReturnIsNamedAsOne() {
+        val first = stampDrive("first", 1_000, 35.1587, 129.1604)
+        val again = stampDrive("again", 2_000, 35.1590, 129.1600)
+        val records = listOf(again, first)
+        assertEquals("first", collectedStamps(records)["haeundae"]?.record?.id)
+        assertEquals(1, collectedStamps(records).size)
+        assertTrue(stampResultFor(first, records)!!.isNew)
+        assertFalse(stampResultFor(again, records)!!.isNew)
+        // Deleting the first drive hands the stamp to the next one.
+        assertTrue(stampResultFor(again, listOf(again))!!.isNew)
     }
 }

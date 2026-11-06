@@ -23,6 +23,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
@@ -57,7 +59,8 @@ import org.maplibre.android.snapshotter.MapSnapshot
 import org.maplibre.android.snapshotter.MapSnapshotter
 
 private const val STYLE_URL = "https://tiles.openfreemap.org/styles/dark"
-const val ATTRIBUTION = "OpenFreeMap © OpenMapTiles  Data from OpenStreetMap"
+/** Required by the data's licences (ODbL for OpenStreetMap, and OpenMapTiles and OpenFreeMap's terms); never removed. */
+const val ATTRIBUTION = "지도 OpenFreeMap · © OpenMapTiles · © OpenStreetMap 기여자"
 private const val IMAGE_WIDTH = 1200
 private const val IMAGE_HEIGHT = 800
 private const val RENDER_TIMEOUT_MS = 30_000L
@@ -285,6 +288,18 @@ class RouteMapCache(context: Context) {
     }
 
     private companion object { const val TAG = "DriveLogMap" }
+}
+
+/**
+ * The map's credit as a caption at the foot of a card, so the map itself stays clear. Shown only when this card has
+ * a real map; a card without one credits nobody.
+ */
+@Composable
+fun MapCredit(cache: RouteMapCache, record: RecordV?, modifier: Modifier = Modifier) {
+    val ready by cache.ready.collectAsState()
+    if (record == null || !(record.id in ready || cache.has(record.id))) return
+    val d = LocalCarDimens.current
+    T(ATTRIBUTION, d.t(12), modifier.padding(top = d.u(6)).testTag("map-credit"), color = DriveCardMuted.copy(alpha = 0.7f), maxLines = 2) // A credit cut short is no credit, so narrow cards wrap it.
 }
 
 /**

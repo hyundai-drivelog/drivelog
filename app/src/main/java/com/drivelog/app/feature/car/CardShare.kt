@@ -115,7 +115,8 @@ fun CardQrScreen(record: RecordV, baseUrl: String, onBack: () -> Unit) {
                 T("휴대폰 카메라로 QR 코드를 비추면 이번 드라이브 카드가 열려요", d.t(20))
                 T("${record.placeName} · ${distanceText(record.distanceKm)} km · ${elapsedText(record.elapsedSeconds)}", d.t(20), bold = true, maxLines = 1)
                 Spacer(Modifier.height(d.u(6)))
-                T("경로는 QR 코드에 담겨 휴대폰으로만 전달돼요. 서버에는 저장되지 않아요", d.t(16), Modifier.testTag("qr-privacy"), color = muted())
+                // The code carries the whole route, the start included, so whoever scans it sees where the drive began.
+                T("출발지를 포함한 경로가 QR 코드에 담겨, 찍은 휴대폰으로만 전달돼요. 서버에는 저장되지 않아요", d.t(16), Modifier.testTag("qr-privacy"), color = muted(), maxLines = 2)
                 Spacer(Modifier.height(d.u(10)))
                 SecondaryButton("돌아가기", "qr-back", Modifier.width(d.u(280)), size = ButtonSize.MEDIUM, onClick = onBack)
             }

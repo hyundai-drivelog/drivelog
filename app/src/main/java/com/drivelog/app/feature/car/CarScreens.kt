@@ -149,7 +149,8 @@ fun RecordingScreen(
     Box(Modifier.fillMaxSize().padding(horizontal = d.u(22), vertical = d.u(8))) {
         if (!d.stacked && parked) RoadLines(Modifier.fillMaxSize())
         Column(Modifier.align(Alignment.TopStart).fillMaxWidth()) {
-            TopBar(if (parked) onEnd else null, null, if (recording.simulated) ({ SimulationBadge() }) else null)
+            // No back arrow: Back hides the app everywhere else, and ending a drive has its own labelled button.
+            TopBar(null, null, if (recording.simulated) ({ SimulationBadge() }) else null)
         }
         Column(
             Modifier.align(Alignment.Center).padding(top = d.u(20)).verticalScroll(rememberScrollState()),
@@ -504,7 +505,7 @@ fun ContinueOnPhoneScreen(record: RecordV?, onBackToGoal: () -> Unit, preview: B
 
 /** Shown after a drive and again from 내 기록; only the latter offers deletion, as a two-step action. */
 @Composable
-fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String, onBack: () -> Unit, onHistory: (() -> Unit)?, onDelete: (() -> Unit)?, onPhonePreview: (() -> Unit)? = null, onRecommend: (() -> Unit)? = null) {
+fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String, onBack: () -> Unit, onHistory: (() -> Unit)?, onDelete: (() -> Unit)?, onPhonePreview: (() -> Unit)? = null, onRecommend: (() -> Unit)? = null, stamp: StampResult? = null) {
     val d = LocalCarDimens.current
     var confirmDelete by rememberConfirmState(record?.id)
     var replay by remember(record?.id) { mutableIntStateOf(0) }
@@ -517,6 +518,10 @@ fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String,
                 if (record != null) {
                     Spacer(Modifier.height(d.u(18)))
                     RecordStats(record)
+                    if (stamp != null) {
+                        Spacer(Modifier.height(d.u(14)))
+                        StampLine(stamp)
+                    }
                     if (splits.size >= 2) {
                         Spacer(Modifier.height(d.u(18)))
                         SplitList(splits)
@@ -575,6 +580,7 @@ private fun RecordPoster(routeMaps: RouteMapCache, record: RecordV?, modifier: M
             PosterDistance(record, 58)
             Spacer(Modifier.height(d.u(6)))
             PosterFooter(record)
+            MapCredit(routeMaps, record)
         }
     }
 }

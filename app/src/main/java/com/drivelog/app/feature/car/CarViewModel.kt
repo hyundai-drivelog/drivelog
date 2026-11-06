@@ -113,7 +113,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     /** Debug switch; forced on where FusedLocation is absent, since nothing real can be recorded there. */
     var simulationRequested by mutableStateOf(false)
         private set
-    val locationSupported = platform.locationSupported()
+    var locationSupported by mutableStateOf(platform.locationSupported())
+        private set
     val simulation get() = BuildConfig.DEBUG && (simulationRequested || !locationSupported)
     val recordingAvailable get() = locationSupported || simulation
 
@@ -206,7 +207,16 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * The location service can come up after this app after a boot. Asked again rather than trusting the first
+     * answer, but never mid-drive, where a change would flip what the recording is.
+     */
+    private fun recheckLocationSupport() {
+        if (!locationSupported && recorder.state.value == null) locationSupported = platform.locationSupported()
+    }
+
     fun onForeground() {
+        recheckLocationSupport()
         platform.refreshNaviPlaces()
         refreshLocation()
         fillRouteMaps()
@@ -353,6 +363,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     fun startRecording() {
         if (!parked) return
         val place = selectedPlace ?: return
+        recheckLocationSupport()
         if (!recordingAvailable) { message = "이 차량에서는 위치를 수집할 수 없어 기록할 수 없어요."; return }
         // Before the recording exists: guidance that ended earlier must not read as the end of this drive.
         platform.clearRouteEnd()

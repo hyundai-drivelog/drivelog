@@ -73,7 +73,7 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                 model::askToStop, model::changeSimGear, model::openNavigation,
             )
             Screen.LOCKED -> DrivingLockScreen()
-            Screen.DIAGNOSTICS -> DiagnosticsRoute(model.simulation, model::toggleSimulation, { model.home() })
+            Screen.DIAGNOSTICS -> if (BuildConfig.DEBUG) DiagnosticsRoute(model.simulation, model::toggleSimulation, { model.home() })
             Screen.RECOVERY -> shown.recovered?.let { record ->
                 RecoveryScreen(model.routeMaps, record, shown.recoveredPoint, model::keepPartial, model::deletePartial)
             }
@@ -93,6 +93,7 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                 model.routeMaps, shown.opened, "드라이브 기록", { model.goBack() }, null, model::deleteOpenedRecord,
                 shown.opened?.let { model.sendToPhone(it) },
                 shown.opened?.takeIf { BuildConfig.DEBUG }?.let { record -> { model.openCourseShare(record) } },
+                shown.opened?.let { stampResultFor(it, store.journey.records) },
             )
             Screen.COMMUNITY -> CommunityScreen(
                 model.communityCourses, model.courseOriginFilter, model.courseDestinationFilter,
@@ -118,12 +119,15 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                 model.routeMaps, shown.finished, "드라이브를 기록했어요", model::home, model::openHistory, null,
                 shown.finished?.let { model.sendToPhone(it) },
                 shown.finished?.takeIf { BuildConfig.DEBUG }?.let { record -> { model.openCourseShare(record) } },
+                shown.finished?.let { stampResultFor(it, store.journey.records) },
             )
             Screen.OFFLINE -> OfflineSavedScreen(shown.finished, shown.finished?.destinationPoint(), store.token != null, model.syncing, model::retrySync, model::home)
             Screen.HOME -> HomeScreen(
                 shown.query, speech, canSearch, model.simulation, navi.routeMessage,
                 remember(store.recentPlaces, navi) { model.recentPlaces() }, remember(store.savedPlaces, navi) { model.savedPlaces() },
-                store.journey.records, searchActions, model::selectPlace, model::openRecord, model::openHistory, { model.go(Screen.DIAGNOSTICS) },
+                store.journey.records, searchActions, model::selectPlace, model::openRecord, model::openHistory,
+                // A developer tool: a submitted build must not open it from a hidden gesture.
+                if (BuildConfig.DEBUG) ({ model.go(Screen.DIAGNOSTICS) }) else null,
                 if (BuildConfig.PHONE_LINK_ENABLED) ({ LinkControl(store.token != null, model::openLink, model::unlink) }) else null,
                 // A mockup of a community: a submitted build must not offer it.
                 if (BuildConfig.DEBUG) model::openCommunity else null,
