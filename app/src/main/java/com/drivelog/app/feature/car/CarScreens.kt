@@ -149,7 +149,8 @@ fun RecordingScreen(
     Box(Modifier.fillMaxSize().padding(horizontal = d.u(22), vertical = d.u(8))) {
         if (!d.stacked && parked) RoadLines(Modifier.fillMaxSize())
         Column(Modifier.align(Alignment.TopStart).fillMaxWidth()) {
-            TopBar(if (parked) onEnd else null, null, if (recording.simulated) ({ SimulationBadge() }) else null)
+            // No back arrow: Back hides the app everywhere else, and ending a drive has its own labelled button.
+            TopBar(null, null, if (recording.simulated) ({ SimulationBadge() }) else null)
         }
         Column(
             Modifier.align(Alignment.Center).padding(top = d.u(20)).verticalScroll(rememberScrollState()),
@@ -186,10 +187,11 @@ fun RecordingScreen(
                 Spacer(Modifier.height(d.u(8)))
             }
             if (parked) {
-                PrimaryButton("기록 종료", "end-recording", Modifier.width(d.u(280)), onClick = onEnd)
+                // Reaching P is what makes these usable, so they arrive with it (motion is on only from that moment).
+                PrimaryButton("기록 종료", "end-recording", Modifier.width(d.u(280)).appear(parked), onClick = onEnd)
                 if (naviAvailable) {
                     Spacer(Modifier.height(d.u(8)))
-                    SecondaryButton("내비 화면 보기", "open-navigation", Modifier.width(d.u(280)), onClick = onOpenNavigation)
+                    SecondaryButton("내비 화면 보기", "open-navigation", Modifier.width(d.u(280)).appear(parked, 60), onClick = onOpenNavigation)
                 }
                 if (routeMessage != null) {
                     Spacer(Modifier.height(d.u(6)))
@@ -258,7 +260,7 @@ private fun RoadLines(modifier: Modifier) {
 // --- 05 정차 후 기록 종료 ---------------------------------------------------------------------------
 
 @Composable
-fun StopConfirmScreen(routeMaps: RouteMapCache, recording: Recording, onEnd: () -> Unit, onDiscard: () -> Unit, onContinue: () -> Unit) {
+fun StopConfirmScreen(routeMaps: RouteMapCache, recording: Recording, onEnd: () -> Unit, onDiscard: () -> Unit, onContinue: () -> Unit, saving: Boolean = false) {
     val d = LocalCarDimens.current
     val away = recording.kmToPlace()
     val hasRoute = recording.points.size >= 2
@@ -308,9 +310,10 @@ fun StopConfirmScreen(routeMaps: RouteMapCache, recording: Recording, onEnd: () 
             Spacer(Modifier.height(d.u(14)))
             // The irreversible choice sits last, away from the main one.
             Row(Modifier.fillMaxWidth().padding(bottom = d.u(10)), horizontalArrangement = Arrangement.spacedBy(d.u(14))) {
-                PrimaryButton("저장하고 마치기", "confirm-end", Modifier.weight(1f), onClick = onEnd)
-                SecondaryButton("계속 기록", "keep-recording", Modifier.weight(1f), onClick = onContinue)
-                if (barelyMoved) SecondaryButton(if (confirmDiscard) "한 번 더 누르면 삭제" else "저장 안 함", "discard-recording", Modifier.weight(1f), danger = confirmDiscard) {
+                // While the drive is written out the guide's Loading state holds every choice, so none can race the save.
+                PrimaryButton("저장하고 마치기", "confirm-end", Modifier.weight(1f), loading = saving, onClick = onEnd)
+                SecondaryButton("계속 기록", "keep-recording", Modifier.weight(1f), enabled = !saving, onClick = onContinue)
+                if (barelyMoved) SecondaryButton(if (confirmDiscard) "한 번 더 누르면 삭제" else "저장 안 함", "discard-recording", Modifier.weight(1f), enabled = !saving, danger = confirmDiscard) {
                     if (confirmDiscard) onDiscard() else confirmDiscard = true
                 }
             }
@@ -504,7 +507,7 @@ fun ContinueOnPhoneScreen(record: RecordV?, onBackToGoal: () -> Unit, preview: B
 
 /** Shown after a drive and again from 내 기록; only the latter offers deletion, as a two-step action. */
 @Composable
-fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String, onBack: () -> Unit, onHistory: (() -> Unit)?, onDelete: (() -> Unit)?, onPhonePreview: (() -> Unit)? = null, onRecommend: (() -> Unit)? = null) {
+fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String, onBack: () -> Unit, onHistory: (() -> Unit)?, onDelete: (() -> Unit)?, onPhonePreview: (() -> Unit)? = null, onRecommend: (() -> Unit)? = null, stamp: StampResult? = null) {
     val d = LocalCarDimens.current
     var confirmDelete by rememberConfirmState(record?.id)
     var replay by remember(record?.id) { mutableIntStateOf(0) }
@@ -517,6 +520,15 @@ fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String,
                 if (record != null) {
                     Spacer(Modifier.height(d.u(18)))
                     RecordStats(record)
+                    if (stamp != null) {
+                        Spacer(Modifier.height(d.u(14)))
+                        StampLine(stamp)
+                        // A mockup of the partner model: debug builds only, and it changes nothing.
+                        if (com.drivelog.app.BuildConfig.DEBUG) {
+                            Spacer(Modifier.height(d.u(8)))
+                            BenefitPreview(stamp.place)
+                        }
+                    }
                     if (splits.size >= 2) {
                         Spacer(Modifier.height(d.u(18)))
                         SplitList(splits)
@@ -575,6 +587,7 @@ private fun RecordPoster(routeMaps: RouteMapCache, record: RecordV?, modifier: M
             PosterDistance(record, 58)
             Spacer(Modifier.height(d.u(6)))
             PosterFooter(record)
+            MapCredit(routeMaps, record)
         }
     }
 }
@@ -621,8 +634,9 @@ private fun SplitList(splits: List<KmSplit>) {
     Column(Modifier.fillMaxWidth().testTag("splits")) {
         T("구간 기록", d.t(16), color = muted())
         Spacer(Modifier.height(d.u(6)))
-        splits.forEach { split ->
-            Row(Modifier.fillMaxWidth().padding(vertical = d.u(3)), verticalAlignment = Alignment.CenterVertically) {
+        splits.forEachIndexed { index, split ->
+            // Down the list in drive order, as the numbered marks appear along the route on the card.
+            Row(Modifier.revealOnce(index + 2).fillMaxWidth().padding(vertical = d.u(3)), verticalAlignment = Alignment.CenterVertically) {
                 val whole = split.toKm == Math.floor(split.toKm)
                 Box(Modifier.size(d.u(28)).clip(CircleShape).background(fg()), contentAlignment = Alignment.Center) {
                     if (whole) T(split.toKm.toInt().toString(), d.t(13), color = MaterialTheme.colorScheme.background, bold = true, maxLines = 1)

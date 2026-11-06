@@ -1,5 +1,16 @@
 package com.drivelog.app.feature.car
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -157,39 +168,58 @@ private fun CarButton(
     val pressed by press.collectIsPressedAsState()
     val inactive = !enabled || loading
     val filledPressed = if (colors.background.luminance() > 0.5f) Color(0xFF313236) else Color(0xFFC7C9CE)
-    val fill = when {
-        filled && inactive -> ink.copy(alpha = 0.05f)
-        filled -> if (pressed) filledPressed else colors.primary
-        inactive -> Color.Transparent
-        else -> ink.copy(alpha = if (pressed) 0.1f else 0.05f)
-    }
-    val content = when {
-        inactive -> ink.copy(alpha = 0.32f)
-        filled -> colors.onPrimary
-        danger -> colors.error
-        else -> ink
-    }
+    // Pressed shows at once, as the guide's touch response asks; leaving a state eases, so the change is seen.
+    val fill by animateColorAsState(
+        when {
+            filled && inactive -> ink.copy(alpha = 0.05f)
+            filled -> if (pressed) filledPressed else colors.primary
+            inactive -> Color.Transparent
+            else -> ink.copy(alpha = if (pressed) 0.1f else 0.05f)
+        },
+        if (pressed) snap() else motionTween(), label = "button fill",
+    )
+    val content by animateColorAsState(
+        when {
+            inactive -> ink.copy(alpha = 0.32f)
+            filled -> colors.onPrimary
+            danger -> colors.error
+            else -> ink
+        },
+        motionTween(), label = "button content",
+    )
     Row(
         modifier.heightIn(min = size.height).clip(shape).background(fill)
             .then(if (!filled && inactive) Modifier.border(4.dp, ink.copy(alpha = 0.1f), shape) else Modifier)
             .pressClick(enabled = !inactive, source = press, indication = null, onClick = onClick).padding(horizontal = size.padding).testTag(tag),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
     ) {
-        if (loading) LoadingIndicator(LoadingStyle.LINEAR, size.icon, ink)
-        else {
-            if (icon != null) {
-                CarIcon(icon, size.icon, content)
-                Spacer(Modifier.width(size.padding / 3))
-            }
-            // The label is a fixed size while the layout scales, so it shrinks to fit rather than being cut off.
-            BasicText(
-                keepWordsTogether(text), Modifier.weight(1f, fill = false),
-                style = TextStyle(color = content, fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis,
-                autoSize = TextAutoSize.StepBased(MinButtonLabel, size.label, 1.sp),
-            )
-            if (chevron) {
-                Spacer(Modifier.width(size.padding / 3))
-                CarIcon(CarGlyph.CHEVRON_RIGHT, size.icon, content)
+        // The guide's Loading state swaps the label for the loader; a new label (a toggle, an armed delete) swaps in place.
+        val motion = LocalMotionEnabled.current
+        AnimatedContent(
+            if (loading) null else text, Modifier.weight(1f, fill = false), label = "button label",
+            transitionSpec = {
+                if (!motion) EnterTransition.None togetherWith ExitTransition.None
+                else (fadeIn(tween(MOTION_STATE_MS, 60)) + slideInVertically(tween(MOTION_STATE_MS + 60)) { it / 3 }) togetherWith
+                    (fadeOut(tween(90)) + slideOutVertically(tween(MOTION_STATE_MS)) { -it / 3 })
+            },
+            contentAlignment = Alignment.Center,
+        ) { label ->
+            if (label == null) Box(contentAlignment = Alignment.Center) { LoadingIndicator(LoadingStyle.LINEAR, size.icon, ink) }
+            else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
+                if (icon != null) {
+                    CarIcon(icon, size.icon, content)
+                    Spacer(Modifier.width(size.padding / 3))
+                }
+                // The label is a fixed size while the layout scales, so it shrinks to fit rather than being cut off.
+                BasicText(
+                    keepWordsTogether(label), Modifier.weight(1f, fill = false),
+                    style = TextStyle(color = content, fontWeight = FontWeight.Bold), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    autoSize = TextAutoSize.StepBased(MinButtonLabel, size.label, 1.sp),
+                )
+                if (chevron) {
+                    Spacer(Modifier.width(size.padding / 3))
+                    CarIcon(CarGlyph.CHEVRON_RIGHT, size.icon, content)
+                }
             }
         }
     }

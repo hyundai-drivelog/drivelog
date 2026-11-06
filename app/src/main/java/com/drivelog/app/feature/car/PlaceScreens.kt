@@ -147,9 +147,12 @@ private fun LatestDriveCard(routeMaps: RouteMapCache, record: RecordV, modifier:
         Spacer(Modifier.height(d.u(10)))
         RouteVisual(routeMaps, record, null, Modifier.fillMaxWidth().weight(1f))
         Spacer(Modifier.height(d.u(10)))
+        // The same label as every card, so a simulated or estimated number is named as one here too.
+        T(posterLabel(record), d.t(14), Modifier.testTag("latest-drive-label"), color = DriveCardMuted, maxLines = 1)
         PosterDistance(record, 48)
         Spacer(Modifier.height(d.u(4)))
         PosterFooter(record)
+        MapCredit(routeMaps, record)
     }
 }
 
@@ -268,7 +271,7 @@ class SearchActions(val onQuery: (String) -> Unit, val onSearch: () -> Unit, val
 @Composable
 fun HomeScreen(
     query: String, speech: SpeechState, canSearch: Boolean, simulation: Boolean, note: String?, recents: List<NaviPlace>, saved: List<NaviPlace>, records: List<RecordV>,
-    actions: SearchActions, onPlace: (NaviPlace) -> Unit, onRecord: (RecordV) -> Unit, onHistory: () -> Unit, onHold: () -> Unit, linkControl: (@Composable () -> Unit)?,
+    actions: SearchActions, onPlace: (NaviPlace) -> Unit, onRecord: (RecordV) -> Unit, onHistory: () -> Unit, onHold: (() -> Unit)?, linkControl: (@Composable () -> Unit)?,
     onCommunity: (() -> Unit)? = null,
     routeMaps: RouteMapCache? = null,
 ) {
@@ -294,11 +297,15 @@ fun HomeScreen(
                 SearchBar(query, speech, canSearch, actions.onQuery, actions.onSearch, actions.onVoice, actions.onClear)
                 val line = when {
                     !canSearch -> "내비게이션에 연결할 수 없어요"
-                    else -> speech.message ?: note
+                    // The search leaves for the navigation app, and nothing there says to come back here.
+                    else -> speech.message ?: note ?: "찾기를 누르면 내비가 열려요. 목적지를 정하고 여정으로 돌아오면 기록을 시작할 수 있어요"
                 }
                 if (line != null) {
                     Spacer(Modifier.height(d.u(6)))
-                    T(line, d.t(16), Modifier.testTag("search-note"), color = if (!canSearch) MaterialTheme.colorScheme.error else muted(), bold = !canSearch, maxLines = 2)
+                    // Listening, heard, not found: each new word of state replaces the last in place.
+                    Crossfade(line, label = "search note", animationSpec = motionTween<Float>(MOTION_ENTER_MS)) { shownLine ->
+                        T(shownLine, d.t(16), Modifier.testTag("search-note"), color = if (!canSearch) MaterialTheme.colorScheme.error else muted(), bold = !canSearch, maxLines = 2)
+                    }
                 }
                 Spacer(Modifier.height(d.u(12)))
                 Tabs(listOf("최근 검색", "저장한 장소"), tab) { tab = it }
@@ -429,16 +436,23 @@ fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<R
     Column(Modifier.fillMaxSize().padding(horizontal = d.u(22), vertical = d.u(8))) {
         TopBar(onBack, null, if (sorted.any { it.simulated }) ({ SimulationBadge() }) else null, title = "내 기록")
         Column(Modifier.fillMaxWidth().weight(1f)) {
-            Tabs(listOf("이전 드라이브", "드라이브 카드"), tab) { tab = it }
+            Tabs(listOf("이전 드라이브", "드라이브 카드", "스탬프"), tab) { tab = it }
             Spacer(Modifier.height(d.u(12)))
             Crossfade(tab, Modifier.fillMaxSize(), tween(if (LocalMotionEnabled.current) 220 else 0), label = "history tab") { shownTab ->
             when {
+                // Every place shows from the start, so a first-time driver sees what there is to collect.
+                shownTab == 2 -> StampBoard(sorted)
                 sorted.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     T("아직 기록한 드라이브가 없어요. 장소를 고르고 기록을 시작해 보세요", d.t(20), Modifier.testTag("history-empty"), color = muted(), align = TextAlign.Center)
                 }
                 // Lazy, as every row converts and draws a whole route and the list only ever grows.
                 shownTab == 0 -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(d.u(8))) {
-                    item(key = "summary") { HistorySummary(sorted) }
+                    item(key = "summary") {
+                        Column {
+                            HistorySummary(sorted)
+                            MonthLine(sorted)
+                        }
+                    }
                     driveTimeline(drives, onRecord)
                     if (shortDrives.isNotEmpty()) {
                         item(key = "short") { ShortDrivesRow(shortDrives.size, shortOpen) { shortOpen = !shortOpen } }
@@ -488,6 +502,25 @@ private fun HistorySummary(records: List<RecordV>) {
         Spacer(Modifier.width(d.u(36)))
         Stat(elapsedText(shownSeconds.roundToLong()), "", "기록 시간")
     }
+}
+
+/** This month beside the all-time totals, so a returning driver sees the month build up. Nothing is compared or ranked. */
+@Composable
+private fun MonthLine(records: List<RecordV>) {
+    val d = LocalCarDimens.current
+    val month = remember(records) { thisMonth(records) }
+    // Counts up with the totals above it, so the month reads as part of the same summary.
+    val shownCount = rememberCountUp(month.size.toDouble())
+    val shownKm = rememberCountUp(month.sumOf { it.distanceKm ?: 0.0 })
+    val text = if (month.isEmpty()) "이번 달은 아직 드라이브가 없어요"
+    else "이번 달 ${shownCount.roundToInt()}회 · ${distanceText(shownKm)} km"
+    T(text, d.t(16), Modifier.padding(bottom = d.u(4)).testTag("history-month"), color = muted(), maxLines = 1)
+}
+
+internal fun thisMonth(records: List<RecordV>, now: Long = System.currentTimeMillis()): List<RecordV> {
+    val key = SimpleDateFormat("yyyyMM", Locale.KOREA)
+    val current = key.format(Date(now))
+    return records.filter { key.format(Date(it.startedAtMillis)) == current }
 }
 
 private fun recordDay(millis: Long) = SimpleDateFormat("M월 d일 (E)", Locale.KOREA).format(Date(millis))
@@ -603,7 +636,8 @@ private fun BoxScope.PhotoPoster(record: RecordV, photo: ImageBitmap?, bundled: 
     Box(Modifier.matchParentSize().background(PosterScrim))
     // The same order as every other card: title, route, the distance, then the footer.
     Column(Modifier.matchParentSize().padding(d.u(18))) {
-        T("나의 드라이브", d.t(13), color = DriveCardText, maxLines = 1)
+        // A bundled photo is of the place, not of this drive, and must not pass for the driver's own.
+        T(if (photo == null) "나의 드라이브 · 예시 사진" else "나의 드라이브", d.t(13), Modifier.testTag("poster-title"), color = DriveCardText, maxLines = 1)
         Spacer(Modifier.height(d.u(2)))
         T("${shortName(record.placeName)}에 남긴 하루", d.t(26), color = DriveCardText, maxLines = 1, display = true)
         RouteGlyph(remember(record.id) { record.route.toMapPoints() }, Modifier.fillMaxWidth().weight(1f).padding(vertical = d.u(8)), DriveCardText, d.u(3), trace = true)
@@ -622,7 +656,7 @@ private fun BlackPoster(routeMaps: RouteMapCache, record: RecordV) {
         Spacer(Modifier.height(d.u(2)))
         T("${shortName(record.placeName)}에 남긴 하루", d.t(26), color = DriveCardText, maxLines = 1, display = true)
         Spacer(Modifier.height(d.u(10)))
-        // The image's own shape, so cropping cannot remove the map attribution drawn on it.
+        // The image's own shape, so the map is shown whole; its credit is the caption at the foot of the card.
         RouteVisual(routeMaps, record, null, Modifier.fillMaxWidth().aspectRatio(ROUTE_IMAGE_ASPECT))
         if (placeHasPhoto(record.placeName)) {
             Spacer(Modifier.height(d.u(8)))
@@ -634,6 +668,7 @@ private fun BlackPoster(routeMaps: RouteMapCache, record: RecordV) {
         PosterDistance(record, 58)
         Spacer(Modifier.height(d.u(4)))
         PosterFooter(record)
+        MapCredit(routeMaps, record)
     }
 }
 

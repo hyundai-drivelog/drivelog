@@ -35,7 +35,7 @@ class DrivelogApp : Application() {
         super.onCreate()
         platform = createCarPlatform(this).also { it.connect() }
         vehicleState = VehicleStateMonitor(this).also { it.start() }
-        store = JourneyStore(this, BuildConfig.API_BASE_URL, scope).also { it.startSyncLoop() }
+        store = JourneyStore(this, BuildConfig.API_BASE_URL, scope, queueForServer = BuildConfig.PHONE_LINK_ENABLED).also { it.startSyncLoop() }
         recorder = Recorder(this, platform, scope) { simulatedGear.value }
         routeMaps = RouteMapCache(this)
     }

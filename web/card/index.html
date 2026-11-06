@@ -12,21 +12,28 @@
          font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
          display: flex; flex-direction: column; align-items: center; padding: 16px; gap: 16px; }
   canvas { width: 100%; max-width: 540px; height: auto; border-radius: 16px; display: block; }
-  button { width: 100%; max-width: 540px; min-height: 56px; border: 0; border-radius: 16px; font: inherit; font-size: 18px;
-           font-weight: 700; background: var(--ink); color: var(--bg); cursor: pointer; }
+  button, a.action { width: 100%; max-width: 540px; min-height: 56px; border: 0; border-radius: 16px; font: inherit; font-size: 18px;
+           font-weight: 700; background: var(--ink); color: var(--bg); cursor: pointer; display: flex; align-items: center;
+           justify-content: center; text-decoration: none; }
+  .secondary { background: var(--soft) !important; color: var(--ink) !important; }
+  [hidden] { display: none !important; }
   p { margin: 0; max-width: 540px; color: var(--muted); font-size: 14px; line-height: 1.5; text-align: center; }
   .error { padding-top: 30vh; font-size: 18px; color: var(--ink); }
 </style>
 </head>
 <body>
 <canvas id="card" width="1080" height="1350" aria-label="드라이브 카드"></canvas>
+<a id="guide" class="action" hidden rel="noreferrer" target="_blank">목적지로 길 안내</a>
+<button id="share" type="button" hidden>친구에게 코스 보내기</button>
 <button id="save" type="button">이미지로 저장</button>
-<p>이 카드는 차량에서 보낸 QR 코드의 주소에서만 만들어져요. 주소의 # 뒤에 담긴 경로는 서버로 전송되지 않아요.</p>
+<p id="note">이 카드는 차량에서 보낸 QR 코드의 주소에서만 만들어져요. 주소의 # 뒤에 담긴 경로는 서버로 전송되지 않아요.</p>
 <script>
 "use strict";
 // Everything comes from the part of the address after #, which the browser never sends to any server.
 // No map, font or script is fetched, so the drive is not revealed to anyone by opening this page.
 const params = new URLSearchParams(location.hash.slice(1));
+// A recommended course: ends trimmed in the car, a neighbourhood instead of the start, and no date or start time.
+const course = params.get("t") === "c";
 const canvas = document.getElementById("card");
 const ctx = canvas.getContext("2d");
 
@@ -83,6 +90,7 @@ function draw() {
   const km = params.get("k");
   const seconds = Number(params.get("e") || 0);
   const pieces = (params.get("p") || "").split(".").filter(Boolean).map(decodePolyline).filter(p => p.length >= 2);
+  const destination = course && params.get("dl") && params.get("dn") ? [Number(params.get("dl")), Number(params.get("dn"))] : null;
   const W = canvas.width, H = canvas.height, pad = 72;
   const font = (weight, size) => `${weight} ${size}px -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif`;
 
@@ -90,10 +98,10 @@ function draw() {
   ctx.fillRect(0, 0, W, H);
   ctx.fillStyle = "#b4b6ba";
   ctx.font = font(400, 30);
-  ctx.fillText("나의 드라이브", pad, 110);
+  ctx.fillText(course ? "추천 코스" : "나의 드라이브", pad, 110);
   ctx.fillStyle = "#ffffff";
   ctx.font = font(800, 64);
-  ctx.fillText(`${shortName(name)}에 남긴 하루`, pad, 190, W - pad * 2);
+  ctx.fillText(course ? `${shortName(name)}까지 가는 길` : `${shortName(name)}에 남긴 하루`, pad, 190, W - pad * 2);
 
   // The route area: a dot grid, plainly not a map, with the drive fitted inside it.
   const box = { x: pad, y: 250, w: W - pad * 2, h: 700 };
@@ -107,7 +115,8 @@ function draw() {
   for (let y = box.y + 18; y < box.y + box.h; y += 36) for (let x = box.x + 18; x < box.x + box.w; x += 36) {
     ctx.beginPath(); ctx.arc(x, y, 2, 0, Math.PI * 2); ctx.fill();
   }
-  const all = pieces.flat();
+  // The destination is fitted too, so the trimmed line and where it leads are both in view.
+  const all = pieces.flat().concat(destination ? [destination] : []);
   if (all.length >= 2) {
     const k = Math.cos(all.reduce((s, p) => s + p[0], 0) / all.length * Math.PI / 180);
     const xs = all.map(p => p[1] * k), ys = all.map(p => -p[0]);
@@ -151,16 +160,26 @@ function draw() {
       }
       driven += len;
     }
-    const start = at(all[0]), end = at(all[all.length - 1]);
+    const line = pieces.flat();
+    const start = at(line[0]), end = at(line[line.length - 1]);
     ctx.fillStyle = "#131417"; ctx.beginPath(); ctx.arc(...start, 24, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 8; ctx.stroke();
     ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(...start, 9, 0, Math.PI * 2); ctx.fill();
     ctx.beginPath(); ctx.arc(...end, 18, 0, Math.PI * 2); ctx.fill();
+    if (destination) {
+      // The place itself: the trimmed line stops short of it, so the last stretch is left dashed.
+      const pin = at(destination);
+      ctx.setLineDash([12, 14]); ctx.lineWidth = 5; ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.beginPath(); ctx.moveTo(...end); ctx.lineTo(...pin); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = "#ffffff"; ctx.beginPath(); ctx.arc(pin[0], pin[1] - 34, 26, Math.PI * 0.85, Math.PI * 2.15);
+      ctx.lineTo(pin[0], pin[1]); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#131417"; ctx.beginPath(); ctx.arc(pin[0], pin[1] - 34, 10, 0, Math.PI * 2); ctx.fill();
+    }
     ctx.textAlign = "start"; ctx.textBaseline = "alphabetic";
   }
   ctx.restore();
 
-  const label = params.get("d") === "v" ? "차량 주행거리" : "추정 거리";
+  const label = course ? "코스 거리 · 앞뒤 500m 제외" : params.get("d") === "v" ? "차량 주행거리" : "추정 거리";
   ctx.fillStyle = "#b4b6ba"; ctx.font = font(400, 30);
   ctx.fillText(label + (params.get("m") === "1" ? " · 시뮬레이션" : ""), pad, 1030);
   ctx.fillStyle = "#ffffff"; ctx.font = font(800, 150);
@@ -172,15 +191,46 @@ function draw() {
   }
   const date = `${started.getFullYear()}.${String(started.getMonth() + 1).padStart(2, "0")}.${String(started.getDate()).padStart(2, "0")}`;
   ctx.font = font(400, 30); ctx.fillStyle = "#ffffff";
-  // The same footer as the cards in the car: place · time · date.
-  ctx.fillText(`${shortName(name)} · ${minutesText(seconds)} · ${date}`, pad, 1270, W - pad * 2 - 120);
+  // The same footer as the cards in the car: place · time · date. A course has no date, only where it sets out from.
+  const stamp = params.get("st");
+  const footer = course
+    ? [`${params.get("a") || "출발지 주변"} 출발`, `약 ${minutesText(seconds)}`].concat(stamp ? [`스탬프 ${shortName(stamp)}`] : []).join(" · ")
+    : `${shortName(name)} · ${minutesText(seconds)} · ${date}`;
+  ctx.fillText(footer, pad, 1270, W - pad * 2 - 120);
   ctx.textAlign = "end"; ctx.font = font(800, 34);
   ctx.fillText("여정", W - pad, 1270);
   ctx.textAlign = "start";
   return true;
 }
 
-if (draw()) {
+if (draw() && course) {
+  const name = params.get("n") || "목적지";
+  document.title = `여정 추천 코스 · ${shortName(name)}`;
+  canvas.setAttribute("aria-label", "추천 코스");
+  document.getElementById("save").classList.add("secondary");
+  document.getElementById("note").textContent =
+    "출발과 도착 주변 500m를 뺀 경로예요. 길 안내를 누르면 목적지 이름과 위치만 카카오맵으로 전달돼요.";
+  const dl = params.get("dl"), dn = params.get("dn");
+  if (dl && dn) {
+    const guide = document.getElementById("guide");
+    // Only the place goes to the map service, and only when the reader asks for directions.
+    guide.href = `https://map.kakao.com/link/to/${encodeURIComponent(name)},${encodeURIComponent(dl)},${encodeURIComponent(dn)}`;
+    guide.hidden = false;
+  }
+  const share = document.getElementById("share");
+  share.hidden = false;
+  share.classList.add("secondary");
+  share.addEventListener("click", async () => {
+    const data = { title: `${shortName(name)}까지 가는 길`, text: "여정에서 추천한 드라이브 코스예요", url: location.href };
+    if (navigator.share) {
+      try { await navigator.share(data); return; } catch (error) { if (error.name === "AbortError") return; }
+    }
+    try { await navigator.clipboard.writeText(location.href); share.textContent = "링크를 복사했어요"; }
+    catch { share.textContent = "주소창의 링크를 복사해 보내 주세요"; }
+  });
+}
+
+if (canvas.isConnected) {
   document.getElementById("save").addEventListener("click", () => {
     canvas.toBlob(async blob => {
       if (!blob) return;

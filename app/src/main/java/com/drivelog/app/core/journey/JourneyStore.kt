@@ -44,7 +44,11 @@ fun List<PlaceV>.withSavedToggled(place: PlaceV): List<PlaceV> =
  * mobile web cannot use an Android SDK, so sync goes through the service server; this class is the only
  * place that would change to adopt it.
  */
-class JourneyStore(context: Context, baseUrl: String, private val scope: CoroutineScope) {
+class JourneyStore(
+    context: Context, baseUrl: String, private val scope: CoroutineScope,
+    /** False in a build with no phone link: nothing could ever send the queue, so each record would copy into it forever. */
+    private val queueForServer: Boolean = true,
+) {
     private val file = File(context.filesDir, "journey-store.json")
     private val vault = TokenVault(context)
     private val gson = Gson()
@@ -63,8 +67,11 @@ class JourneyStore(context: Context, baseUrl: String, private val scope: Corouti
             Log.w(TAG, "store unreadable: ${it.javaClass.simpleName}")
             StoreState()
         }
-        return saved.copy(token = vault.read())
+        // Earlier builds queued every record even without a link. Dropping that queue leaves the records themselves.
+        return saved.copy(token = vault.read(), outbox = if (queueForServer) saved.outbox else emptyList())
     }
+
+    private fun List<OutboxOp>.plusQueued(op: OutboxOp) = if (queueForServer) this + op else this
 
     @Synchronized
     private fun update(change: (StoreState) -> StoreState) {
@@ -108,14 +115,14 @@ class JourneyStore(context: Context, baseUrl: String, private val scope: Corouti
     fun addRecord(record: RecordV) = update { state ->
         state.copy(
             journey = state.journey.copy(records = listOf(record) + state.journey.records.filterNot { it.id == record.id }),
-            outbox = state.outbox + OutboxOp(OutboxOp.RECORD, record.id, record),
+            outbox = state.outbox.plusQueued(OutboxOp(OutboxOp.RECORD, record.id, record)),
         )
     }
 
     fun deleteRecord(id: String) = update { state ->
         state.copy(
             journey = state.journey.copy(records = state.journey.records.filterNot { it.id == id }),
-            outbox = state.outbox.filterNot { it.recordId == id } + OutboxOp(OutboxOp.DELETE_RECORD, id),
+            outbox = state.outbox.filterNot { it.recordId == id }.plusQueued(OutboxOp(OutboxOp.DELETE_RECORD, id)),
         )
     }
 

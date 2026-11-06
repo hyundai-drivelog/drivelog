@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import com.drivelog.app.core.journey.DistanceSource
 import com.drivelog.app.core.journey.RecordV
@@ -84,6 +85,38 @@ fun cardShareUrl(baseUrl: String, record: RecordV): String {
     }
 }
 
+/**
+ * A course for someone else: the same page in its course mode, built only from what a recommendation may show. The
+ * route has 500 m cut from each end, the start is a neighbourhood name, and there is no start time or date. The
+ * destination is the place's own point, so whoever receives it can be guided there. Null when nothing would remain.
+ */
+fun courseShareUrl(baseUrl: String, record: RecordV): String? {
+    val draft = courseDraftFrom(record) ?: return null
+    fun encode(text: String) = URLEncoder.encode(text, Charsets.UTF_8.name())
+    fun coordinate(value: Double) = String.format(java.util.Locale.US, "%.5f", value)
+    val stamp = stampPlaceFor(record)
+    var limit = SHARE_POINTS
+    while (true) {
+        val pieces = styledRoute(draft.route, limit).pieces.filter { it.size >= 2 }
+        val fields = listOfNotNull(
+            "v=1",
+            "t=c",
+            "n=" + encode(draft.destinationName),
+            "a=" + encode(draft.originArea),
+            "k=" + String.format(java.util.Locale.US, "%.1f", routeKm(draft.route)),
+            "e=" + draft.minutes * 60,
+            "dl=" + coordinate(draft.destination.latitude),
+            "dn=" + coordinate(draft.destination.longitude),
+            stamp?.let { "st=" + encode(it.name) },
+            if (record.simulated) "m=1" else null,
+            "p=" + encode(pieces.joinToString(".") { encodePolyline(it) }),
+        )
+        val url = baseUrl + "#" + fields.joinToString("&")
+        if (url.length <= MAX_SHARE_URL || limit <= 20) return url
+        limit /= 2
+    }
+}
+
 /** Black modules on white with the standard quiet zone, which phone cameras need to find the code. */
 fun qrImage(text: String, size: Int): ImageBitmap {
     val matrix = QRCodeWriter().encode(
@@ -98,24 +131,43 @@ fun qrImage(text: String, size: Int): ImageBitmap {
 
 /** Parked only, like every screen but the recording view. Nothing is sent: the phone reads the code itself. */
 @Composable
-fun CardQrScreen(record: RecordV, baseUrl: String, onBack: () -> Unit) {
+fun CardQrScreen(record: RecordV, baseUrl: String, onBack: () -> Unit, course: Boolean = false) {
     val d = LocalCarDimens.current
-    val url = remember(record.id) { cardShareUrl(baseUrl, record) }
+    // A course the record cannot make (too short once trimmed) is never offered, so this falls back only defensively.
+    val url = remember(record.id, course) { (if (course) courseShareUrl(baseUrl, record) else null) ?: cardShareUrl(baseUrl, record) }
+    val courseKm = remember(record.id, course) { if (course) courseDraftFrom(record)?.let { routeKm(it.route) } else null }
     val qr = remember(url) { qrImage(url, 720) }
+    // The code settles in once it is ready to scan; nothing about it moves after that.
+    val ready = rememberProgress(url, androidx.compose.animation.core.tween(420, easing = androidx.compose.animation.core.FastOutSlowInEasing))
     Frame(onBack, simulated = record.simulated) {
         val code = @Composable { modifier: Modifier ->
             Image(
-                qr, "드라이브 카드 QR 코드", modifier.aspectRatio(1f).clip(RoundedCornerShape(d.u(12))).background(Color.White).testTag("card-qr"),
+                qr, "드라이브 카드 QR 코드", modifier.aspectRatio(1f).graphicsLayer {
+                    alpha = ready.value
+                    val scale = 0.92f + 0.08f * ready.value
+                    scaleX = scale
+                    scaleY = scale
+                }.clip(RoundedCornerShape(d.u(12))).background(Color.White).testTag("card-qr"),
                 filterQuality = FilterQuality.None,
             )
         }
         val words = @Composable {
             Column(verticalArrangement = Arrangement.spacedBy(d.u(10))) {
-                Heading("휴대폰으로 카드 가져가기", 36)
-                T("휴대폰 카메라로 QR 코드를 비추면 이번 드라이브 카드가 열려요", d.t(20))
-                T("${record.placeName} · ${distanceText(record.distanceKm)} km · ${elapsedText(record.elapsedSeconds)}", d.t(20), bold = true, maxLines = 1)
-                Spacer(Modifier.height(d.u(6)))
-                T("경로는 QR 코드에 담겨 휴대폰으로만 전달돼요. 서버에는 저장되지 않아요", d.t(16), Modifier.testTag("qr-privacy"), color = muted())
+                if (courseKm != null) {
+                    Heading("코스 추천하기", 36)
+                    T("휴대폰으로 찍으면 코스 페이지가 열려요. 그 링크를 친구에게 보내면 친구도 이 코스로 떠날 수 있어요", d.t(20), maxLines = 3)
+                    T("${shortName(record.placeName)}까지 가는 길 · 약 ${distanceText(courseKm)} km", d.t(20), bold = true, maxLines = 1)
+                    Spacer(Modifier.height(d.u(6)))
+                    // What a recommendation may show, said where the code is shown.
+                    T("출발과 도착 주변 500m를 뺀 경로와 출발 동네 이름만 담겨요. 날짜와 출발 시각은 담기지 않고, 서버에도 저장되지 않아요", d.t(16), Modifier.testTag("qr-privacy"), color = muted(), maxLines = 3)
+                } else {
+                    Heading("휴대폰으로 카드 가져가기", 36)
+                    T("휴대폰 카메라로 QR 코드를 비추면 이번 드라이브 카드가 열려요", d.t(20))
+                    T("${record.placeName} · ${distanceText(record.distanceKm)} km · ${elapsedText(record.elapsedSeconds)}", d.t(20), bold = true, maxLines = 1)
+                    Spacer(Modifier.height(d.u(6)))
+                    // The code carries the whole route, the start included, so whoever scans it sees where the drive began.
+                    T("출발지를 포함한 경로가 QR 코드에 담겨, 찍은 휴대폰으로만 전달돼요. 서버에는 저장되지 않아요", d.t(16), Modifier.testTag("qr-privacy"), color = muted(), maxLines = 2)
+                }
                 Spacer(Modifier.height(d.u(10)))
                 SecondaryButton("돌아가기", "qr-back", Modifier.width(d.u(280)), size = ButtonSize.MEDIUM, onClick = onBack)
             }
