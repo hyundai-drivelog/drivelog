@@ -78,7 +78,7 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
     val screenFor: @Composable (ShownScreen) -> Unit = { shown ->
         val active = shown.recording
         when (shown.route) {
-            Screen.STOP -> if (active != null) StopConfirmScreen(model.routeMaps, active, model::endRecording, model::discardRecording, model::keepRecording, model.saving)
+            Screen.STOP -> if (active != null) StopConfirmScreen(model.routeMaps, active, model::endRecording, model::discardRecording, model::keepRecording, model.saving, onRest = model::restRecording)
             Screen.RECORDING -> if (active != null) RecordingScreen(
                 active, parked, model.gear, BuildConfig.DEBUG && active.simulated, navi.available, navi.routeMessage, navi.routeEnd != null,
                 model::askToStop, model::changeSimGear, model::openNavigation,

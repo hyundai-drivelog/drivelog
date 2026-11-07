@@ -55,6 +55,8 @@ import com.drivelog.app.BuildConfig
 import com.drivelog.app.core.journey.DistanceSource
 import com.drivelog.app.core.journey.PlaceV
 import com.drivelog.app.core.journey.RecordV
+import com.drivelog.app.core.journey.restSeconds
+import com.drivelog.app.core.platform.RouteSummary
 import com.drivelog.app.core.journey.JourneyStore
 import com.drivelog.app.core.platform.CarGear
 import com.drivelog.app.core.recording.Recording
@@ -187,6 +189,10 @@ fun RecordingScreen(
                 Spacer(Modifier.height(d.u(8)))
             }
             if (parked) {
+                if (recording.restingSinceMillis != null) {
+                    T("쉬는 중이에요 · 출발하면 기록이 이어져요", d.t(17), Modifier.testTag("resting"), color = muted(), align = TextAlign.Center)
+                    Spacer(Modifier.height(d.u(8)))
+                }
                 // Reaching P is what makes these usable, so they arrive with it (motion is on only from that moment).
                 PrimaryButton("기록 종료", "end-recording", Modifier.width(d.u(280)).appear(parked), onClick = onEnd)
                 if (naviAvailable) {
@@ -260,7 +266,7 @@ private fun RoadLines(modifier: Modifier) {
 // --- 05 정차 후 기록 종료 ---------------------------------------------------------------------------
 
 @Composable
-fun StopConfirmScreen(routeMaps: RouteMapCache, recording: Recording, onEnd: () -> Unit, onDiscard: () -> Unit, onContinue: () -> Unit, saving: Boolean = false) {
+fun StopConfirmScreen(routeMaps: RouteMapCache, recording: Recording, onEnd: () -> Unit, onDiscard: () -> Unit, onContinue: () -> Unit, saving: Boolean = false, onRest: (() -> Unit)? = null) {
     val d = LocalCarDimens.current
     val away = recording.kmToPlace()
     val hasRoute = recording.points.size >= 2
@@ -298,6 +304,11 @@ fun StopConfirmScreen(routeMaps: RouteMapCache, recording: Recording, onEnd: () 
                             Spacer(Modifier.height(d.u(14)))
                             T("거의 움직이지 않았어요. 저장하지 않고 끝낼 수도 있어요", d.t(18), Modifier.testTag("barely-moved"), color = muted())
                         }
+                        // Told only here, parked: the driving screen shows place, minutes and distance and nothing else.
+                        if (recording.storageFailed) {
+                            Spacer(Modifier.height(d.u(14)))
+                            T("저장 공간이 부족해 경로 일부를 기기에 남기지 못했어요. 앱이 꺼지면 그 구간은 복구되지 않아요", d.t(18), Modifier.testTag("storage-failed"), color = muted(), maxLines = 2)
+                        }
                     }
                 }, right = {
                     // Without a route there is nothing to place on a map, so none is requested.
@@ -313,6 +324,8 @@ fun StopConfirmScreen(routeMaps: RouteMapCache, recording: Recording, onEnd: () 
                 // While the drive is written out the guide's Loading state holds every choice, so none can race the save.
                 PrimaryButton("저장하고 마치기", "confirm-end", Modifier.weight(1f), loading = saving, onClick = onEnd)
                 SecondaryButton("계속 기록", "keep-recording", Modifier.weight(1f), enabled = !saving, onClick = onContinue)
+                // A stop on the way, such as a rest area: recording goes on and the time is marked as a break.
+                if (!barelyMoved && onRest != null) SecondaryButton("잠깐 쉬어요", "rest-recording", Modifier.weight(1f), enabled = !saving, onClick = onRest)
                 if (barelyMoved) SecondaryButton(if (confirmDiscard) "한 번 더 누르면 삭제" else "저장 안 함", "discard-recording", Modifier.weight(1f), enabled = !saving, danger = confirmDiscard) {
                     if (confirmDiscard) onDiscard() else confirmDiscard = true
                 }
@@ -511,7 +524,7 @@ fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String,
     val d = LocalCarDimens.current
     var confirmDelete by rememberConfirmState(record?.id)
     var replay by remember(record?.id) { mutableIntStateOf(0) }
-    val splits = remember(record?.id) { record?.route?.toMapPoints()?.let(::kmSplits).orEmpty() }
+    val splits = remember(record?.id) { record?.let { kmSplits(it.route.toMapPoints(), it.rests.orEmpty()) }.orEmpty() }
     Frame(onBack, simulated = record?.simulated == true) {
         Panes(0.38f, left = {
             Column {
@@ -649,6 +662,8 @@ private fun SplitList(splits: List<KmSplit>) {
                 }
                 Spacer(Modifier.width(d.u(12)))
                 T(splitRange(split), d.t(18), Modifier.weight(1f), color = muted(), maxLines = 1, tabular = true)
+                // A break is said beside the stretch it fell in, apart from the driving time.
+                if (split.restSeconds >= 60) T("휴게 ${elapsedText(split.restSeconds)} · ", d.t(16), color = muted(), maxLines = 1)
                 T(splitTime(split.seconds), d.t(18), bold = true, maxLines = 1, tabular = true)
             }
         }
@@ -681,6 +696,18 @@ private fun RecordStats(record: RecordV) {
             VerticalRule(Modifier.fillMaxHeight())
             Spacer(Modifier.width(d.u(24)))
             StatCell(clockRange(clockTime(record.startedAtMillis), clockTime(record.endedAtMillis)), "출발–도착 시각")
+        }
+        val rest = record.restSeconds()
+        if (rest >= 60) {
+            Spacer(Modifier.height(d.u(10)))
+            T("휴게 ${record.rests.orEmpty().size}회 · ${elapsedText(rest)} 포함", d.t(16), Modifier.testTag("record-rest"), color = muted(), maxLines = 1)
+        }
+        // The navigation app's own figures, as it reported them. Beside the drive, not against it.
+        val naviMeters = record.naviDistanceMeters
+        val naviSeconds = record.naviDurationSeconds
+        if (naviMeters != null && naviSeconds != null && naviMeters > 0) {
+            Spacer(Modifier.height(d.u(6)))
+            T(routeSummaryText(RouteSummary(naviMeters, naviSeconds)), d.t(16), Modifier.testTag("record-navi-route"), color = muted(), maxLines = 1)
         }
     }
 }

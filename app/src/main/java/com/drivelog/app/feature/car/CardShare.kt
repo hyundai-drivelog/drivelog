@@ -62,10 +62,13 @@ fun encodePolyline(points: List<MapPoint>): String = buildString {
 /**
  * A link to the drive card web page carrying the card's own data after the #. Browsers never send that part to
  * the server, so the drive goes from the car to the phone that scans it and nowhere else.
+ *
+ * The first 500 m are left out, as for a course: a drive often starts at home, and the code may be shown to a
+ * passenger or a friend. A drive shorter than that sends no line at all. The distance stays the whole drive's.
  */
 fun cardShareUrl(baseUrl: String, record: RecordV): String {
     fun encode(text: String) = URLEncoder.encode(text, Charsets.UTF_8.name())
-    val points = record.route.toMapPoints()
+    val points = trimRouteStart(record.route.toMapPoints()).orEmpty()
     // The stamp this drive earned, pressed on the card at the same tilt as in the car. Null for simulated drives.
     val stamp = stampPlaceFor(record)
     var limit = SHARE_POINTS
@@ -81,6 +84,8 @@ fun cardShareUrl(baseUrl: String, record: RecordV): String {
             if (record.simulated) "m=1" else null,
             stamp?.let { "st=" + encode(it.name) },
             stamp?.let { "sr=" + it.tilt.toInt() },
+            // Tells the page the start was cut, so it says so; links made before this carry the whole route.
+            "ts=" + COURSE_TRIM_METERS.toInt(),
             "p=" + encode(pieces.joinToString(".") { encodePolyline(it) }),
         )
         val url = baseUrl + "#" + fields.joinToString("&")
@@ -170,8 +175,8 @@ fun CardQrScreen(record: RecordV, baseUrl: String, onBack: () -> Unit, course: B
                     T("휴대폰 카메라로 QR 코드를 비추면 이번 드라이브 카드가 열려요", d.t(20))
                     T("${record.placeName} · ${distanceText(record.distanceKm)} km · ${elapsedText(record.elapsedSeconds)}", d.t(20), bold = true, maxLines = 1)
                     Spacer(Modifier.height(d.u(6)))
-                    // The code carries the whole route, the start included, so whoever scans it sees where the drive began.
-                    T("출발지를 포함한 경로가 QR 코드에 담겨, 찍은 휴대폰으로만 전달돼요. 서버에는 저장되지 않아요", d.t(16), Modifier.testTag("qr-privacy"), color = muted(), maxLines = 2)
+                    // Said where the code is shown: what it carries, and that the start is not part of it.
+                    T("출발 주변 500m를 뺀 경로가 QR 코드에 담겨, 찍은 휴대폰으로만 전달돼요. 서버에는 저장되지 않아요", d.t(16), Modifier.testTag("qr-privacy"), color = muted(), maxLines = 2)
                 }
                 Spacer(Modifier.height(d.u(10)))
                 SecondaryButton("돌아가기", "qr-back", Modifier.width(d.u(280)), size = ButtonSize.MEDIUM, onClick = onBack)

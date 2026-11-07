@@ -8,9 +8,11 @@ import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -40,7 +42,7 @@ fun List<PlaceV>.withSavedToggled(place: PlaceV): List<PlaceV> =
 
 /**
  * Offline-first store: goals, records and queued writes survive process death in one atomically replaced
- * file, and the car works fully before a phone is ever linked. The Pleos Sync SDK is not available and the
+ * file, written off the main thread, and the car works fully before a phone is ever linked. The Pleos Sync SDK is not available and the
  * mobile web cannot use an Android SDK, so sync goes through the service server; this class is the only
  * place that would change to adopt it.
  */
@@ -56,6 +58,36 @@ class JourneyStore(
     private val mutableState = MutableStateFlow(load())
     val state: StateFlow<StoreState> = mutableState
     val api: JourneyApi = createJourneyApi(baseUrl) { mutableState.value.token }
+
+    /** Raised by every change, and the newest change reached disk at [written]. */
+    private var version = 0L
+    private val written = MutableStateFlow(WriteResult(0L, ok = true))
+    /** Only the newest state matters: each write replaces the whole file, so older pending ones are skipped. */
+    private val writes = Channel<Pair<Long, StoreState>>(Channel.CONFLATED)
+    private val mutableWriteFailed = MutableStateFlow(false)
+    /** The last write did not reach disk, usually for want of space. Records stay in memory until one succeeds. */
+    val writeFailed: StateFlow<Boolean> = mutableWriteFailed
+
+    private data class WriteResult(val version: Long, val ok: Boolean)
+
+    init {
+        // One writer off the main thread. Serialising every record and point used to block the screen on each change.
+        scope.launch(Dispatchers.IO) {
+            for ((at, next) in writes) {
+                val ok = try {
+                    val temp = File(file.parentFile, file.name + ".tmp")
+                    temp.writeText(gson.toJson(next))
+                    if (!temp.renameTo(file)) { file.delete(); if (!temp.renameTo(file)) throw IOException("rename failed") }
+                    true
+                } catch (error: IOException) {
+                    Log.e(TAG, "store write failed: ${error.javaClass.simpleName}")
+                    false
+                }
+                mutableWriteFailed.value = !ok
+                written.value = WriteResult(at, ok)
+            }
+        }
+    }
 
     /** Polling for remote changes stops in the background; queued writes still go out. */
     @Volatile var foreground = false
@@ -73,18 +105,24 @@ class JourneyStore(
 
     private fun List<OutboxOp>.plusQueued(op: OutboxOp) = if (queueForServer) this + op else this
 
+    /** Changes memory at once and queues the file write. Returns the version to wait on with [awaitWritten]. */
     @Synchronized
-    private fun update(change: (StoreState) -> StoreState) {
+    private fun update(change: (StoreState) -> StoreState): Long {
         val next = change(mutableState.value)
         mutableState.value = next
-        try {
-            val temp = File(file.parentFile, file.name + ".tmp")
-            temp.writeText(gson.toJson(next))
-            if (!temp.renameTo(file)) { file.delete(); temp.renameTo(file) }
-        } catch (error: IOException) {
-            Log.e(TAG, "store write failed: ${error.javaClass.simpleName}")
-        }
+        version += 1
+        writes.trySend(version to next)
+        return version
     }
+
+    /** True once [at] or a later change is on disk; false when that write failed. */
+    private suspend fun awaitWritten(at: Long): Boolean = written.first { it.version >= at }.ok
+
+    /**
+     * Adds a finished drive and waits until it is on disk. Its recording files must stay until this returns true,
+     * since they are the only other copy of the drive.
+     */
+    suspend fun addRecordDurably(record: RecordV): Boolean = awaitWritten(addRecord(record))
 
     fun startSyncLoop() {
         scope.launch(Dispatchers.IO) {
