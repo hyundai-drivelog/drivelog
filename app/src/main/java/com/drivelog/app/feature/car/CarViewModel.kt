@@ -71,6 +71,16 @@ fun routeEndAction(end: RouteEnd?, recording: Boolean, parked: Boolean) = when {
     else -> RouteEndAction.ANNOUNCE
 }
 
+/**
+ * What is said when guidance has ended the drive and it is stored: one sentence with the place, distance and time.
+ * A simulated or barely moved drive has no figures worth saying.
+ */
+fun savedSentence(record: RecordV): String {
+    val km = record.distanceKm
+    if (record.simulated || km == null || barelyMoved(km, record.route.size >= 2)) return "드라이브를 저장했어요."
+    return "${shortName(record.placeName)}까지 ${distanceText(km)}킬로미터, ${elapsedText(record.elapsedSeconds)} 달렸어요. 드라이브를 저장했어요."
+}
+
 /** True once the navigation app holds a destination the driver did not already have when the search began. */
 fun isNewDestination(current: NaviPlace?, before: NaviPlace?) =
     current != null && current.isUsablePlace() && (before == null || !current.sameLocation(before))
@@ -135,6 +145,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     private var returnAfterLink = Screen.HOME
     private var linkJob: Job? = null
     private var naviRetry: Job? = null
+    /** The way back from the navigation app is said once per session, the first time its search is opened. */
+    private var returnHintSpoken = false
 
     val gear: CarGear get() = if (simulation) simGear else realGear
 
@@ -192,6 +204,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
                     platform.speak("정차했어요. 기록을 종료할 수 있어요.")
                 }
                 if (current != CarGear.PARK && screen == Screen.STOP) screen = Screen.HOME
+                // Setting off again ends a break the driver marked.
+                if (current != CarGear.PARK && current != CarGear.UNKNOWN) recorder.endRest()
                 previous = current
             }
         }
@@ -209,8 +223,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
                             screen = Screen.STOP
                             platform.speak("거의 움직이지 않았어요. 저장할지 골라 주세요.")
                         } else {
-                            platform.speak("안내가 끝나 드라이브를 저장했어요.")
-                            endRecording()
+                            // One sentence for the event, with the figures, said once the drive is safely stored.
+                            endRecording(announce = true)
                         }
                     }
                     RouteEndAction.ANNOUNCE -> platform.speak("안내가 끝났어요. 정차하면 드라이브를 저장해요.")
@@ -341,6 +355,10 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         }
         destinationBeforeSearch = navi.currentDestination
         awaitingNavi = true
+        if (!returnHintSpoken) {
+            returnHintSpoken = true
+            platform.speak("내비에서 목적지를 고른 뒤 여정으로 돌아오면 기록을 시작할 수 있어요.")
+        }
         platform.searchPlace(keyword)
     }
 
@@ -421,14 +439,30 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     }
     fun keepRecording() { go(Screen.HOME) }
 
-    fun endRecording() {
+    /** Parked only: recording goes on, and the time until the car leaves P is marked as a break. */
+    fun restRecording() {
+        if (!parked || recorder.state.value == null) return
+        recorder.startRest()
+        go(Screen.HOME)
+        say("쉬는 시간을 따로 표시해요")
+    }
+
+    fun endRecording() = endRecording(announce = false)
+
+    /** [announce] when guidance ended the drive: the driver may not be looking, so the result is said. */
+    private fun endRecording(announce: Boolean) {
         if (!parked || saving) return
         saving = true
         viewModelScope.launch {
             try {
-                val record = recorder.finish() ?: return@launch
+                val finished = recorder.finish() ?: return@launch
+                // The first route the navigation app started during this drive: the one it planned from the start.
+                val planned = platform.navi.value.routeStarts.firstOrNull { it.atMillis >= finished.startedAtMillis }?.summary
+                val record = if (planned == null) finished else finished.copy(naviDistanceMeters = planned.distanceMeters, naviDurationSeconds = planned.durationSeconds)
                 RecordingService.stop(getApplication())
-                keepRecoveryUntilStored(store.addRecordDurably(record))
+                val stored = store.addRecordDurably(record)
+                keepRecoveryUntilStored(stored)
+                if (announce) platform.speak(if (stored) savedSentence(record) else "저장 공간이 부족해 드라이브를 아직 저장하지 못했어요.")
                 finishedRecord = record
                 fillRouteMaps()
                 continueAfterRecord()

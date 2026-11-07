@@ -99,8 +99,11 @@ private fun kmMarks(pieces: List<List<MapPoint>>): List<KmMark> {
     return marks
 }
 
-/** One stretch of a drive and the time spent covering it. The last one may be shorter than the step. */
-data class KmSplit(val fromKm: Double, val toKm: Double, val seconds: Long)
+/**
+ * One stretch of a drive and the time spent covering it. The last one may be shorter than the step. A break the
+ * driver marked inside it is kept apart in [restSeconds], so the driving time is not inflated by a stop for coffee.
+ */
+data class KmSplit(val fromKm: Double, val toKm: Double, val seconds: Long, val restSeconds: Long = 0)
 
 private const val MIN_LAST_SPLIT_KM = 0.1
 
@@ -108,8 +111,13 @@ private const val MIN_LAST_SPLIT_KM = 0.1
  * Time for each stretch of the recorded line, measured only while recording: a gap adds neither distance nor time.
  * Empty when the points carry no times. Uses the same step as the distance marks on the map.
  */
-fun kmSplits(points: List<MapPoint>): List<KmSplit> {
+fun kmSplits(points: List<MapPoint>, rests: List<List<Long>> = emptyList()): List<KmSplit> {
     val pieces = splitAtGaps(points)
+    fun restIn(from: Long, to: Long) = rests.sumOf { rest ->
+        val start = rest.getOrNull(0) ?: return@sumOf 0L
+        val end = rest.getOrNull(1) ?: return@sumOf 0L
+        (minOf(to, end) - maxOf(from, start)).coerceAtLeast(0)
+    }.toDouble()
     if (pieces.flatten().any { it.atMillis <= 0 }) return emptyList()
     val total = pieces.sumOf { piece -> piece.zipWithNext().sumOf { (a, b) -> haversineKm(a.latitude, a.longitude, b.latitude, b.longitude) } }
     val step = kmStep(total).toDouble()
@@ -119,21 +127,31 @@ fun kmSplits(points: List<MapPoint>): List<KmSplit> {
     var millis = 0.0
     var splitStartKm = 0.0
     var splitStartMillis = 0.0
+    // Break time is counted on its own clock and never moves the split boundaries, which follow distance.
+    var rested = 0.0
+    var splitStartRest = 0.0
     pieces.forEach { piece ->
         piece.zipWithNext().forEach { (a, b) ->
             val length = haversineKm(a.latitude, a.longitude, b.latitude, b.longitude)
-            val duration = (b.atMillis - a.atMillis).coerceAtLeast(0).toDouble()
+            val rest = restIn(a.atMillis, b.atMillis)
+            val duration = ((b.atMillis - a.atMillis).coerceAtLeast(0) - rest).coerceAtLeast(0.0)
             while (length > 0 && driven + length >= splitStartKm + step) {
-                val at = millis + duration * (splitStartKm + step - driven) / length
-                splits.add(KmSplit(splitStartKm, splitStartKm + step, ((at - splitStartMillis) / 1000).toLong()))
+                val fraction = (splitStartKm + step - driven) / length
+                val at = millis + duration * fraction
+                val restAt = rested + rest * fraction
+                splits.add(KmSplit(splitStartKm, splitStartKm + step, ((at - splitStartMillis) / 1000).toLong(), ((restAt - splitStartRest) / 1000).toLong()))
                 splitStartKm += step
                 splitStartMillis = at
+                splitStartRest = restAt
             }
             driven += length
             millis += duration
+            rested += rest
         }
     }
-    if (driven - splitStartKm >= MIN_LAST_SPLIT_KM) splits.add(KmSplit(splitStartKm, driven, ((millis - splitStartMillis) / 1000).toLong()))
+    if (driven - splitStartKm >= MIN_LAST_SPLIT_KM) {
+        splits.add(KmSplit(splitStartKm, driven, ((millis - splitStartMillis) / 1000).toLong(), ((rested - splitStartRest) / 1000).toLong()))
+    }
     return splits
 }
 

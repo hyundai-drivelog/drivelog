@@ -47,7 +47,18 @@ data class RecordV(
     val placeAddress: String? = null,
     val destinationLatitude: Double? = null,
     val destinationLongitude: Double? = null,
+    /**
+     * The navigation app's own figures for the route it chose when guidance began (RouteStartInfo, metres and
+     * seconds). Shown as they are, beside the drive, never as a score. Null without guidance.
+     */
+    val naviDistanceMeters: Int? = null,
+    val naviDurationSeconds: Int? = null,
+    /** Breaks the driver marked while parked, as [startMillis, endMillis]. Nullable: older records have none. */
+    val rests: List<List<Long>>? = null,
 )
+
+/** Total time of the breaks the driver marked, in seconds. */
+fun RecordV.restSeconds(): Long = rests.orEmpty().sumOf { (it.getOrNull(1) ?: 0L) - (it.getOrNull(0) ?: 0L) }.coerceAtLeast(0) / 1000
 
 data class JourneyV(
     val activeGoal: GoalV? = null,

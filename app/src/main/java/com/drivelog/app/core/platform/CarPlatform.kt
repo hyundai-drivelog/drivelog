@@ -21,6 +21,9 @@ enum class RouteEnd { ARRIVED, STOPPED }
 /** The navigation app's own figures for the route it chose. Its line is not exposed by the SDK. */
 data class RouteSummary(val distanceMeters: Int, val durationSeconds: Int)
 
+/** A route the navigation app reported starting, and when. Kept when guidance later ends or is replaced. */
+data class RouteStart(val summary: RouteSummary, val atMillis: Long)
+
 data class NaviState(
     val available: Boolean = false,
     /** Set while the navigation app guides a route it reported starting, and cleared when that ends. */
@@ -30,6 +33,11 @@ data class NaviState(
     val currentDestination: NaviPlace? = null,
     val routeMessage: String? = null,
     val routeEnd: RouteEnd? = null,
+    /**
+     * The latest route starts, oldest first. Callbacks queued while the navigation app was in front arrive together,
+     * so a start followed at once by a cancel would never be seen in [routeSummary]; this keeps it.
+     */
+    val routeStarts: List<RouteStart> = emptyList(),
 )
 
 /** On-device speech recognition. [heard] holds a finished phrase until it is consumed with [CarPlatform.clearSpeech]. */

@@ -93,7 +93,10 @@ class PleosCarPlatform(context: Context) : CarPlatform {
             Log.i(TAG, "route event: started, distance=${routeStartInfo.distance} duration=${routeStartInfo.duration}")
             replacingRoute = false
             val summary = RouteSummary(routeStartInfo.distance, routeStartInfo.duration).takeIf { it.distanceMeters > 0 }
-            mutableNavi.update { it.copy(routeEnd = null, routeSummary = summary) }
+            mutableNavi.update { state ->
+                val starts = if (summary == null) state.routeStarts else (state.routeStarts + RouteStart(summary, System.currentTimeMillis())).takeLast(MAX_ROUTE_STARTS)
+                state.copy(routeEnd = null, routeSummary = summary, routeStarts = starts)
+            }
             route("내비에서 경로를 찾고 있어요")
             runCatching { helper?.getDestinationInfo() }
         }
@@ -502,6 +505,7 @@ class PleosCarPlatform(context: Context) : CarPlatform {
 
     private companion object {
         const val TAG = "DriveLogPlatform"
+        const val MAX_ROUTE_STARTS = 8
         const val CAR_DRIVE = "pleos.car.permission.CAR_DRIVE"
         const val FUSED_LOCATION = "pleos.car.permission.FUSED_LOCATION"
         const val VEHICLE_ACTION = "ai.pleos.playground.vehicle.VEHICLE_START"

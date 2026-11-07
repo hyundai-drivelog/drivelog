@@ -25,8 +25,10 @@
 <canvas id="card" width="1080" height="1350" aria-label="드라이브 카드"></canvas>
 <a id="guide" class="action" hidden rel="noreferrer" target="_blank">목적지로 길 안내</a>
 <button id="share" type="button" hidden>친구에게 코스 보내기</button>
+<button id="photo" type="button" class="secondary" hidden>사진 넣기</button>
+<input id="photo-file" type="file" accept="image/*" hidden>
 <button id="save" type="button">이미지로 저장</button>
-<p id="note">이 카드는 차량에서 보낸 QR 코드의 주소에서만 만들어져요. 경로는 이 휴대폰에서 그리고 어디로도 보내지 않아요. 지도를 그리려고 주행 지역의 지도 조각을 지도 서비스(OpenFreeMap)에서 받아요.</p>
+<p id="note">이 카드는 차량에서 보낸 QR 코드의 주소에서만 만들어져요. 경로는 이 휴대폰에서 그리고 어디로도 보내지 않아요. 지도를 그리려고 주행 지역의 지도 조각을 지도 서비스(OpenFreeMap)에서 받아요. 사진을 넣으면 이 휴대폰 안에서만 카드에 합쳐지고 올라가지 않아요.</p>
 <script>
 "use strict";
 // Everything comes from the part of the address after #, which the browser never sends to any server.
@@ -187,6 +189,9 @@ const MAPLIBRE = {
   integrity: "sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj",
 };
 let lastRoute = null;
+// A photo chosen on this phone. It is drawn into the card here and never uploaded anywhere.
+let photo = null;
+let lastMap = null;
 
 // The car's night map (RouteMapCache.kt DARK_MAP_LAYERS): land, green and sea, then roads brightening with
 // importance. No labels, so no fonts or icons are fetched; only the map tiles themselves.
@@ -286,14 +291,25 @@ function fitProjection(all, box) {
 // and the arrow where the drive ended. One colour, whatever the speed.
 function drawRouteArea(box, pieces, destination, map) {
   const all = pieces.flat().concat(destination ? [destination] : []);
-  if (map) {
+  // With a photo, the photo takes the map's place: the route is fitted over it as the same single white line, and a
+  // shade keeps the line readable. A photo is not a map, so the line is not placed on any geography.
+  if (photo) {
+    const scale = Math.max(box.w / photo.width, box.h / photo.height);
+    const w = photo.width * scale, h = photo.height * scale;
+    ctx.save();
+    ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 28); ctx.clip();
+    ctx.drawImage(photo, box.x + (box.w - w) / 2, box.y + (box.h - h) / 2, w, h);
+    ctx.fillStyle = "rgba(0,0,0,0.38)"; ctx.fillRect(box.x, box.y, box.w, box.h);
+    ctx.restore();
+    map = null;
+  } else if (map) {
     ctx.save();
     ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 28); ctx.clip();
     ctx.drawImage(map.image, box.x, box.y, box.w, box.h);
     ctx.restore();
     ctx.strokeStyle = "rgba(255,255,255,0.08)"; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 28); ctx.stroke();
-  } else drawDots(box);
+  } else if (!photo) drawDots(box);
   if (all.length < 2) return;
   const at = map ? map.project : fitProjection(all, box);
   ctx.save();
@@ -417,14 +433,14 @@ function draw(map) {
   ctx.fillText("여정", W - pad, L.footerY);
   ctx.textAlign = "start";
   // The map's credit cannot be left off. It goes under the card, not over the map, as in the car.
-  if (map) { ctx.fillStyle = FAINT; ctx.font = font(500, 20); ctx.fillText(MAP_CREDIT, pad, L.creditY, W - pad * 2); }
+  if (map && !photo) { ctx.fillStyle = FAINT; ctx.font = font(500, 20); ctx.fillText(MAP_CREDIT, pad, L.creditY, W - pad * 2); }
   return true;
 }
 
 const drawn = draw(null);
 // The card shows at once on its dot grid, then again over the map when the map has arrived.
 if (drawn && lastRoute && lastRoute.all.length >= 2) {
-  loadMap(lastRoute.box, lastRoute.all).then(map => { if (map) draw(map); }).catch(() => {});
+  loadMap(lastRoute.box, lastRoute.all).then(map => { if (map) { lastMap = map; draw(map); } }).catch(() => {});
 }
 
 if (drawn && course) {
@@ -454,10 +470,31 @@ if (drawn && course) {
   });
 }
 
+// A passenger's photo, put into the card on this phone. Drawing it through the canvas leaves its location data
+// behind, and the saved card is a new image. Only drive cards take a photo; a course card stays a route to follow.
+if (drawn && !course) {
+  const button = document.getElementById("photo");
+  const input = document.getElementById("photo-file");
+  button.hidden = false;
+  button.addEventListener("click", () => {
+    if (photo) { photo = null; button.textContent = "사진 넣기"; draw(lastMap); return; }
+    input.value = ""; input.click();
+  });
+  input.addEventListener("change", async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    try {
+      photo = await createImageBitmap(file, { imageOrientation: "from-image" });
+      button.textContent = "사진 빼기";
+      draw(lastMap);
+    } catch { button.textContent = "사진을 열 수 없어요 · 다시 고르기"; }
+  });
+}
+
 // A drive card whose start was cut in the car says so. Older links carry the whole route and say nothing.
 if (drawn && !course && /^\d+$/.test(params.get("ts") || "")) {
   document.getElementById("note").textContent =
-    `출발 주변 ${params.get("ts")}m를 뺀 경로예요. 이 카드는 차량에서 보낸 QR 코드의 주소에서만 만들어지고, 경로는 이 휴대폰에서 그려 어디로도 보내지 않아요. 지도를 그리려고 주행 지역의 지도 조각을 지도 서비스(OpenFreeMap)에서 받아요.`;
+    `출발 주변 ${params.get("ts")}m를 뺀 경로예요. 이 카드는 차량에서 보낸 QR 코드의 주소에서만 만들어지고, 경로는 이 휴대폰에서 그려 어디로도 보내지 않아요. 지도를 그리려고 주행 지역의 지도 조각을 지도 서비스(OpenFreeMap)에서 받아요. 사진을 넣으면 이 휴대폰 안에서만 카드에 합쳐지고 올라가지 않아요.`;
 }
 
 if (canvas.isConnected) {

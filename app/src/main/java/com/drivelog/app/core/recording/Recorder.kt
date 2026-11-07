@@ -58,6 +58,8 @@ data class Recording(
     val locationStale: Boolean = false,
     /** A point could not be written to disk, so a crash now would lose more than the last tick. Shown once parked. */
     val storageFailed: Boolean = false,
+    /** Set while a break the driver marked is running; it ends when the car leaves P. */
+    val restingSinceMillis: Long? = null,
 )
 
 fun haversineKm(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
@@ -92,6 +94,8 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
     private val metaFile = File(directory, "active.json")
     private val pointsFile = File(directory, "points.csv")
     private val tickFile = File(directory, "tick")
+    /** Breaks as "start,end" lines; a break still running has no end yet. */
+    private val restsFile = File(directory, "rests.csv")
     private val gson = Gson()
     private var writer: BufferedWriter? = null
     private var ticker: Job? = null
@@ -100,6 +104,7 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
     /** Every accepted point of the drive in progress. Only appended to, and replaced by a new list for each drive. */
     private var points = ArrayList<RoutePoint>()
     private var distanceKm = 0.0
+    private val rests = ArrayList<List<Long>>()
     private val mutableState = MutableStateFlow<Recording?>(null)
     /**
      * The drive as shown. A fix is published when the count, the distance to one decimal or the write status
@@ -129,6 +134,8 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         writer = pointsFile.bufferedWriter()
         points = ArrayList()
         distanceKm = 0.0
+        rests.clear()
+        restsFile.delete()
         startedElapsed = SystemClock.elapsedRealtime()
         mutableState.value = recording
         scope.launch { odometerStart = platform.odometerRaw() }
@@ -204,6 +211,25 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
     /** Rounded as the screen shows it ("%.1f"), so the figure on screen is never a tenth behind. */
     private fun tenths(km: Double) = Math.round(km * 10)
 
+    /** The driver chose a break on the stop screen. Recording goes on; the time is marked so it reads as a break. */
+    fun startRest() {
+        val current = mutableState.value ?: return
+        if (current.restingSinceMillis != null) return
+        val now = System.currentTimeMillis()
+        runCatching { restsFile.appendText("$now,") }
+        mutableState.value = current.copy(restingSinceMillis = now)
+    }
+
+    /** Called when the car leaves P, and on finishing. Breaks under a minute were only a pause and are dropped. */
+    fun endRest() {
+        val current = mutableState.value ?: return
+        val since = current.restingSinceMillis ?: return
+        val now = System.currentTimeMillis()
+        if (now - since >= MIN_REST_MS) rests.add(listOf(since, now))
+        runCatching { restsFile.writeText(rests.joinToString("") { "${it[0]},${it[1]}\n" }) }
+        mutableState.value = current.copy(restingSinceMillis = null)
+    }
+
     private fun markArrived() {
         val current = mutableState.value ?: return
         if (current.arrived) return
@@ -223,6 +249,7 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
      * itself is safely stored, so a crash or a full disk in between leaves the drive recoverable instead of lost.
      */
     suspend fun finish(): RecordV? {
+        endRest()
         val current = current() ?: return null
         val end = platform.odometerRaw()
         val start = odometerStart
@@ -231,7 +258,7 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         stop()
         val (distance, source) = resolveDistance(current.distanceKm, current.points.size >= 2, delta)
         return toRecord(current.id, current.goalId, current.place, current.startedAtMillis, System.currentTimeMillis(),
-            elapsed, current.points, distance, source, RecordStatus.COMPLETE, current.simulated)
+            elapsed, current.points, distance, source, RecordStatus.COMPLETE, current.simulated, finishedRests)
     }
 
     /** Ends the recording and leaves nothing behind, neither a record nor anything to recover. */
@@ -249,10 +276,15 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         mutableState.value = null
         points = ArrayList()
         distanceKm = 0.0
+        finishedRests = rests.toList()
+        rests.clear()
     }
 
+    /** The breaks of the drive [stop] just ended, kept for the record it returns. */
+    private var finishedRests: List<List<Long>> = emptyList()
+
     private fun clearFiles() {
-        metaFile.delete(); pointsFile.delete(); tickFile.delete()
+        metaFile.delete(); pointsFile.delete(); tickFile.delete(); restsFile.delete()
     }
 
     fun hasUnfinishedRecording() = mutableState.value == null && metaFile.exists()
@@ -277,8 +309,16 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         )
         val km = points.zipWithNext().sumOf { (a, b) -> haversineKm(a.latitude, a.longitude, b.latitude, b.longitude) }
         val (distance, source) = resolveDistance(km, points.size >= 2, null)
+        // A break still running when the app stopped ends where the saved drive ends.
+        val rests = runCatching {
+            restsFile.readLines().mapNotNull { line ->
+                val start = line.substringBefore(',').toLongOrNull() ?: return@mapNotNull null
+                val end = line.substringAfter(',', "").toLongOrNull() ?: lastSaved
+                if (end - start >= MIN_REST_MS) listOf(start, end) else null
+            }
+        }.getOrDefault(emptyList())
         return toRecord(meta.id, meta.goalId, meta.place, meta.startedAtMillis, lastSaved,
-            (lastSaved - meta.startedAtMillis).coerceAtLeast(0) / 1000, points, distance, source, RecordStatus.PARTIAL, meta.simulated)
+            (lastSaved - meta.startedAtMillis).coerceAtLeast(0) / 1000, points, distance, source, RecordStatus.PARTIAL, meta.simulated, rests)
     }
 
     fun recoveredPlace(): PlaceV? = runCatching { gson.fromJson(metaFile.readText(), Meta::class.java).place }.getOrNull()
@@ -286,10 +326,11 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
     fun clearRecovery() = clearFiles()
 
     private fun toRecord(id: String, goalId: String?, place: PlaceV, started: Long, ended: Long, elapsed: Long, points: List<RoutePoint>,
-                         distance: Double?, source: String, status: String, simulated: Boolean) = RecordV(
+                         distance: Double?, source: String, status: String, simulated: Boolean, rests: List<List<Long>>) = RecordV(
         id, goalId, place.id.ifBlank { null }, place.name, started, ended, elapsed, distance, source, status, simulated,
         thin(points).map { listOf(it.latitude, it.longitude, it.atMillis.toDouble()) },
         placeAddress = place.address, destinationLatitude = place.latitude, destinationLongitude = place.longitude,
+        rests = rests.ifEmpty { null },
     )
 
     /** Keeps ends and recording gaps; the server caps a route at 20,000 points. */
@@ -309,5 +350,6 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         const val MAX_SPEED_KMH = 250
         const val STALE_AFTER_MS = 60_000L
         const val MAX_ROUTE_POINTS = 18_000
+        const val MIN_REST_MS = 60_000L
     }
 }

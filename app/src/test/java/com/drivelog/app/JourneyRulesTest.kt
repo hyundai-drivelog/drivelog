@@ -16,6 +16,7 @@ import com.drivelog.app.feature.car.clockRange
 import com.drivelog.app.feature.car.encodePolyline
 import com.drivelog.app.feature.car.cardShareUrl
 import com.drivelog.app.core.journey.RecordV
+import com.drivelog.app.core.journey.restSeconds
 import com.drivelog.app.core.journey.RecordStatus
 import com.drivelog.app.core.platform.RouteSummary
 import com.drivelog.app.feature.car.styledRoute
@@ -410,6 +411,38 @@ class JourneyRulesTest {
         assertEquals(0.5, com.drivelog.app.core.recording.haversineKm(35.0, 129.0, trimmed.first().latitude, trimmed.first().longitude), 0.001)
         assertEquals(line.last(), trimmed.last())
         assertNull(com.drivelog.app.feature.car.trimRouteStart(line.take(4)))
+    }
+
+    @Test fun aBreakIsKeptApartFromTheDrivingTimeOfItsStretch() {
+        // About 1 km east, a fix every 10 m and every second, with a 20-minute stop halfway.
+        val line = (0..100).map { MapPoint(35.0, 129.0 + it * 0.00011, 1_000_000L + it * 1000L) }
+        val before = line.take(51)
+        val stop = before.last()
+        val after = line.drop(51).map { it.copy(atMillis = it.atMillis + 1_200_000L) }
+        val rest = listOf(stop.atMillis, stop.atMillis + 1_200_000L)
+        // The parked car keeps reporting its spot, so the stop is not a recording gap.
+        val withFixes = before + (1..20).map { stop.copy(atMillis = stop.atMillis + it * 60_000L) } + after
+        val plain = kmSplits(withFixes)
+        val split = kmSplits(withFixes, listOf(rest))
+        assertEquals(plain.size, split.size)
+        assertTrue(plain.any { it.seconds >= 1200 })
+        assertTrue(split.all { it.seconds < 120 })
+        assertEquals(1200L, split.sumOf { it.restSeconds })
+    }
+
+    @Test fun theSavedSentenceSaysThePlaceDistanceAndTimeOnlyForARealDrive() {
+        val route = listOf(listOf(35.0, 129.0, 1.0), listOf(35.05, 129.0, 2.0))
+        val record = RecordV("s", null, null, "송정 해수욕장", 0, 254_000, 254, 5.54, DistanceSource.GPS, RecordStatus.COMPLETE, false, route)
+        assertEquals("송정까지 5.5킬로미터, 4분 달렸어요. 드라이브를 저장했어요.", com.drivelog.app.feature.car.savedSentence(record))
+        assertEquals("드라이브를 저장했어요.", com.drivelog.app.feature.car.savedSentence(record.copy(simulated = true)))
+        assertEquals("드라이브를 저장했어요.", com.drivelog.app.feature.car.savedSentence(record.copy(distanceKm = 0.05)))
+    }
+
+    @Test fun breakTimeAddsUpAndOlderRecordsHaveNone() {
+        val record = RecordV("r", null, null, "x", 0, 0, 0, 1.0, DistanceSource.GPS, RecordStatus.COMPLETE, false, emptyList())
+        assertEquals(0L, record.restSeconds())
+        val rested = record.copy(rests = listOf(listOf(0L, 600_000L), listOf(1_000_000L, 1_120_000L)))
+        assertEquals(720L, rested.restSeconds())
     }
 
     @Test fun publishedPointsAreAViewThatChangesWithTheCountNotACopy() {
