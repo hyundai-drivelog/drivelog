@@ -454,6 +454,12 @@ if (drawn && course) {
   });
 }
 
+// A drive card whose start was cut in the car says so. Older links carry the whole route and say nothing.
+if (drawn && !course && /^\d+$/.test(params.get("ts") || "")) {
+  document.getElementById("note").textContent =
+    `출발 주변 ${params.get("ts")}m를 뺀 경로예요. 이 카드는 차량에서 보낸 QR 코드의 주소에서만 만들어지고, 경로는 이 휴대폰에서 그려 어디로도 보내지 않아요. 지도를 그리려고 주행 지역의 지도 조각을 지도 서비스(OpenFreeMap)에서 받아요.`;
+}
+
 if (canvas.isConnected) {
   document.getElementById("save").addEventListener("click", () => {
     canvas.toBlob(async blob => {

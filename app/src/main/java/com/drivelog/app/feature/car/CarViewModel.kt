@@ -26,6 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
@@ -186,6 +187,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             combine(app.vehicleState.gear, app.simulatedGear) { real, sim -> if (simulation) sim else real }.collectLatest { current ->
                 // When guidance has already ended, reaching P saves the drive instead of asking.
                 if (recorder.state.value != null && platform.navi.value.routeEnd == null && previous != CarGear.PARK && previous != CarGear.UNKNOWN && current == CarGear.PARK) {
+                    recorder.publish()
                     screen = Screen.STOP
                     platform.speak("정차했어요. 기록을 종료할 수 있어요.")
                 }
@@ -200,9 +202,10 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
                 when (action) {
                     RouteEndAction.SAVE -> {
                         platform.clearRouteEnd()
-                        val current = recorder.state.value
+                        val current = recorder.current()
                         // Guidance switched off before setting out says nothing about a drive worth keeping.
                         if (current != null && barelyMoved(current.distanceKm, current.points.size >= 2)) {
+                            recorder.publish()
                             screen = Screen.STOP
                             platform.speak("거의 움직이지 않았어요. 저장할지 골라 주세요.")
                         } else {
@@ -234,14 +237,15 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * The navigation service can come up after this app, and without it a first-time driver cannot search at all.
-     * Tries for a minute while on screen, since a vehicle without navigation never connects.
+     * The navigation and speech services can come up after this app, fail to start, or die later. Without navigation
+     * a first-time driver cannot search at all, and without speech there is no spoken cue. Tries for a minute each
+     * time the app is on screen, since a vehicle without a service never connects it.
      */
     private fun retryNaviConnection() {
         naviRetry?.cancel()
         naviRetry = viewModelScope.launch {
             repeat(NAVI_RETRY_COUNT) {
-                if (platform.navi.value.available) return@launch
+                if (platform.connectionsComplete()) return@launch
                 platform.connect()
                 delay(NAVI_RETRY_MS)
             }
@@ -410,7 +414,11 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     fun showRouteOverview() { if (parked) platform.showRouteOverview() }
     fun cancelRoute() = platform.cancelRoute()
 
-    fun askToStop() { if (parked) go(Screen.STOP) }
+    fun askToStop() {
+        if (!parked) return
+        recorder.publish()
+        go(Screen.STOP)
+    }
     fun keepRecording() { go(Screen.HOME) }
 
     fun endRecording() {
@@ -420,7 +428,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val record = recorder.finish() ?: return@launch
                 RecordingService.stop(getApplication())
-                store.addRecord(record)
+                keepRecoveryUntilStored(store.addRecordDurably(record))
                 finishedRecord = record
                 fillRouteMaps()
                 continueAfterRecord()
@@ -459,11 +467,23 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     fun retrySync() = continueAfterRecord()
 
+    /**
+     * The recording files are the drive's only other copy, so they go only once the record is on disk. When the disk
+     * is full they wait for the next write that succeeds, and the driver is told now, while parked.
+     */
+    private fun keepRecoveryUntilStored(stored: Boolean) {
+        if (stored) { recorder.clearRecovery(); return }
+        message = "저장 공간이 부족해 기록을 아직 저장하지 못했어요. 공간이 생기면 다시 저장해요"
+        viewModelScope.launch {
+            store.writeFailed.first { !it }
+            recorder.clearRecovery()
+        }
+    }
+
     fun keepPartial() {
         val record = recoveredRecord ?: return
-        store.addRecord(record)
-        recorder.clearRecovery()
         recoveredRecord = null
+        viewModelScope.launch { keepRecoveryUntilStored(store.addRecordDurably(record)) }
         recoveredPlace = null
         finishedRecord = record
         fillRouteMaps()

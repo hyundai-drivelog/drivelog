@@ -34,6 +34,7 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
+import android.os.RemoteException
 import android.util.Log
 import java.util.Locale
 import kotlin.coroutines.resume
@@ -144,6 +145,38 @@ class PleosCarPlatform(context: Context) : CarPlatform {
         mutableNavi.update { it.copy(available = false) }
     }
 
+    /**
+     * A call into a navigation service that has died fails with a RemoteException (DeadObjectException among them).
+     * The connection is then forgotten, so the app shows navigation as unavailable and the next [connect] starts over
+     * instead of calling a dead binder forever. Other failures leave the connection as it is.
+     */
+    private fun naviCallFailed(sdk: NaviHelper, error: Throwable, what: String) {
+        Log.w(TAG, "$what failed: ${error.javaClass.simpleName}")
+        if (generateSequence(error) { it.cause }.any { it is RemoteException }) dropNavi(sdk)
+    }
+
+    /** A failed engine is released and forgotten, so the next [connect] tries again instead of keeping a dead one. */
+    private fun dropTts(engine: TextToSpeech) = handler.post {
+        if (tts !== engine) return@post
+        tts = null
+        ttsReady = false
+        runCatching { engine.removeEventListener(speechEvents) }
+        runCatching { engine.release() }
+    }
+
+    private fun dropStt(engine: SpeechToText) = handler.post {
+        if (stt !== engine) return@post
+        stt = null
+        runCatching { engine.removeListener(sttListener) }
+        runCatching { engine.release() }
+        mutableSpeech.update { SpeechState() }
+    }
+
+    /** Every service this vehicle offers is connected, so retrying [connect] would change nothing. */
+    override fun connectionsComplete(): Boolean =
+        (naviConnected || !serviceExists(NAVI_ACTION)) &&
+            ((ttsReady && mutableSpeech.value.available) || !serviceExists(SPEECH_ACTION))
+
     /** Each service is optional: model availability differs, so a missing one only hides its feature. */
     override fun connect() {
         if (vehicle == null && serviceExists(VEHICLE_ACTION)) {
@@ -180,7 +213,10 @@ class PleosCarPlatform(context: Context) : CarPlatform {
                             engine.addEventListener(speechEvents)
                         }
                     }
-                    override fun onFailure(errorType: ErrorType) { Log.w(TAG, "tts init failed: $errorType") }
+                    override fun onFailure(errorType: ErrorType) {
+                        Log.w(TAG, "tts init failed: $errorType")
+                        dropTts(engine)
+                    }
                 })
                 tts = engine
             }.onFailure { Log.w(TAG, "tts unavailable: ${it.javaClass.simpleName}") }
@@ -194,9 +230,15 @@ class PleosCarPlatform(context: Context) : CarPlatform {
                             engine.setLocale(Locale.KOREA)
                             engine.addListener(sttListener)
                             mutableSpeech.update { it.copy(available = true) }
-                        }.onFailure { Log.w(TAG, "stt setup failed: ${it.javaClass.simpleName}") }
+                        }.onFailure {
+                            Log.w(TAG, "stt setup failed: ${it.javaClass.simpleName}")
+                            dropStt(engine)
+                        }
                     }
-                    override fun onFailure(errorType: ai.pleos.playground.stt.constant.ErrorType) { Log.w(TAG, "stt init failed: $errorType") }
+                    override fun onFailure(errorType: ai.pleos.playground.stt.constant.ErrorType) {
+                        Log.w(TAG, "stt init failed: $errorType")
+                        dropStt(engine)
+                    }
                 })
                 stt = engine
             }.onFailure { Log.w(TAG, "stt unavailable: ${it.javaClass.simpleName}") }
@@ -287,7 +329,7 @@ class PleosCarPlatform(context: Context) : CarPlatform {
     override fun cancelRoute() {
         val sdk = helper?.takeIf { naviConnected } ?: return
         runCatching { sdk.cancelRoute() }.onFailure {
-            Log.w(TAG, "route cancel failed: ${it.javaClass.simpleName}")
+            naviCallFailed(sdk, it, "route cancel")
             route("안내를 끄지 못했어요")
         }
     }
@@ -295,7 +337,7 @@ class PleosCarPlatform(context: Context) : CarPlatform {
     override fun searchPlace(keyword: String) {
         val sdk = helper?.takeIf { naviConnected } ?: run { route("내비게이션에 연결할 수 없어요"); return }
         runCatching { sdk.requestNavigationScreen(NavigationScreenRequest.SearchPlace(keyword)) }.onFailure {
-            Log.w(TAG, "navi search failed: ${it.javaClass.simpleName}")
+            naviCallFailed(sdk, it, "navi search")
             route("내비 검색을 열지 못했어요")
         }
     }
@@ -404,7 +446,7 @@ class PleosCarPlatform(context: Context) : CarPlatform {
             sdk.getBookmarkInfo()
             sdk.getRecentDestinationInfo()
             sdk.getDestinationInfo()
-        }.onFailure { Log.w(TAG, "navi query failed: ${it.javaClass.simpleName}") }
+        }.onFailure { naviCallFailed(sdk, it, "navi query") }
     }
 
     override fun requestRoute(place: NaviPlace) {
@@ -418,7 +460,7 @@ class PleosCarPlatform(context: Context) : CarPlatform {
             ))
             route("내비에 목적지를 보냈어요")
         }.onFailure {
-            Log.w(TAG, "route request failed: ${it.javaClass.simpleName}")
+            naviCallFailed(sdk, it, "route request")
             route("경로를 요청하지 못했어요")
         }
     }
@@ -426,13 +468,13 @@ class PleosCarPlatform(context: Context) : CarPlatform {
     override fun openNavigation() {
         val sdk = helper?.takeIf { naviConnected } ?: return
         runCatching { sdk.requestNavigationScreen(NavigationScreenRequest.Foreground) }
-            .onFailure { Log.w(TAG, "navi screen failed: ${it.javaClass.simpleName}") }
+            .onFailure { naviCallFailed(sdk, it, "navi screen") }
     }
 
     override fun showRouteOverview() {
         val sdk = helper?.takeIf { naviConnected } ?: run { route("내비게이션에 연결할 수 없어요"); return }
         runCatching { sdk.requestNavigationScreen(NavigationScreenRequest.OverviewRoute(RouteOverviewShowInfo())) }
-            .onFailure { Log.w(TAG, "route overview failed: ${it.javaClass.simpleName}") }
+            .onFailure { naviCallFailed(sdk, it, "route overview") }
     }
 
     override fun clearRouteMessage() = mutableNavi.update { it.copy(routeMessage = null) }

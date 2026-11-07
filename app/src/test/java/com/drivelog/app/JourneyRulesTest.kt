@@ -384,6 +384,50 @@ class JourneyRulesTest {
         assertNull(courseShareUrl("https://example.org/card/", record.copy(route = route.take(8))))
     }
 
+    @Test fun aCardLinkLeavesOutTheStartButKeepsTheWholeDistance() {
+        // About 3.3 km north from a start that could be a home.
+        val route = (0..300).map { listOf(35.1534 + it * 0.0001, 129.1183, (1_000_000L + it * 2000L).toDouble()) }
+        val record = RecordV("d", null, null, "해운대 해수욕장", 1_793_900_000_000, 1_793_903_000_000, 600, 3.3, DistanceSource.GPS,
+            RecordStatus.COMPLETE, false, route)
+        val url = cardShareUrl("https://example.org/card/", record)
+        val fields = url.substringAfter('#').split('&').associate { it.substringBefore('=') to it.substringAfter('=') }
+        assertEquals("500", fields["ts"])
+        assertEquals("3.3", fields["k"])
+        val first = decodeFirstPoint(java.net.URLDecoder.decode(fields.getValue("p"), "UTF-8").substringBefore('.'))
+        val fromStart = com.drivelog.app.core.recording.haversineKm(35.1534, 129.1183, first.first, first.second)
+        assertTrue("card line starts ${fromStart} km from the real start", fromStart >= 0.49)
+        // The end is the destination, a public place, and stays where the drive ended.
+        val pieces = java.net.URLDecoder.decode(fields.getValue("p"), "UTF-8")
+        assertTrue(pieces.isNotEmpty())
+        // A drive shorter than the cut sends no line at all rather than the start.
+        val short = cardShareUrl("https://example.org/card/", record.copy(route = route.take(4)))
+        assertEquals("", short.substringAfter("&p="))
+    }
+
+    @Test fun theStartCutFallsBetweenPointsAndNothingRemainsOfAShortRoute() {
+        val line = (0..10).map { MapPoint(35.0 + it * 0.001, 129.0) } // about 111 m apart
+        val trimmed = com.drivelog.app.feature.car.trimRouteStart(line)!!
+        assertEquals(0.5, com.drivelog.app.core.recording.haversineKm(35.0, 129.0, trimmed.first().latitude, trimmed.first().longitude), 0.001)
+        assertEquals(line.last(), trimmed.last())
+        assertNull(com.drivelog.app.feature.car.trimRouteStart(line.take(4)))
+    }
+
+    @Test fun publishedPointsAreAViewThatChangesWithTheCountNotACopy() {
+        val backing = arrayListOf(
+            com.drivelog.app.core.recording.RoutePoint(35.0, 129.0, 1), com.drivelog.app.core.recording.RoutePoint(35.1, 129.0, 2),
+        )
+        val two = com.drivelog.app.core.recording.GrowingPoints(backing, 2)
+        backing.add(com.drivelog.app.core.recording.RoutePoint(35.2, 129.0, 3))
+        val three = com.drivelog.app.core.recording.GrowingPoints(backing, 3)
+        // An earlier view keeps its size after the list grows, and a new fix is a new value.
+        assertEquals(2, two.size)
+        assertEquals(35.1, two.last().latitude, 0.0)
+        assertNotEquals(two, three)
+        assertEquals(three, com.drivelog.app.core.recording.GrowingPoints(backing, 3))
+        assertNotEquals(three, com.drivelog.app.core.recording.GrowingPoints(ArrayList(backing), 3))
+        assertThrows(IndexOutOfBoundsException::class.java) { two[2] }
+    }
+
     @Test fun aDriveUpTheCoastGetsATallMapAndOneAlongItAWideOne() {
         fun line(vararg points: Pair<Double, Double>) = points.map { com.drivelog.app.feature.car.MapPoint(it.first, it.second) }
         // Haeundae to Gyeongpo: 2.6 degrees north, 0.26 west.

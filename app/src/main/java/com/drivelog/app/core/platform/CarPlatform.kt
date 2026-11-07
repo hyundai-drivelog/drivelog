@@ -51,6 +51,9 @@ interface CarPlatform {
     fun connect()
     fun close()
 
+    /** False while a service this vehicle offers is not connected yet, or was lost and forgotten; [connect] retries it. */
+    fun connectionsComplete(): Boolean = true
+
     /** Raw Vehicle SDK reading after a capability check. The unit is unverified, so callers cross-check it. */
     suspend fun odometerRaw(): Float?
 

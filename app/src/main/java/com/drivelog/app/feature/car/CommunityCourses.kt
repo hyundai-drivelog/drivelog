@@ -48,6 +48,9 @@ private fun cutFront(line: List<MapPoint>, meters: Double): List<MapPoint>? {
     return null
 }
 
+/** The route without its first [meters], or null when nothing would remain. The end is a public place and stays. */
+fun trimRouteStart(points: List<MapPoint>, meters: Double = COURSE_TRIM_METERS): List<MapPoint>? = cutFront(points, meters)
+
 /** The route without [meters] at each end, or null when nothing would remain to be a course. */
 fun trimRouteEnds(points: List<MapPoint>, meters: Double = COURSE_TRIM_METERS): List<MapPoint>? {
     val withoutStart = cutFront(points, meters) ?: return null

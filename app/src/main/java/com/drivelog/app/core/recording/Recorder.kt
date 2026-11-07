@@ -30,6 +30,20 @@ import kotlinx.coroutines.launch
 
 data class RoutePoint(val latitude: Double, val longitude: Double, val atMillis: Long)
 
+/**
+ * The first [size] points of a list that only ever grows. Publishing a drive costs nothing however long it gets,
+ * where copying the whole route for every fix grew with the square of its length. Two views are equal when they
+ * look at the same list up to the same point, so a new fix is still a change.
+ */
+internal class GrowingPoints(private val backing: ArrayList<RoutePoint>, override val size: Int) : AbstractList<RoutePoint>() {
+    override fun get(index: Int): RoutePoint {
+        if (index !in 0 until size) throw IndexOutOfBoundsException("$index of $size")
+        return backing[index]
+    }
+    override fun equals(other: Any?) = other is GrowingPoints && other.backing === backing && other.size == size
+    override fun hashCode() = System.identityHashCode(backing) * 31 + size
+}
+
 data class Recording(
     val id: String,
     val goalId: String?,
@@ -42,6 +56,8 @@ data class Recording(
     val simulated: Boolean,
     val arrived: Boolean = false,
     val locationStale: Boolean = false,
+    /** A point could not be written to disk, so a crash now would lose more than the last tick. Shown once parked. */
+    val storageFailed: Boolean = false,
 )
 
 fun haversineKm(aLat: Double, aLon: Double, bLat: Double, bLon: Double): Double {
@@ -81,8 +97,21 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
     private var ticker: Job? = null
     private var startedElapsed = 0L
     private var odometerStart: Float? = null
+    /** Every accepted point of the drive in progress. Only appended to, and replaced by a new list for each drive. */
+    private var points = ArrayList<RoutePoint>()
+    private var distanceKm = 0.0
     private val mutableState = MutableStateFlow<Recording?>(null)
+    /**
+     * The drive as shown. A fix is published when the count, the distance to one decimal or the write status
+     * changes; while driving the screen shows nothing finer. Use [current] where the exact figures matter.
+     */
     val state: StateFlow<Recording?> = mutableState
+
+    /** The drive with every point and the exact distance so far, without publishing it. */
+    fun current(): Recording? = mutableState.value?.copy(points = GrowingPoints(points, points.size), distanceKm = distanceKm)
+
+    /** Publishes the exact drive, for screens shown once parked that draw the route or the distance left. */
+    fun publish() { current()?.let { mutableState.value = it } }
 
     private data class Meta(val id: String, val goalId: String?, val place: PlaceV, val startedAtMillis: Long, val simulated: Boolean)
 
@@ -98,6 +127,8 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         pointsFile.writeText("")
         tickFile.writeText(now.toString())
         writer = pointsFile.bufferedWriter()
+        points = ArrayList()
+        distanceKm = 0.0
         startedElapsed = SystemClock.elapsedRealtime()
         mutableState.value = recording
         scope.launch { odometerStart = platform.odometerRaw() }
@@ -124,7 +155,7 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
                 addPoint(latitude, longitude)
             }
             val latest = mutableState.value ?: return
-            val lastFix = latest.points.lastOrNull()?.atMillis ?: latest.startedAtMillis
+            val lastFix = points.lastOrNull()?.atMillis ?: latest.startedAtMillis
             val stale = !simulated && System.currentTimeMillis() - lastFix > STALE_AFTER_MS
             // Time is shown in whole minutes, so a second passing is no reason to redraw while driving.
             if (latest.elapsedSeconds / 60 != elapsed / 60 || latest.locationStale != stale) {
@@ -147,7 +178,7 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         val current = mutableState.value ?: return
         if (!latitude.isFinite() || !longitude.isFinite() || latitude !in -90.0..90.0 || longitude !in -180.0..180.0) return
         val now = System.currentTimeMillis()
-        val previous = current.points.lastOrNull()
+        val previous = points.lastOrNull()
         var added = 0.0
         if (previous != null) {
             added = haversineKm(previous.latitude, previous.longitude, latitude, longitude)
@@ -155,12 +186,23 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
             // A position jump is a sensor or emulator artefact, not driving. Never count it as distance.
             if (!current.simulated && (seconds <= 0 || added / seconds * 3600 > MAX_SPEED_KMH)) return
         }
-        val point = RoutePoint(latitude, longitude, now)
-        runCatching {
+        val written = runCatching {
             writer?.run { append("$latitude,$longitude,$now\n"); flush() }
-        }.onFailure { Log.e(TAG, "point write failed: ${it.javaClass.simpleName}") }
-        mutableState.value = current.copy(points = current.points + point, distanceKm = current.distanceKm + added)
+        }.onFailure { Log.e(TAG, "point write failed: ${it.javaClass.simpleName}") }.isSuccess
+        points.add(RoutePoint(latitude, longitude, now))
+        distanceKm += added
+        val storageFailed = current.storageFailed || !written
+        if (shouldPublish(current, storageFailed)) {
+            mutableState.value = current.copy(points = GrowingPoints(points, points.size), distanceKm = distanceKm, storageFailed = storageFailed)
+        }
     }
+
+    /** The first two points make a route; after that only the shown tenth of a kilometre or a failed write. */
+    private fun shouldPublish(shown: Recording, storageFailed: Boolean) =
+        shown.points.size < 2 || storageFailed != shown.storageFailed || tenths(shown.distanceKm) != tenths(distanceKm)
+
+    /** Rounded as the screen shows it ("%.1f"), so the figure on screen is never a tenth behind. */
+    private fun tenths(km: Double) = Math.round(km * 10)
 
     private fun markArrived() {
         val current = mutableState.value ?: return
@@ -176,14 +218,17 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
             (place.longitude - 0.095 * remaining - 0.010 * sin(t * PI * 2))
     }
 
+    /**
+     * Ends the drive and returns its record. The files on disk stay until [clearRecovery] is called once the record
+     * itself is safely stored, so a crash or a full disk in between leaves the drive recoverable instead of lost.
+     */
     suspend fun finish(): RecordV? {
-        val current = mutableState.value ?: return null
+        val current = current() ?: return null
         val end = platform.odometerRaw()
         val start = odometerStart
         val delta = if (start != null && end != null && end >= start) (end - start).toDouble() else null
         val elapsed = elapsedSeconds()
         stop()
-        clearFiles()
         val (distance, source) = resolveDistance(current.distanceKm, current.points.size >= 2, delta)
         return toRecord(current.id, current.goalId, current.place, current.startedAtMillis, System.currentTimeMillis(),
             elapsed, current.points, distance, source, RecordStatus.COMPLETE, current.simulated)
@@ -202,6 +247,8 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         runCatching { writer?.close() }
         writer = null
         mutableState.value = null
+        points = ArrayList()
+        distanceKm = 0.0
     }
 
     private fun clearFiles() {

@@ -298,6 +298,11 @@ fun StopConfirmScreen(routeMaps: RouteMapCache, recording: Recording, onEnd: () 
                             Spacer(Modifier.height(d.u(14)))
                             T("거의 움직이지 않았어요. 저장하지 않고 끝낼 수도 있어요", d.t(18), Modifier.testTag("barely-moved"), color = muted())
                         }
+                        // Told only here, parked: the driving screen shows place, minutes and distance and nothing else.
+                        if (recording.storageFailed) {
+                            Spacer(Modifier.height(d.u(14)))
+                            T("저장 공간이 부족해 경로 일부를 기기에 남기지 못했어요. 앱이 꺼지면 그 구간은 복구되지 않아요", d.t(18), Modifier.testTag("storage-failed"), color = muted(), maxLines = 2)
+                        }
                     }
                 }, right = {
                     // Without a route there is nothing to place on a map, so none is requested.
