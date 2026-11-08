@@ -25,6 +25,12 @@ private val Night = darkColorScheme(
     outline = Color(0xFF44464E), error = Color(0xFFFF8A80),
 )
 
+/** The night colours whatever the setting: drive cards are dark in either theme, and what is drawn on them too. */
+@Composable
+fun NightColors(content: @Composable () -> Unit) {
+    MaterialTheme(colorScheme = Night, content = content)
+}
+
 /** Monochrome per the mockups, on Pleos's own grays. Day and night follow the vehicle's system setting. */
 @Composable
 fun DrivelogTheme(content: @Composable () -> Unit) {

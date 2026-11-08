@@ -9,6 +9,17 @@ import androidx.compose.ui.unit.sp
 
 enum class CarLayoutMode { WIDE, STACKED }
 
+/** App text roles in design units. Vehicle typography scales with the granted window, with a 12sp floor. */
+enum class CarTextSize(val baseSp: Int) {
+    CAPTION(16),
+    BODY(20),
+    LABEL(24),
+    TITLE(32),
+    HEADING(40),
+    DISPLAY(56),
+    HERO(96),
+}
+
 /**
  * Layout decisions come from the window the system actually grants, not the panel's inches. Pleos draws its
  * own status bar, dock and cluster pane, and the driver can resize the app or share the screen with another,
@@ -23,6 +34,7 @@ data class CarDimens(val mode: CarLayoutMode, val scale: Float) {
     fun u(value: Float): Dp = (value * scale).dp
     fun u(value: Int): Dp = (value * scale).dp
     fun t(value: Int): TextUnit = maxOf(value * scale, MIN_TEXT_SP).sp
+    fun t(role: CarTextSize): TextUnit = t(role.baseSp)
 }
 
 /** Pleos's smallest System UI size. A small window shrinks the layout, never the text below this. */

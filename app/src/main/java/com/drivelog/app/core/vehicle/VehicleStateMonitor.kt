@@ -29,6 +29,34 @@ class VehicleStateMonitor(context: Context) {
     private var car: Car? = null
     private var uxManager: CarUxRestrictionsManager? = null
     private var propertyManager: CarPropertyManager? = null
+    private var energyManager: CarPropertyManager? = null
+    private var connectedCar: Car? = null
+
+    /** A runtime permission on AAOS. Asked for with location when a drive starts; a refusal only loses efficiency. */
+    fun missingEnergyPermission(): String? = ENERGY_PERMISSION.takeIf {
+        automotive && context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+    }
+
+    /**
+     * The energy left on board, read once: the battery for an EV, otherwise the fuel. Null when the vehicle does
+     * not report it, the permission is missing, or the value is not available right now.
+     */
+    fun energyLevel(): EnergyLevel? {
+        if (context.checkSelfPermission(ENERGY_PERMISSION) != PackageManager.PERMISSION_GRANTED) return null
+        // The permission is asked for at runtime, so it may have been granted after the car service connected.
+        val manager = energyManager ?: (connectedCar?.getCarManager(Car.PROPERTY_SERVICE) as? CarPropertyManager)?.also { energyManager = it }
+            ?: return null
+        return readEnergy(manager, VehiclePropertyIds.EV_BATTERY_LEVEL, EnergyKind.BATTERY)
+            ?: readEnergy(manager, VehiclePropertyIds.FUEL_LEVEL, EnergyKind.FUEL)
+    }
+
+    private fun readEnergy(manager: CarPropertyManager, propertyId: Int, kind: EnergyKind): EnergyLevel? = try {
+        if (manager.getCarPropertyConfig(propertyId) == null) null
+        else manager.getFloatProperty(propertyId, 0).toDouble().takeIf { it.isFinite() && it > 0.0 }?.let { EnergyLevel(it, kind) }
+    } catch (error: Exception) {
+        Log.w(TAG, "energy read failed: ${error.javaClass.simpleName}")
+        null
+    }
 
     private val gearCallback = object : CarPropertyManager.CarPropertyEventCallback {
         override fun onChangeEvent(value: CarPropertyValue<*>) { (value.value as? Int)?.let { mutableGear.value = fromAaos(it) } }
@@ -47,6 +75,7 @@ class VehicleStateMonitor(context: Context) {
     }
 
     private fun attach(connected: Car) {
+        connectedCar = connected
         try {
             uxManager = (connected.getCarManager(Car.CAR_UX_RESTRICTION_SERVICE) as? CarUxRestrictionsManager)?.also { manager ->
                 manager.registerListener { mutableUxAllowed.value = !it.isRequiresDistractionOptimization }
@@ -55,6 +84,13 @@ class VehicleStateMonitor(context: Context) {
         } catch (error: Exception) {
             Log.w(TAG, "ux restrictions unavailable: ${error.javaClass.simpleName}")
             mutableUxAllowed.value = false
+        }
+        try {
+            if (context.checkSelfPermission(ENERGY_PERMISSION) == PackageManager.PERMISSION_GRANTED) {
+                energyManager = connected.getCarManager(Car.PROPERTY_SERVICE) as? CarPropertyManager
+            }
+        } catch (error: Exception) {
+            Log.w(TAG, "energy unavailable: ${error.javaClass.simpleName}")
         }
         try {
             if (context.checkSelfPermission(GEAR_PERMISSION) != PackageManager.PERMISSION_GRANTED) return
@@ -73,6 +109,8 @@ class VehicleStateMonitor(context: Context) {
         runCatching { propertyManager?.unregisterCallback(gearCallback) }
         uxManager = null
         propertyManager = null
+        energyManager = null
+        connectedCar = null
         mutableUxAllowed.value = false
         mutableGear.value = CarGear.UNKNOWN
     }
@@ -80,6 +118,7 @@ class VehicleStateMonitor(context: Context) {
     private companion object {
         const val TAG = "DriveLogVehicle"
         const val GEAR_PERMISSION = "android.car.permission.CAR_POWERTRAIN"
+        const val ENERGY_PERMISSION = "android.car.permission.CAR_ENERGY"
 
         // android.car.VehicleGear values; everything forward counts as moving.
         fun fromAaos(value: Int) = when (value) {

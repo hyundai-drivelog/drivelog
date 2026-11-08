@@ -1,11 +1,13 @@
 package com.drivelog.app.feature.car
 
 import android.app.Application
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
@@ -31,8 +33,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** RECORDING and LOCKED follow from vehicle state (see routeFor); nothing navigates to them. */
-enum class Screen { HOME, PLACE, HISTORY, RECORD, STOP, SYNCING, LINK, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE, COMMUNITY, COURSE_DETAIL, COURSE_SHARE, CARD_QR }
+enum class Screen { WELCOME, HOME, DESTINATION, PLACE, HISTORY, RECORD, STOP, SYNCING, LINK, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE, COMMUNITY, COURSE_DETAIL, COURSE_SHARE, CARD_QR }
 
+private const val PREFS = "drivelog"
+private const val PREF_WELCOMED = "welcomed"
 private const val PHONE_PREVIEW_CODE_MS = 5 * 60 * 1000L
 private const val NAVI_RETRY_COUNT = 6
 private const val NAVI_RETRY_MS = 10_000L
@@ -170,6 +174,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             recoveredPlace = recorder.recoveredPlace()
             if (recoveredRecord != null) screen = Screen.RECOVERY
         }
+        // A first start opens on the introduction; a drive left to recover comes first.
+        if (screen == Screen.HOME && !prefs.getBoolean(PREF_WELCOMED, false)) screen = Screen.WELCOME
         // The process is frozen behind the navigation app, so this usually fires when the driver comes back.
         viewModelScope.launch {
             platform.navi.collect { state ->
@@ -291,11 +297,29 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         screen = target
     }
 
+    private val prefs get() = getApplication<Application>().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /** The introduction, from the home screen's `앱 소개`. */
+    fun openWelcome() = go(Screen.WELCOME)
+
+    /** Done or skipped: either way it is not shown on its own again. */
+    fun finishWelcome() {
+        prefs.edit().putBoolean(PREF_WELCOMED, true).apply()
+        home()
+    }
+
     fun home() {
         finishedRecord = null
         selectedPlace = null
         searchQuery = ""
         go(Screen.HOME)
+    }
+
+    /** "드라이브 시작" on the home screen: where the driver finds a place to go. */
+    fun openDestination() {
+        finishedRecord = null
+        selectedPlace = null
+        go(Screen.DESTINATION)
     }
 
     /** False means this is the top screen, and the activity hides itself rather than finishing. */
@@ -306,12 +330,14 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         }
         when (screen) {
             Screen.HOME, Screen.RECOVERY, Screen.SYNCING -> return false
+            Screen.WELCOME -> finishWelcome()
             Screen.LINK -> leaveLink()
             Screen.PHONE_PREVIEW_LINK, Screen.PHONE_PREVIEW_DONE -> leavePhonePreview()
             Screen.CARD_QR -> leaveCardQr()
             Screen.COURSE_DETAIL -> go(Screen.COMMUNITY)
             Screen.COURSE_SHARE -> go(returnAfterCourseShare)
-            Screen.RECORD -> go(Screen.HISTORY)
+            Screen.RECORD -> if (returnAfterRecord == Screen.HISTORY) go(Screen.HISTORY) else home()
+            Screen.PLACE -> openDestination()
             else -> home()
         }
         return true
@@ -357,7 +383,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         awaitingNavi = true
         if (!returnHintSpoken) {
             returnHintSpoken = true
-            platform.speak("내비에서 목적지를 고른 뒤 여정으로 돌아오면 기록을 시작할 수 있어요.")
+            platform.speak("내비에서 목적지를 고른 뒤 드라이브로그로 돌아오면 기록을 시작할 수 있어요.")
         }
         platform.searchPlace(keyword)
     }
@@ -394,6 +420,19 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         if (simulation) return emptyList()
         val context = getApplication<Application>()
         return platform.locationPermissions().filter { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+    }
+
+    private var energyAsked = false
+
+    /**
+     * What to ask for when the driver starts a drive: location, which recording needs, and the vehicle's energy
+     * level, which only the drive's efficiency needs. Energy is asked once a session so a refusal is not nagged.
+     */
+    fun startPermissions(): List<String> {
+        if (simulation) return emptyList()
+        val energy = app.vehicleState.missingEnergyPermission()?.takeIf { !energyAsked }
+        if (energy != null) energyAsked = true
+        return missingLocationPermissions() + listOfNotNull(energy)
     }
 
     /** The driver pressed "길 안내 및 기록 시작", so this is the one explicit route request. */
@@ -535,14 +574,28 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- 내 기록 ----------------------------------------------------------------------------------
 
-    fun openHistory() {
+    /** The tab 내 기록 opens on: 0 drives, 1 cards, 2 stamps. */
+    var historyTab by mutableIntStateOf(0)
+        private set
+
+    fun openHistory() = openHistoryTab(0)
+
+    fun openStamps() = openHistoryTab(2)
+
+    private fun openHistoryTab(tab: Int) {
+        historyTab = tab
         finishedRecord = null
         fillRouteMaps()
         go(Screen.HISTORY)
     }
 
+    /** Where a record was opened from, so Back and 돌아가기 return there rather than always to 내 기록. */
+    var returnAfterRecord by mutableStateOf(Screen.HISTORY)
+        private set
+
     fun openRecord(record: RecordV) {
         openedRecordId = record.id
+        returnAfterRecord = if (screen == Screen.HISTORY) Screen.HISTORY else Screen.HOME
         go(Screen.RECORD)
     }
 
@@ -552,7 +605,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             routeMaps.delete(it)
         }
         openedRecordId = null
-        go(Screen.HISTORY)
+        if (returnAfterRecord == Screen.HISTORY) go(Screen.HISTORY) else home()
         say("기록을 지웠어요")
     }
 

@@ -225,10 +225,10 @@ private fun CarButton(
     }
 }
 
-/** "‹ 여정" header. Holding the title opens SDK diagnostics, which is parked-only like everything else. */
+/** "‹ DRIVELOG" header. Holding the title opens SDK diagnostics, which is parked-only like everything else. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun TopBar(onBack: (() -> Unit)?, onTitleHold: (() -> Unit)? = null, trailing: (@Composable () -> Unit)? = null, title: String = "여정") {
+fun TopBar(onBack: (() -> Unit)?, onTitleHold: (() -> Unit)? = null, trailing: (@Composable () -> Unit)? = null, title: String = "DRIVELOG") {
     val d = LocalCarDimens.current
     Row(Modifier.fillMaxWidth().heightIn(min = maxOf(d.u(44), MinTouch)), verticalAlignment = Alignment.CenterVertically) {
         // No empty slot without a back button, so the title lines up with the content below it.
@@ -238,7 +238,8 @@ fun TopBar(onBack: (() -> Unit)?, onTitleHold: (() -> Unit)? = null, trailing: (
             contentAlignment = Alignment.Center,
         ) { CarIcon(CarGlyph.CHEVRON_LEFT, 48.dp, fg()) }
         Box(Modifier.heightIn(min = MinTouch).combinedClickable(interactionSource = null, indication = null, onClick = {}, onLongClick = onTitleHold).padding(horizontal = d.u(4)).testTag("title"), contentAlignment = Alignment.Center) {
-            T(title, d.t(18), bold = true)
+            // The app's own name is the brand lockup; any other title is plain text.
+            if (title == BRAND_NAME) BrandLockup(d.u(30), fg()) else T(title, d.t(CarTextSize.BODY), bold = true)
         }
         Spacer(Modifier.weight(1f))
         trailing?.invoke()
@@ -317,15 +318,15 @@ fun ProgressDots(total: Int, done: Int, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun Stat(value: String, unit: String, label: String, modifier: Modifier = Modifier) {
+fun Stat(value: String, unit: String, label: String, modifier: Modifier = Modifier, size: Int = CarTextSize.DISPLAY.baseSp) {
     val d = LocalCarDimens.current
     Column(modifier) {
         Row(verticalAlignment = Alignment.Bottom) {
-            T(value, d.t(54), maxLines = 1, display = true)
+            T(value, d.t(size), maxLines = 1, display = true, tabular = true)
             // Units at 0.4 of the number, as on every screen and card.
-            if (unit.isNotEmpty()) T(unit, d.t(22), Modifier.padding(start = d.u(6), bottom = d.u(8)), bold = true)
+            if (unit.isNotEmpty()) T(unit, d.t(size * 2 / 5), Modifier.padding(start = d.u(6), bottom = d.u(size / 7)), bold = true)
         }
-        T(label, d.t(17), color = muted())
+        T(label, d.t(CarTextSize.CAPTION), color = muted(), maxLines = 2)
     }
 }
 
@@ -338,10 +339,10 @@ fun VerticalRule(modifier: Modifier = Modifier) {
 fun SimulationBadge() {
     val d = LocalCarDimens.current
     // Outlined, because a filled shape on these screens is something to press.
-    T("시뮬레이션 데이터", d.t(14), Modifier.border(1.dp, muted(), RoundedCornerShape(d.u(6))).padding(horizontal = d.u(10), vertical = d.u(4)).testTag("sim-badge"), bold = true)
+    T("시뮬레이션 데이터", d.t(CarTextSize.CAPTION), Modifier.border(1.dp, muted(), RoundedCornerShape(d.u(6))).padding(horizontal = d.u(10), vertical = d.u(4)).testTag("sim-badge"), bold = true)
 }
 
-enum class CarGlyph { CHEVRON_LEFT, CHEVRON_RIGHT, CHECK, PIN, INFO, CLOUD_OFF, REFRESH, DOCUMENT, PHOTO, SEARCH, CLOCK, BOOKMARK, LIST, MIC }
+enum class CarGlyph { CHEVRON_LEFT, CHEVRON_RIGHT, CHECK, PIN, INFO, CLOUD_OFF, REFRESH, DOCUMENT, PHOTO, SEARCH, CLOCK, BOOKMARK, LIST, MIC, ROUTE, STAMP }
 
 /**
  * System icons on the Pleos grid: drawn at 48 units and scaled, Outlined at a 3.6 unit stroke with round caps and
@@ -412,6 +413,29 @@ fun CarIcon(glyph: CarGlyph, size: Dp, color: Color, modifier: Modifier = Modifi
                 drawArc(color, 0f, 180f, false, at(10f, 9f), Size(28f * u, 28f * u), style = stroke)
                 line(24f, 37f, 24f, 43f)
             }
+            CarGlyph.ROUTE -> {
+                // The same small departure and larger arrival motif used by the brand.
+                drawPath(Path().apply {
+                    moveTo(9f * u, 37f * u)
+                    cubicTo(10f * u, 22f * u, 29f * u, 31f * u, 28f * u, 19f * u)
+                    cubicTo(27f * u, 11f * u, 33f * u, 10f * u, 38f * u, 10f * u)
+                }, color, style = stroke)
+                drawCircle(color, 3.2f * u, at(9f, 37f))
+                drawCircle(color, 5f * u, at(38f, 10f))
+            }
+            CarGlyph.STAMP -> {
+                // A physical ink stamp, rather than a medal or competitive achievement.
+                drawPath(Path().apply {
+                    moveTo(15f * u, 29f * u)
+                    lineTo(17f * u, 24f * u)
+                    lineTo(17f * u, 14f * u)
+                    cubicTo(17f * u, 3f * u, 31f * u, 3f * u, 31f * u, 14f * u)
+                    lineTo(31f * u, 24f * u)
+                    lineTo(33f * u, 29f * u)
+                }, color, style = stroke)
+                drawRoundRect(color, at(8f, 29f), Size(32f * u, 9f * u), CornerRadius(3f * u), style = stroke)
+                line(12f, 43f, 36f, 43f)
+            }
         }
     }
 }
@@ -446,3 +470,45 @@ fun PhoneFrame(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
 
 /** A dashed, not solid, path: used wherever the app must not imply a measured route. */
 fun dashedEffect(unit: Float) = PathEffect.dashPathEffect(floatArrayOf(unit * 2.5f, unit * 2.5f))
+
+const val BRAND_NAME = "DRIVELOG"
+
+/**
+ * The brand mark: the launcher icon's motif, a drive from a small start dot along a curve to a larger end dot.
+ * Monochrome, in whatever ink it sits on.
+ */
+@Composable
+fun BrandGlyph(size: Dp, color: Color, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.Canvas(modifier.size(size)) {
+        val k = this.size.width / 40f
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(8f * k, 31f * k)
+            cubicTo(10f * k, 18f * k, 21f * k, 25f * k, 24f * k, 16f * k)
+            cubicTo(26f * k, 11f * k, 28f * k, 9.5f * k, 32f * k, 8.5f * k)
+        }
+        drawPath(path, color, style = androidx.compose.ui.graphics.drawscope.Stroke(3.4f * k, cap = StrokeCap.Round))
+        drawCircle(color, 3.2f * k, androidx.compose.ui.geometry.Offset(8f * k, 31f * k))
+        drawCircle(color, 5.2f * k, androidx.compose.ui.geometry.Offset(32f * k, 8.5f * k))
+    }
+}
+
+/** The wordmark alone: heavy, slightly tracked, one weight wherever it appears. */
+@Composable
+fun BrandWordmark(size: androidx.compose.ui.unit.TextUnit, color: Color, modifier: Modifier = Modifier) {
+    BasicText(
+        BRAND_NAME, modifier,
+        style = TextStyle(color = color, fontSize = size, fontWeight = FontWeight.ExtraBold, letterSpacing = androidx.compose.ui.unit.TextUnit(0.04f, androidx.compose.ui.unit.TextUnitType.Em)),
+        maxLines = 1,
+    )
+}
+
+/** Glyph and wordmark together, for the header of the app's own screens. */
+@Composable
+fun BrandLockup(height: Dp, color: Color, modifier: Modifier = Modifier) {
+    val d = LocalCarDimens.current
+    Row(modifier.testTag("brand-lockup"), verticalAlignment = Alignment.CenterVertically) {
+        BrandGlyph(height, color)
+        Spacer(Modifier.width(d.u(8)))
+        BrandWordmark(d.t(CarTextSize.BODY), color)
+    }
+}

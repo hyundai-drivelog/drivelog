@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The app's own motif, a recorded route from a start ring to where the drive ended, kept inside the adaptive
+<!-- The app's own motif, a recorded route from a small start dot to a larger mark where the drive ended, as every card draws its ends, kept inside the adaptive
      icon's 66 unit safe zone so every brand's mask (Pleos App Icon guide) leaves it whole. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
@@ -13,9 +13,8 @@
         android:strokeLineCap="round"
         android:strokeLineJoin="round" />
     <path
-        android:pathData="M39,67m-5.5,0a5.5,5.5 0,1 1,11 0a5.5,5.5 0,1 1,-11 0"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="3.6" />
+        android:pathData="M40.5,66.5m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0"
+        android:fillColor="#FFFFFF" />
     <path
         android:pathData="M69,38m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0"
         android:fillColor="#FFFFFF" />

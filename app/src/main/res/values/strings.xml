@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">여정</string>
+    <string name="app_name">DRIVELOG</string>
     <string name="recording_channel">드라이브 기록</string>
     <string name="recording_title">드라이브를 기록하고 있어요</string>
 </resources>

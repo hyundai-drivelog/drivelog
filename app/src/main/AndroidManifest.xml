@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Only what shipped features use: unused permissions are grounds for rejection. -->
     <uses-permission android:name="android.car.permission.CAR_POWERTRAIN" />
+    <!-- Battery or fuel left at the start and end of a drive, for its efficiency. -->
+    <uses-permission android:name="android.car.permission.CAR_ENERGY" />
     <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
     <uses-permission android:name="pleos.car.permission.FUSED_LOCATION" />
     <uses-permission android:name="pleos.car.permission.NAVI_ROUTE" />

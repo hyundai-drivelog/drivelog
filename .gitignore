@@ -32,3 +32,6 @@ keystore.properties
 # Local demo database and uploaded photos
 /server/data/
 /data/
+
+# Local browser profile used for design verification.
+/.qa-design-chrome/

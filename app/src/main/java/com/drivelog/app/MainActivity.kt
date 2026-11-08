@@ -33,7 +33,7 @@ class MainActivity : ComponentActivity() {
             DrivelogTheme {
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding()) {
                     CarApp(model, onStartPressed = {
-                        val missing = model.missingLocationPermissions()
+                        val missing = model.startPermissions()
                         if (missing.isEmpty()) model.startRecording() else locationPermissions.launch(missing.toTypedArray())
                     })
                 }

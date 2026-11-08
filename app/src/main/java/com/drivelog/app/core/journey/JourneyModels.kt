@@ -55,6 +55,13 @@ data class RecordV(
     val naviDurationSeconds: Int? = null,
     /** Breaks the driver marked while parked, as [startMillis, endMillis]. Nullable: older records have none. */
     val rests: List<List<Long>>? = null,
+    /**
+     * Distance per energy over the drive, from the vehicle's energy left at start and end (EV_BATTERY_LEVEL or
+     * FUEL_LEVEL). [efficiencyUnit] is km/kWh or km/L and [energyUsed] is in kWh or L. Null when not measured.
+     */
+    val efficiency: Double? = null,
+    val efficiencyUnit: String? = null,
+    val energyUsed: Double? = null,
 )
 
 /** Total time of the breaks the driver marked, in seconds. */

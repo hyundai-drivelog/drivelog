@@ -118,7 +118,7 @@
         throw error.status === 404 ? new Error('코드가 올바르지 않거나 만료되었습니다.') : error;
       }
     }) }, '차량과 연결');
-    return [el('h1', {}, '차량과 연결'), el('p', { class: 'muted' }, '차량 화면의 여정 앱에 표시된 연결 코드를 입력하세요.'),
+    return [el('h1', {}, '차량과 연결'), el('p', { class: 'muted' }, '차량 화면의 DRIVELOG 앱에 표시된 연결 코드를 입력하세요.'),
       el('div', { style: 'height:20px' }), input, el('div', { style: 'height:12px' }), submit,
       el('p', { class: 'notice' }, '차량 기록의 경로와 사진은 기본적으로 비공개로 저장되며, 연결된 기기에서만 볼 수 있습니다. 위치·주행 정보는 카드 제작과 방문 진행률 표시에 사용하고, 기록과 사진은 언제든 삭제할 수 있습니다.')];
   }
@@ -136,13 +136,13 @@
     const goal = state.activeGoal;
     const archiveLink = el('button', { class: 'link-btn', onclick: () => go('#/archive') }, '보관함');
     if (!goal) {
-      return [bar('여정', null, archiveLink), el('h1', {}, '차량에서 목표를 만들어 주세요'),
+      return [bar('DRIVELOG', null, archiveLink), el('h1', {}, '차량에서 목표를 만들어 주세요'),
         el('p', { class: 'muted' }, '정차 중에 내비의 즐겨찾기와 최근 목적지에서 세 곳을 고르면 이곳에 나타나요.')];
     }
     const count = visited(goal), done = goal.status === 'ACHIEVED';
     const next = goal.places.find(place => !place.visitRecordId);
     const orphans = state.records.filter(record => record.goalId === goal.id && !goal.places.some(place => place.visitRecordId === record.id));
-    return [bar('여정', null, archiveLink), el('h1', {}, goal.name),
+    return [bar('DRIVELOG', null, archiveLink), el('h1', {}, goal.name),
       el('p', { class: 'muted' }, done ? '모든 장소를 만났어요' : `다음 기억은 ${DriveCard.shortPlace(next.name)}에서`),
       el('p', { style: 'margin-top:12px' }, `${count} / ${goal.places.length}곳 방문`), progress(goal),
       el('div', { style: 'height:12px' }),
