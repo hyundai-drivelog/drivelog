@@ -11,9 +11,15 @@ which must happen before leaving P, and run it again without -Prepare. Without t
 from wherever the emulator was, the recorder rejects the jump to this route, and the drive stays at 0.0 km.
 Nothing is installed and app data is not touched.
 
+With -KmPerKwh the battery energy (EV_BATTERY_LEVEL) also falls with the distance driven, as if the car used that
+much, so the app's efficiency from start and end energy can be tried. The emulator does not drain the battery when
+driving, so without it the drive has no efficiency. The battery is left where the drive ended. These are injected
+figures, not a measurement of any car.
+
 .EXAMPLE
 .\scripts\demo-drive.ps1 -Serial emulator-5556 -Prepare
 .\scripts\demo-drive.ps1 -Serial emulator-5556
+.\scripts\demo-drive.ps1 -Serial emulator-5556 -KmPerKwh 6.5
 #>
 param(
     [string]$Serial = "emulator-5556",
@@ -22,6 +28,8 @@ param(
     [ValidateRange(20, 200)][double]$MaxSpeedKmh = 180,
     [ValidateRange(5, 200)][double]$MinSpeedKmh = 60,
     [ValidateRange(1, 10)][int]$IntervalSeconds = 2,
+    # 0 leaves the battery alone. Otherwise the injected efficiency, in km per kWh.
+    [ValidateRange(0, 15)][double]$KmPerKwh = 0,
     [switch]$Prepare
 )
 
@@ -38,6 +46,13 @@ function Invoke-Adb {
 function Set-Gear([string]$Gear) {
     Invoke-WebRequest -UseBasicParsing -Method Put -Uri "$console/vehicle/gear?gear=$Gear" | Out-Null
     Write-Host "Gear: $Gear"
+}
+
+function Set-BatteryKwh([double]$Kwh) {
+    $value = [Math]::Max(0, $Kwh).ToString("0.000", $culture)
+    # A missed step is caught up by the next one; it must not end the drive halfway.
+    try { Invoke-WebRequest -UseBasicParsing -Method Put -Uri "$console/vehicle/ev-battery?field=battery_level&value=$value" | Out-Null }
+    catch { Write-Warning "Battery not set to $value kWh: $($_.Exception.Message)" }
 }
 
 function Set-Position([double]$Longitude, [double]$Latitude) {
@@ -75,6 +90,12 @@ $session = Start-Job -ArgumentList "$console/browser/session?client=$client" -Sc
     }
 }
 
+$batteryStart = $null
+if ($KmPerKwh -gt 0) {
+    $batteryStart = [double](Invoke-RestMethod -UseBasicParsing -Uri "$console/vehicle/ev-battery").current_energy_kwh
+    Write-Host ("Battery {0:N3} kWh, falling at {1} km/kWh: {2:N3} kWh over the route." -f $batteryStart, $KmPerKwh, ($totalKm / $KmPerKwh))
+}
+
 try {
     Start-Sleep -Seconds 2
     Set-Gear "Drive"
@@ -93,6 +114,7 @@ try {
             $intoLeg -= $legs[$leg]
             $leg++
         }
+        if ($null -ne $batteryStart) { Set-BatteryKwh ($batteryStart - [Math]::Min($driven, $totalKm) / $KmPerKwh) }
         if ($leg -ge $legs.Count) { Set-Position $route[-1][0] $route[-1][1]; break }
         $t = if ($legs[$leg] -gt 0) { $intoLeg / $legs[$leg] } else { 0 }
         Set-Position ($route[$leg][0] + ($route[$leg + 1][0] - $route[$leg][0]) * $t) ($route[$leg][1] + ($route[$leg + 1][1] - $route[$leg][1]) * $t)
@@ -102,5 +124,8 @@ try {
     try { Set-Gear "Park" } catch { Write-Warning "Could not return to Park. Set it in the Virtual Console: $_" }
     Stop-Job $session -ErrorAction SilentlyContinue
     Remove-Job $session -Force -ErrorAction SilentlyContinue
+}
+if ($null -ne $batteryStart) {
+    Write-Host ("Battery now {0:N3} kWh." -f [double](Invoke-RestMethod -UseBasicParsing -Uri "$console/vehicle/ev-battery").current_energy_kwh)
 }
 Write-Host "Done. End the recording in the app if the stop screen is showing."

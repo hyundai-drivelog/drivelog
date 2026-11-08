@@ -9,6 +9,9 @@ import com.drivelog.app.core.journey.RecordStatus
 import com.drivelog.app.core.journey.RecordV
 import com.drivelog.app.core.platform.CarGear
 import com.drivelog.app.core.platform.CarPlatform
+import com.drivelog.app.core.vehicle.EnergyLevel
+import com.drivelog.app.core.vehicle.EnergyTrack
+import com.drivelog.app.core.vehicle.resolveEfficiency
 import com.google.gson.Gson
 import java.io.BufferedWriter
 import java.io.File
@@ -89,7 +92,13 @@ fun resolveDistance(gpsKm: Double, hasRoute: Boolean, odometerDelta: Double?): P
  * Owns the drive being recorded, outside any Activity. Every point is flushed to disk as it arrives, so an
  * app or vehicle shutdown loses at most the last tick and the remainder can be recovered as a partial record.
  */
-class Recorder(context: Context, private val platform: CarPlatform, private val scope: CoroutineScope, private val simulatedGear: () -> CarGear) {
+class Recorder(
+    context: Context,
+    private val platform: CarPlatform,
+    private val scope: CoroutineScope,
+    private val energyLevel: () -> EnergyLevel? = { null },
+    private val simulatedGear: () -> CarGear,
+) {
     private val directory = File(context.filesDir, "recording").apply { mkdirs() }
     private val metaFile = File(directory, "active.json")
     private val pointsFile = File(directory, "points.csv")
@@ -101,6 +110,8 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
     private var ticker: Job? = null
     private var startedElapsed = 0L
     private var odometerStart: Float? = null
+    /** Energy on board through the drive; never read for a simulated drive. */
+    private var energy: EnergyTrack? = null
     /** Every accepted point of the drive in progress. Only appended to, and replaced by a new list for each drive. */
     private var points = ArrayList<RoutePoint>()
     private var distanceKm = 0.0
@@ -137,6 +148,7 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         rests.clear()
         restsFile.delete()
         startedElapsed = SystemClock.elapsedRealtime()
+        energy = if (simulated) null else energyLevel()?.let(::EnergyTrack)
         mutableState.value = recording
         scope.launch { odometerStart = platform.odometerRaw() }
         ticker = scope.launch { tick(simulated) }
@@ -154,6 +166,7 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         var step = 0
         var lastSaved = 0L
         var lastRestart = 0L
+        var lastEnergySample = 0L
         while (scope.isActive) {
             val elapsed = elapsedSeconds()
             val current = mutableState.value ?: return
@@ -172,6 +185,10 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
             if (stale && System.currentTimeMillis() - maxOf(lastFix, lastRestart) > STALE_AFTER_MS) {
                 lastRestart = System.currentTimeMillis()
                 if (!startLocationUpdates()) Log.w(TAG, "location restart refused")
+            }
+            if (elapsed - lastEnergySample >= ENERGY_SAMPLE_SECONDS) {
+                lastEnergySample = elapsed
+                energy?.sample(energyLevel())
             }
             if (elapsed - lastSaved >= 5) {
                 lastSaved = elapsed
@@ -255,10 +272,16 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         val start = odometerStart
         val delta = if (start != null && end != null && end >= start) (end - start).toDouble() else null
         val elapsed = elapsedSeconds()
+        val track = energy
+        val energyEnd = if (current.simulated) null else energyLevel()
+        track?.sample(energyEnd)
         stop()
         val (distance, source) = resolveDistance(current.distanceKm, current.points.size >= 2, delta)
+        val efficiency = resolveEfficiency(distance, track?.start, energyEnd, track?.step)
+        Log.i(TAG, "energy start=${track?.start?.amount} end=${energyEnd?.amount} step=${track?.step} km=$distance -> ${efficiency?.value} ${efficiency?.unit}")
         return toRecord(current.id, current.goalId, current.place, current.startedAtMillis, System.currentTimeMillis(),
             elapsed, current.points, distance, source, RecordStatus.COMPLETE, current.simulated, finishedRests)
+            .copy(efficiency = efficiency?.value, efficiencyUnit = efficiency?.unit, energyUsed = efficiency?.used)
     }
 
     /** Ends the recording and leaves nothing behind, neither a record nor anything to recover. */
@@ -276,6 +299,7 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         mutableState.value = null
         points = ArrayList()
         distanceKm = 0.0
+        energy = null
         finishedRests = rests.toList()
         rests.clear()
     }
@@ -351,5 +375,7 @@ class Recorder(context: Context, private val platform: CarPlatform, private val 
         const val STALE_AFTER_MS = 60_000L
         const val MAX_ROUTE_POINTS = 18_000
         const val MIN_REST_MS = 60_000L
+        /** Often enough to see the energy level's step on a short drive; one property read each time. */
+        const val ENERGY_SAMPLE_SECONDS = 15L
     }
 }

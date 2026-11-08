@@ -10,6 +10,7 @@
 | 주행 규제 | **AAOS `CarUxRestrictionsManager`** | `isRequiresDistractionOptimization`, `getActiveRestrictions` |
 | 클러스터 속도 | AAOS `PERF_VEHICLE_SPEED` | 현재 기능에 불필요해 미사용 |
 | 주행거리 | Vehicle SDK `Odometer` | capability 확인 필수, 단위 미검증 |
+| 배터리·연료 잔량 (주행 전비·연비) | **AAOS `EV_BATTERY_LEVEL`(Wh), `FUEL_LEVEL`(mL)** | Pleos `getCurrentEvEfficiency`·`getCurrentFuelEconomy`는 에뮬레이터에서 `ERROR_NOT_SUPPORTED_PROPERTY`, 의미·단위 미확인 |
 | 위치 | FusedLocation SDK | `isSupported` 확인 필수 |
 | 장소 출처, 경로 요청, 도착 | NaviHelper SDK | 내비 탑재 차량만 |
 | 음성 안내 | TextToSpeech SDK | 오디오 포커스 선행 |
@@ -42,6 +43,7 @@ maven { url = uri("https://nexus-playground.pleos.ai/repository/maven-releases/"
 | 퍼미션 | 용도 | 검증 |
 |---|---|---|
 | `android.car.permission.CAR_POWERTRAIN` | 기어 (`GEAR_SELECTION`) | AAOS 표준 |
+| `android.car.permission.CAR_ENERGY` | 배터리·연료 잔량 (`EV_BATTERY_LEVEL`, `FUEL_LEVEL`) | AAOS 표준. **런타임 권한**이라 기록 시작 때 위치와 함께 세션당 한 번 요청한다. 거절해도 기록은 되고 전비만 빠진다 |
 | `pleos.car.permission.CAR_DRIVE` | 주행거리 (`Odometer`) | 문서 |
 | `pleos.car.permission.FUSED_LOCATION` | 위치 (런타임 요청 필요) | 기존 검증 기록 |
 | `android.permission.ACCESS_FINE_LOCATION` | 위치 타입 포그라운드 서비스 | Android 정책 |
@@ -51,7 +53,7 @@ maven { url = uri("https://nexus-playground.pleos.ai/repository/maven-releases/"
 | `pleos.car.permission.TTS_SERVICE` | TTS | 공개 샘플에서 확인, 공식 표 확인 필요 |
 | `pleos.car.permission.STT_SERVICE` | STT | 문서. 앱에 `RECORD_AUDIO` 없이 녹음 시작 확인 |
 
-진단 전용 `CAR_INFO`, `CAR_ENERGY`는 debug 매니페스트에만 둔다. 쓰지 않는 퍼미션은 반려 사유다.
+진단 전용 `pleos.car.permission.CAR_INFO`, `pleos.car.permission.CAR_ENERGY`는 debug 매니페스트에만 둔다. 쓰지 않는 퍼미션은 반려 사유다.
 
 ## 5. 주행 규제
 
@@ -116,6 +118,13 @@ if (sdk.isSupported()) {
 - `Vehicle(context).initialize()` 후 `getOdometer()`를 사용하고, 끝나면 `release()`.
 - 값을 읽기 전에 `checkCurrentDistanceDrivenCapabilities`로 지원 여부를 확인한다.
 - 에뮬레이터에서 값이 `0.0`이고 단위가 미검증이므로, **GPS 거리와 ±25% 안에서 일치할 때만** `차량 주행거리`로 표시하고 나머지는 `추정 거리`로 표시한다.
+
+### 주행 전비·연비
+
+- 기록 시작과 끝의 잔량 차이로 계산한다(`Efficiency.kt`, `Recorder`). 거리는 기록 거리(GPS 추정 또는 차량 주행거리)다.
+- 기록 중 15초마다 잔량을 읽어 값이 바뀌는 가장 작은 폭(눈금)을 알아낸다. 쓴 양이 눈금 5개보다 적으면 반올림 오차가 커서 보이지 않는다. 1km 미만, 충전으로 늘어난 경우, 전비 1~15km/kWh·연비 2~50km/L 밖도 보이지 않는다.
+- 시뮬레이션 기록에는 읽지 않는다. 복구한 부분 기록에는 없다.
+- 기록 완료·상세 화면의 수치 아래 한 줄에만 보인다(`전비 · 0.50 kWh 사용`). 주행 중 화면과 카드에는 넣지 않는다.
 
 ## 9. TTS와 오디오 포커스
 
@@ -194,6 +203,8 @@ onBackPressedDispatcher.addCallback(this) {
 | 내비 경로선 (2026-11-06) | `navi-data` 3.0.4 공개 타입에 경로 좌표 없음. `RoutePointInfo`는 출발·경유·도착 지점뿐. `NavigationScreenRequest.OverviewRoute`로 내비의 경로 개요를 열고, `RouteStartInfo.distance/duration`을 표시한다. 통과(2026-11-06): 앱의 `13 km · 약 18분`이 내비 개요의 `18분 · 13km`와 일치해 distance는 m, duration은 초다. 에뮬레이터 내비는 `geo fix`와 다른 자기 위치에서 경로를 계산하므로 장소 화면의 `현재 위치`와 경로 출발점이 다를 수 있다 |
 | 구간 기록, 경로 재생, QR 카드 (2026-11-06, debug 빌드) | 5.5km 시험 주행에서 구간 6개 표시, `경로 다시 보기`로 지도 위 재생 확인. 화면의 QR을 ZXing으로 다시 읽어 367자 주소를 얻었고, 그 주소로 `web/card/index.html`이 같은 경로의 카드를 그렸다(Chrome headless). **실제 휴대폰 카메라 인식과 공개 호스팅은 미검증** |
 | 시험 중 시스템 재시작 (2026-11-06) | 내비가 앞에 있는 주행 중 `android.fg`가 68초 멈춰 Watchdog이 system_server를 재시작했다. 앱 충돌 기록은 없고 복구 화면이 정상 동작했다 |
+| 주행 전비 (2026-11-08, debug 빌드) | `EV_BATTERY_LEVEL`·`INFO_EV_BATTERY_CAPACITY`(77.4kWh)·`EV_BATTERY_INSTANTANEOUS_CHARGE_RATE`·`FUEL_LEVEL`·`PERF_ODOMETER`가 HAL에 등록돼 있다. 주행해도 잔량은 줄지 않고 순간 전력은 0이며, `FUEL_LEVEL`은 값이 없다. Virtual Console `PUT /vehicle/ev-battery?field=battery_level&value=<kWh>`(세션 유지 필요)로 잔량을 바꿀 수 있지만 **1kWh 단위로 반올림된다**. `demo-drive.ps1 -KmPerKwh`로 5.5km 주행에 77.4→77.0kWh가 되어 처음 계산은 13.8km/kWh(의도 6.5)로 틀렸다. 그래서 눈금 5개 기준을 넣었다. 다시 시험(77.0kWh에서 시작, `-KmPerKwh 1.2`)에서 15초 측정이 눈금 1000Wh를 알아내고 77→72kWh(눈금 5개)로 `1.1 km/kWh · 5.00 kWh 사용`을 저장·표시했다. 에뮬레이터의 5.6km 경로로는 현실적인 전비가 눈금 5개를 넘지 못해 보이지 않는다. 읽기·권한 요청·저장·표시는 통과, **실차의 잔량 해상도와 값은 미검증** |
+| 시험 중 시스템 재시작 (2026-11-08) | 두 번째 전비 시험 주행 중 Watchdog이 `GnssNative.native_stop_nmea_message_collection`에서 74초 멈춘 system_server를 재시작했다. 아래 2026-11-03 기록과 같은 GNSS 정지다. 앱은 복구 화면으로 돌아왔다 |
 | CPU, 메모리 (2026-11-06) | 주행 중 앱 전체 0.45%(4코어 기준, 한 코어의 1.82%), 정차 중 0.20%. PSS 약 78MB, RSS 약 159MB. 내비 경로 안내 중 앱을 앞에 두고 잰 값이며 **에뮬레이터 수치다. 실차 기준 충족을 뜻하지 않는다** |
 
 디스크가 가득 차면 에뮬레이터가 멈춘다. `DRIVELOG_Pleos`만 7GB 이상 쓰므로 여유 공간을 15GB 이상 둔다. 2026-11-03 시험 중 시스템 프로세스가 위치 서비스(GNSS)에서 멈춰 Watchdog으로 한 번 재시작됐고, 원인은 확인하지 못했다. 앱 크래시 기록은 없었다.

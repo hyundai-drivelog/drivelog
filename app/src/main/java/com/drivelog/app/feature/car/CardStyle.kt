@@ -1,6 +1,10 @@
 package com.drivelog.app.feature.car
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -40,24 +44,38 @@ import com.drivelog.app.core.journey.RecordV
  * corner. What is ours is the stamp: a drive that ended at a stamp place carries a postage stamp in the top right.
  */
 
-val DriveCardFaint = Color.White.copy(alpha = 0.4f)
-
 /** Eyebrow and title on the left; the stamp this drive earned, if any, pressed in the top right. */
 @Composable
-internal fun CardHeading(record: RecordV?, eyebrow: String, titleSize: Int, eyebrowColor: Color = DriveCardMuted, modifier: Modifier = Modifier) {
+internal fun CardHeading(record: RecordV?, eyebrow: String, titleSize: Int, eyebrowColor: Color = DriveCardMuted, modifier: Modifier = Modifier, pressStamp: Boolean = false) {
     val d = LocalCarDimens.current
     val stamp = remember(record?.id) { record?.let { stampPlaceFor(it) } }
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Column(Modifier.weight(1f)) {
-            T(eyebrow, d.t(titleSize / 2), Modifier.testTag("poster-title"), color = eyebrowColor, maxLines = 1, bold = true)
+            // Never under 16: the guide's 3 mm for secondary text at the car display's distance.
+            T(eyebrow, d.t(maxOf(16, titleSize / 2)), Modifier.testTag("poster-title"), color = eyebrowColor, maxLines = 1, bold = true)
             Spacer(Modifier.height(d.u(2)))
             if (record != null) T("${shortName(record.placeName)}에 남긴 하루", d.t(titleSize), color = DriveCardText, maxLines = 1, display = true)
         }
         if (stamp != null) {
             Spacer(Modifier.width(d.u(8)))
-            CardStamp(stamp, d.u(titleSize * 2))
+            CardStamp(stamp, d.u(titleSize * 2), Modifier.stampPress(stamp.id, enabled = pressStamp))
+        } else if (record?.simulated == true) {
+            // In the card, as the phone card has it, so any crop of the card still says what it is.
+            Spacer(Modifier.width(d.u(8)))
+            SimulationMark()
         }
     }
+}
+
+/** The outlined mark a simulated drive carries where a stamp would be. Outlined, because it is not a button. */
+@Composable
+internal fun SimulationMark() {
+    val d = LocalCarDimens.current
+    T(
+        "시뮬레이션", d.t(16),
+        Modifier.border(1.dp, DriveCardMuted, RoundedCornerShape(16.dp)).padding(horizontal = d.u(12), vertical = d.u(4)).testTag("card-sim-mark"),
+        color = DriveCardText, bold = true, maxLines = 1,
+    )
 }
 
 /**
@@ -65,10 +83,10 @@ internal fun CardHeading(record: RecordV?, eyebrow: String, titleSize: Int, eyeb
  * Only ever for a real drive that ended there, which [stampPlaceFor] already decides.
  */
 @Composable
-internal fun CardStamp(place: StampPlace, width: Dp) {
+internal fun CardStamp(place: StampPlace, width: Dp, modifier: Modifier = Modifier) {
     val height = width * 1.17f
     Box(
-        Modifier.size(width, height).rotate(place.tilt).testTag("card-stamp")
+        modifier.size(width, height).rotate(place.tilt).testTag("card-stamp")
             .semantics { contentDescription = place.name + " 스탬프" },
         contentAlignment = Alignment.Center,
     ) {
@@ -91,7 +109,7 @@ internal fun CardStamp(place: StampPlace, width: Dp) {
  * edge. [inset] is the card's padding, so the notches sit on the card's real edges.
  */
 @Composable
-internal fun CardTearLine(inset: Dp, modifier: Modifier = Modifier) {
+internal fun CardTearLine(inset: Dp, modifier: Modifier = Modifier, endNotch: Float = 1f) {
     val d = LocalCarDimens.current
     val behind = MaterialTheme.colorScheme.background
     Canvas(
@@ -109,7 +127,8 @@ internal fun CardTearLine(inset: Dp, modifier: Modifier = Modifier) {
         )
         val notch = inset.toPx() * 0.55f
         drawCircle(behind, notch, Offset(0f, y))
-        drawCircle(behind, notch, Offset(size.width, y))
+        // The right notch fades when the card widens past it, so no stray dot is left mid-card.
+        if (endNotch > 0f) drawCircle(behind.copy(alpha = behind.alpha * endNotch), notch, Offset(size.width, y))
     }
 }
 
@@ -118,7 +137,7 @@ internal fun CardTearLine(inset: Dp, modifier: Modifier = Modifier) {
 internal fun CardFigure(record: RecordV, size: Int, label: String, labelColor: Color = DriveCardMuted, unitColor: Color = DriveCardMuted) {
     val d = LocalCarDimens.current
     PosterDistance(record, size, unitColor)
-    T(label, d.t(14), Modifier.testTag("card-figure-label"), color = labelColor, maxLines = 1)
+    T(label, d.t(16), Modifier.testTag("card-figure-label"), color = labelColor, maxLines = 1)
 }
 
 /** place · time · date with the dots fainter than the words, so the three read as three. */
@@ -133,5 +152,5 @@ internal fun CardFooterText(parts: List<String>, modifier: Modifier = Modifier, 
             }
         }
     }
-    Text(text, modifier, color = color, fontSize = d.t(14), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Text(text, modifier, color = color, fontSize = d.t(16), maxLines = 1, overflow = TextOverflow.Ellipsis)
 }

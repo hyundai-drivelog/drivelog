@@ -28,7 +28,7 @@ class CarMotionTest {
     }
 
     @Test fun theDriveFlowAlwaysMovesForward() {
-        val flow = listOf(Screen.HOME, Screen.PLACE, Screen.RECORDING, Screen.STOP, Screen.DONE)
+        val flow = listOf(Screen.HOME, Screen.DESTINATION, Screen.PLACE, Screen.RECORDING, Screen.STOP, Screen.DONE)
         flow.zipWithNext().forEach { (from, to) -> assertTrue("$from to $to", routeDepth(to) > routeDepth(from)) }
     }
 

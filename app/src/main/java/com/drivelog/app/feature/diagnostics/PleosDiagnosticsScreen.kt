@@ -25,7 +25,7 @@ import com.drivelog.app.data.sdk.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-/** Real SDK call results for judges and developers. Reached by holding the "여정" title while parked. */
+/** Real SDK call results for judges and developers. Reached by holding the "DRIVELOG" title on the home screen while parked. */
 class DiagnosticsViewModel(application: Application) : AndroidViewModel(application) {
     var results by mutableStateOf(emptyList<DiagnosticResult>())
         private set

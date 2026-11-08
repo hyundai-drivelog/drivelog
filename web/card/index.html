@@ -4,31 +4,70 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
-<title>여정 드라이브 카드</title>
+<meta name="theme-color" content="#131417">
+<meta name="description" content="차에서 보낸 드라이브 카드를 휴대폰에 간직해요. 사진을 넣고 이미지로 저장할 수 있어요.">
+<title>DRIVELOG 드라이브 카드</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' fill='%23131417'/%3E%3Cpath d='M8 31C10 18 21 25 24 16C26 11 28 9.5 32 8.5' stroke='white' stroke-width='3.4' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='8' cy='31' r='3.2' fill='white'/%3E%3Ccircle cx='32' cy='8.5' r='5.2' fill='white'/%3E%3C/svg%3E">
 <style>
   :root { color-scheme: dark; --bg: #131417; --ink: #ffffff; --muted: #b4b6ba; --soft: #1f2023; }
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink);
+  body { margin: 0; min-height: 100dvh; background: var(--bg); color: var(--ink);
          font-family: -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
-         display: flex; flex-direction: column; align-items: center; padding: 16px; gap: 16px; }
+         padding: 24px max(16px, env(safe-area-inset-left)) max(28px, env(safe-area-inset-bottom)); }
+  .page { width: min(100%, 540px); margin-inline: auto; }
+  .page-header { padding: 0 4px 22px; }
+  .brand { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 800; letter-spacing: .04em; }
+  .brand svg { width: 25px; height: 25px; }
+  h1 { margin: 20px 0 8px; font-size: clamp(25px, 6.5vw, 32px); line-height: 1.25; letter-spacing: -.04em; text-wrap: balance; }
+  .intro { text-align: left; font-size: 15px; }
   canvas { width: 100%; max-width: 540px; height: auto; border-radius: 16px; display: block; }
+  .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+  #guide, #share { grid-column: 1 / -1; }
+  #save { grid-column: 1 / -1; }
+  .actions:has(#photo:not([hidden])) #save { grid-column: auto; }
   button, a.action { width: 100%; max-width: 540px; min-height: 56px; border: 0; border-radius: 16px; font: inherit; font-size: 18px;
            font-weight: 700; background: var(--ink); color: var(--bg); cursor: pointer; display: flex; align-items: center;
-           justify-content: center; text-decoration: none; }
+           justify-content: center; text-decoration: none; padding: 14px 16px; line-height: 1.35;
+           transition: background-color 160ms ease, color 160ms ease; -webkit-tap-highlight-color: transparent; }
   .secondary { background: var(--soft) !important; color: var(--ink) !important; }
+  button:hover, a.action:hover { background: #e0e1e6; }
+  .secondary:hover { background: #303136 !important; }
+  button:active, a.action:active { background: #c7c9ce; }
+  .secondary:active { background: #44464e !important; }
+  button:focus-visible, a:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+  button:disabled { opacity: .5; cursor: wait; }
   [hidden] { display: none !important; }
   p { margin: 0; max-width: 540px; color: var(--muted); font-size: 14px; line-height: 1.5; text-align: center; }
-  .error { padding-top: 30vh; font-size: 18px; color: var(--ink); }
+  .status { min-height: 24px; margin: 12px 4px 0; text-align: left; color: var(--ink); }
+  .privacy { margin: 14px 4px 0; padding-top: 18px; border-top: 1px solid #34363b; }
+  .privacy-title { margin: 0 0 7px; font-size: 14px; font-weight: 600; }
+  #note { text-align: left; overflow-wrap: anywhere; }
+  .error { padding: 32px 0; font-size: 18px; color: var(--ink); text-align: left; }
+  @media (max-width: 350px) { .actions { grid-template-columns: minmax(0, 1fr); } button, a.action { font-size: 16px; } }
+  @media (prefers-reduced-motion: reduce) { button, a.action { transition: none; } }
 </style>
 </head>
 <body>
-<canvas id="card" width="1080" height="1350" aria-label="드라이브 카드"></canvas>
+<main class="page">
+<header class="page-header">
+  <div class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M8 31C10 18 21 25 24 16C26 11 28 9.5 32 8.5" stroke="currentColor" stroke-width="3.4" fill="none" stroke-linecap="round"/><circle cx="8" cy="31" r="3.2" fill="currentColor"/><circle cx="32" cy="8.5" r="5.2" fill="currentColor"/></svg>DRIVELOG</div>
+  <h1 id="page-title">달린 길을 간직해요</h1>
+  <p class="intro" id="page-intro">사진을 더하거나, 지금 모습 그대로 저장해요.</p>
+</header>
+<canvas id="card" width="1080" height="1350" role="img" aria-label="드라이브 카드"></canvas>
+<div class="actions" aria-label="카드 작업">
 <a id="guide" class="action" hidden rel="noreferrer" target="_blank">목적지로 길 안내</a>
 <button id="share" type="button" hidden>친구에게 코스 보내기</button>
 <button id="photo" type="button" class="secondary" hidden>사진 넣기</button>
 <input id="photo-file" type="file" accept="image/*" hidden>
 <button id="save" type="button">이미지로 저장</button>
+ </div>
+<p class="status" id="status" role="status" aria-live="polite"></p>
+<aside class="privacy" aria-labelledby="privacy-title">
+<h2 class="privacy-title" id="privacy-title">내 경로는 휴대폰 안에</h2>
 <p id="note">이 카드는 차량에서 보낸 QR 코드의 주소에서만 만들어져요. 경로는 이 휴대폰에서 그리고 어디로도 보내지 않아요. 지도를 그리려고 주행 지역의 지도 조각을 지도 서비스(OpenFreeMap)에서 받아요. 사진을 넣으면 이 휴대폰 안에서만 카드에 합쳐지고 올라가지 않아요.</p>
+</aside>
+</main>
 <script>
 "use strict";
 // Everything comes from the part of the address after #, which the browser never sends to any server.
@@ -40,6 +79,8 @@ const params = new URLSearchParams(location.hash.slice(1));
 const course = params.get("t") === "c";
 const canvas = document.getElementById("card");
 const ctx = canvas.getContext("2d");
+const status = document.getElementById("status");
+function announce(message) { status.textContent = message; }
 
 function decodePolyline(text) {
   const points = [];
@@ -68,7 +109,7 @@ function haversineKm(a, b) {
 }
 
 function shortName(name) {
-  const trimmed = name.replace(/해수욕장$/, "").replace(/해변$/, "").trim();
+  const trimmed = name.replace(/(해수욕장|해변|광역시|특별자치시|특별자치도|특별시)$/, "").trim();
   return trimmed || name;
 }
 
@@ -80,11 +121,16 @@ function minutesText(seconds) {
 }
 
 function showError(message) {
-  document.body.innerHTML = "";
+  document.querySelector(".actions").remove();
+  document.querySelector(".privacy").remove();
+  canvas.remove();
+  document.getElementById("page-title").textContent = "카드를 다시 받아 주세요";
+  document.getElementById("page-intro").hidden = true;
   const p = document.createElement("p");
   p.className = "error";
+  p.setAttribute("role", "alert");
   p.textContent = message;
-  document.body.appendChild(p);
+  document.querySelector("main").appendChild(p);
 }
 
 const font = (weight, size) => `${weight} ${size}px -apple-system, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", sans-serif`;
@@ -424,13 +470,13 @@ function draw(map) {
     : [shortName(name), minutesText(seconds), date];
   ctx.font = font(500, 30);
   let x = pad;
-  const right = W - pad - 110;
+  const right = W - pad - 220;
   parts.forEach((part, i) => {
     if (i > 0) { ctx.fillStyle = FAINT; ctx.fillText(" · ", x, L.footerY); x += ctx.measureText(" · ").width; }
     ctx.fillStyle = INK; ctx.fillText(part, x, L.footerY, Math.max(40, right - x)); x += Math.min(ctx.measureText(part).width, Math.max(40, right - x));
   });
   ctx.textAlign = "end"; ctx.font = font(800, 36); ctx.fillStyle = INK;
-  ctx.fillText("여정", W - pad, L.footerY);
+  ctx.fillText("DRIVELOG", W - pad, L.footerY);
   ctx.textAlign = "start";
   // The map's credit cannot be left off. It goes under the card, not over the map, as in the car.
   if (map && !photo) { ctx.fillStyle = FAINT; ctx.font = font(500, 20); ctx.fillText(MAP_CREDIT, pad, L.creditY, W - pad * 2); }
@@ -438,6 +484,9 @@ function draw(map) {
 }
 
 const drawn = draw(null);
+if (drawn) {
+  canvas.setAttribute("aria-label", `${course ? "추천 코스" : "드라이브 카드"}: ${params.get("n") || "드라이브"}, ${params.get("k") || "거리 정보 없음"}${params.has("k") ? " km" : ""}, ${minutesText(Number(params.get("e") || 0))}${params.get("m") === "1" ? ", 시뮬레이션" : ""}`);
+}
 // The card shows at once on its dot grid, then again over the map when the map has arrived.
 if (drawn && lastRoute && lastRoute.all.length >= 2) {
   loadMap(lastRoute.box, lastRoute.all).then(map => { if (map) { lastMap = map; draw(map); } }).catch(() => {});
@@ -445,8 +494,10 @@ if (drawn && lastRoute && lastRoute.all.length >= 2) {
 
 if (drawn && course) {
   const name = params.get("n") || "목적지";
-  document.title = `여정 추천 코스 · ${shortName(name)}`;
-  canvas.setAttribute("aria-label", "추천 코스");
+  document.title = `DRIVELOG 추천 코스 · ${shortName(name)}`;
+  document.getElementById("page-title").textContent = "다음 드라이브로 떠나봐요";
+  document.getElementById("page-intro").textContent = "코스를 친구에게 보내거나 목적지로 길 안내를 열어요.";
+  document.getElementById("privacy-title").textContent = "코스에 담긴 정보";
   document.getElementById("save").classList.add("secondary");
   document.getElementById("note").textContent =
     "출발과 도착 주변 500m를 뺀 경로예요. 지도 조각은 OpenFreeMap에서 받고, 길 안내를 누르면 목적지 이름과 위치만 카카오맵으로 전달돼요.";
@@ -461,12 +512,12 @@ if (drawn && course) {
   share.hidden = false;
   share.classList.add("secondary");
   share.addEventListener("click", async () => {
-    const data = { title: `${shortName(name)}까지 가는 길`, text: "여정에서 추천한 드라이브 코스예요", url: location.href };
+    const data = { title: `${shortName(name)}까지 가는 길`, text: "DRIVELOG에서 추천한 드라이브 코스예요", url: location.href };
     if (navigator.share) {
       try { await navigator.share(data); return; } catch (error) { if (error.name === "AbortError") return; }
     }
-    try { await navigator.clipboard.writeText(location.href); share.textContent = "링크를 복사했어요"; }
-    catch { share.textContent = "주소창의 링크를 복사해 보내 주세요"; }
+    try { await navigator.clipboard.writeText(location.href); announce("코스 링크를 복사했어요. 친구에게 보내 주세요."); }
+    catch { announce("주소창의 링크를 복사해 보내 주세요."); }
   });
 }
 
@@ -477,7 +528,7 @@ if (drawn && !course) {
   const input = document.getElementById("photo-file");
   button.hidden = false;
   button.addEventListener("click", () => {
-    if (photo) { photo = null; button.textContent = "사진 넣기"; draw(lastMap); return; }
+    if (photo) { photo.close(); photo = null; button.textContent = "사진 넣기"; draw(lastMap); announce("사진을 뺐어요. 경로 카드로 저장할 수 있어요."); return; }
     input.value = ""; input.click();
   });
   input.addEventListener("change", async () => {
@@ -487,7 +538,8 @@ if (drawn && !course) {
       photo = await createImageBitmap(file, { imageOrientation: "from-image" });
       button.textContent = "사진 빼기";
       draw(lastMap);
-    } catch { button.textContent = "사진을 열 수 없어요 · 다시 고르기"; }
+      announce("사진을 넣었어요. 이미지로 저장하면 사진도 함께 담겨요.");
+    } catch { announce("사진을 열 수 없어요. 다른 사진을 골라 주세요."); }
   });
 }
 
@@ -499,18 +551,26 @@ if (drawn && !course && /^\d+$/.test(params.get("ts") || "")) {
 
 if (canvas.isConnected) {
   document.getElementById("save").addEventListener("click", () => {
+    const save = document.getElementById("save");
+    save.disabled = true;
+    save.setAttribute("aria-busy", "true");
+    announce("저장할 이미지를 준비하고 있어요.");
     canvas.toBlob(async blob => {
-      if (!blob) return;
+      try {
+      if (!blob) { announce("이미지를 만들지 못했어요. 다시 저장해 주세요."); return; }
       const file = new File([blob], "drive-card.png", { type: "image/png" });
       // The phone's own share sheet where there is one, so the card can go straight to photos or a message.
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try { await navigator.share({ files: [file] }); return; } catch (error) { if (error.name === "AbortError") return; }
+        try { await navigator.share({ files: [file] }); announce("공유 창에서 선택한 곳으로 카드를 보냈어요."); return; } catch (error) { if (error.name === "AbortError") { announce("저장을 취소했어요. 다시 저장할 수 있어요."); return; } }
       }
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
       link.download = "drive-card.png";
       link.click();
+      announce("이미지 다운로드를 시작했어요. 브라우저의 다운로드에서 확인해 주세요.");
       setTimeout(() => URL.revokeObjectURL(link.href), 10000);
+      } catch { announce("이미지를 저장하지 못했어요. 다시 저장해 주세요."); }
+      finally { save.disabled = false; save.removeAttribute("aria-busy"); }
     }, "image/png");
   });
 }

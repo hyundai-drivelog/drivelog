@@ -1,14 +1,10 @@
 package com.drivelog.app.feature.car
 
 import androidx.compose.foundation.background
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.Role
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -19,11 +15,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -40,8 +37,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * A place a stamp is given for. Coordinates are one representative point read off a public map; check them against
- * public tourism data (e.g. TourAPI) before release.
+ * A place a stamp is given for. WGS84 representative coordinates and per-place source URLs are in app/stamps/catalog.json.
  */
 data class StampPlace(
     val id: String, val name: String, val area: String, val latitude: Double, val longitude: Double,
@@ -49,33 +45,14 @@ data class StampPlace(
     val motto: String,
     /** A rubber stamp never lands straight. Fixed per place, so a stamp looks the same every time. */
     val tilt: Float,
+    /** Drawing motif, independent of the stable ID used for visits. */
+    val art: String = id,
 )
 
-/** Bundled, so matching happens on the device and no position leaves it. Busan first, where the demo drive runs. */
-val StampPlaces = listOf(
-    StampPlace("gwangalli", "광안리 해수욕장", "수영구", 35.1532, 129.1186, "광안대교가 보이는 바다", -6f),
-    StampPlace("haeundae", "해운대 해수욕장", "해운대구", 35.1587, 129.1604, "파라솔이 늘어선 백사장", 4f),
-    StampPlace("songjeong", "송정 해수욕장", "해운대구", 35.1786, 129.1996, "파도 타는 서핑 바다", -3f),
-    StampPlace("yonggungsa", "해동용궁사", "기장군", 35.1884, 129.2233, "바닷가 바위 위의 절", 7f),
-    StampPlace("oryukdo", "오륙도 스카이워크", "남구", 35.1006, 129.1245, "바다 위 유리 다리와 섬들", -8f),
-    StampPlace("huinnyeoul", "흰여울문화마을", "영도구", 35.0786, 129.0447, "절벽 위 계단 골목", 5f),
-    StampPlace("taejongdae", "태종대", "영도구", 35.0532, 129.0870, "해안 절벽의 등대", -5f),
-    StampPlace("dadaepo", "다대포 해수욕장", "사하구", 35.0466, 128.9662, "낙조가 지는 바다", 3f),
-)
-
-/**
- * A region's stamp pack. Busan is the one that exists; the others are the next regions in the plan and are shown as
- * such, with no places, coordinates or dates until a pack for them is actually made.
- */
+/** A travel region whose collection is bundled for offline arrival matching. */
 data class StampRegion(val id: String, val name: String, val places: List<StampPlace>) {
     val ready get() = places.isNotEmpty()
 }
-
-val StampRegions = listOf(
-    StampRegion("busan", "부산", StampPlaces),
-    StampRegion("jeju", "제주", emptyList()),
-    StampRegion("gangwon", "강원 해안", emptyList()),
-)
 
 /** Arriving is the only condition: within this of the place where the drive ended. Beaches run long, so not tighter. */
 const val STAMP_RADIUS_KM = 1.0
@@ -115,7 +92,7 @@ private fun stampDate(millis: Long) = SimpleDateFormat("yyyy.MM.dd", Locale.KORE
 
 /** One line on the saved-drive screen. Parked only, like that whole screen. */
 @Composable
-fun StampLine(result: StampResult) {
+fun StampLine(result: StampResult, press: Boolean = result.isNew) {
     val d = LocalCarDimens.current
     Row(
         Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(d.u(10))).background(soft())
@@ -123,94 +100,105 @@ fun StampLine(result: StampResult) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // A stamp just earned is pressed down; one already held is simply there.
-        StampArt(result.place, true, d.u(64), Modifier.stampPress(result.place.id, enabled = result.isNew))
+        StampArt(result.place, true, d.u(64), Modifier.stampPress(result.place.id, enabled = press))
         Spacer(Modifier.width(d.u(12)))
         Column(Modifier.weight(1f)) {
-            T(if (result.isNew) "새 스탬프" else "다시 찾은 곳", d.t(14), color = muted(), maxLines = 1)
-            T(result.place.name, d.t(20), bold = true, maxLines = 1)
-            T(result.place.motto, d.t(14), color = muted(), maxLines = 1)
+            T(if (result.isNew) "새 스탬프" else "다시 찾은 곳", d.t(16), color = muted(), maxLines = 1)
+            T(result.place.name, d.t(20), bold = true, maxLines = 2)
+            T(result.place.motto, d.t(16), color = muted(), maxLines = 2)
         }
     }
 }
 
-/** One region to pick: its count when it has a pack, otherwise that it is the next one being prepared. */
+/** Open a region from the national overview. Visit counts never suggest a goal or competition. */
 @Composable
-private fun RegionChip(region: StampRegion, collected: Int, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+private fun RegionChip(region: StampRegion, collected: Int, modifier: Modifier, onClick: () -> Unit) {
     val d = LocalCarDimens.current
-    val colors = androidx.compose.material3.MaterialTheme.colorScheme
-    val fill by androidx.compose.animation.animateColorAsState(if (selected) colors.primary else soft(), motionTween(), label = "region fill")
-    val ink by androidx.compose.animation.animateColorAsState(if (selected) colors.onPrimary else if (region.ready) fg() else muted(), motionTween(), label = "region ink")
+    val shape = RoundedCornerShape(d.u(12))
     Column(
-        modifier.heightIn(min = 64.dp).clip(RoundedCornerShape(d.u(12))).background(fill).pressClick(Role.Tab, onClick = onClick)
-            .semantics { this.selected = selected }.padding(horizontal = d.u(16), vertical = d.u(8)).testTag("region-${region.id}"),
+        modifier.heightIn(min = 64.dp).clip(shape).background(soft()).border(1.dp, line(), shape).pressClick(Role.Button, onClick = onClick)
+            .padding(horizontal = d.u(16), vertical = d.u(14)).testTag("region-${region.id}"),
         verticalArrangement = Arrangement.Center,
     ) {
-        T(region.name, d.t(18), color = ink, bold = true, maxLines = 1)
-        T(if (region.ready) "$collected/${region.places.size}" else "준비 중", d.t(14), color = ink.copy(alpha = 0.72f), maxLines = 1)
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            T(region.name, d.t(22), Modifier.weight(1f), bold = true, maxLines = 1)
+            CarIcon(CarGlyph.CHEVRON_RIGHT, d.u(24), muted())
+        }
+        T("${collected}곳 방문 · ${region.places.size}곳", d.t(16), color = muted(), maxLines = 2)
+        T(region.places.take(2).joinToString(" · ") { it.name }, d.t(16), Modifier.padding(top = d.u(6)), color = muted(), maxLines = 2)
     }
 }
 
-/** The 스탬프 tab of 내 기록: the region packs, then every place of the chosen one with the day of the first visit. */
+/** National overview first, then a region's collection. Never squeeze seventeen tabs into one row. */
 @Composable
 fun StampBoard(records: List<RecordV>) {
     val d = LocalCarDimens.current
     val stamps = remember(records) { collectedStamps(records) }
-    var regionId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(StampRegions.first().id) }
-    val region = StampRegions.first { it.id == regionId }
+    var regionId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
+    val region = StampRegions.firstOrNull { it.id == regionId }
+    androidx.activity.compose.BackHandler(enabled = region != null) { regionId = null }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(d.u(10))) {
-            StampRegions.forEach { each ->
-                RegionChip(each, each.places.count { it.id in stamps }, each.id == regionId, Modifier.weight(1f)) { regionId = each.id }
+        if (region == null) {
+            LazyVerticalGrid(
+                GridCells.Adaptive(maxOf(d.u(220), 144.dp)), Modifier.fillMaxSize().testTag("stamp-regions"),
+                horizontalArrangement = Arrangement.spacedBy(d.u(12)), verticalArrangement = Arrangement.spacedBy(d.u(12)),
+            ) {
+                item(key = "national-introduction", span = { GridItemSpan(maxLineSpan) }) {
+                    Column(Modifier.padding(vertical = d.u(12))) {
+                        T("전국에 남기는 드라이브", d.t(32), display = true)
+                        T("${StampRegions.size}개 지역 · ${StampPlaces.size}곳의 관광명소", d.t(18), Modifier.padding(top = d.u(6)), color = muted())
+                        T("지역을 골라 다녀온 곳과 다음 여행지를 살펴보세요", d.t(16), Modifier.padding(top = d.u(6)), color = muted())
+                    }
+                }
+                items(StampRegions, key = { it.id }) { each ->
+                    RegionChip(each, each.places.count { it.id in stamps }, Modifier.fillMaxWidth()) { regionId = each.id }
+                }
             }
+        } else {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(d.u(12))) {
+                Column(Modifier.weight(1f)) {
+                    T(region.name, d.t(26), bold = true)
+                    T("${region.places.count { it.id in stamps }}곳 방문 · 전체 ${region.places.size}곳", d.t(16), color = muted())
+                }
+                SecondaryButton("전체 지역", "all-stamp-regions", size = ButtonSize.SMALL, icon = CarGlyph.LIST) { regionId = null }
+            }
+            Spacer(Modifier.height(d.u(12)))
+            RegionStamps(region, stamps)
         }
-        Spacer(Modifier.height(d.u(12)))
-        androidx.compose.animation.Crossfade(region, label = "stamp region", animationSpec = motionTween<Float>(MOTION_ENTER_MS)) { shown ->
-            if (shown.ready) RegionStamps(shown, stamps) else RegionPlanned(shown)
-        }
-    }
-}
-
-/** A region without a pack yet: what it will be and how packs are made, and nothing that looks like a stamp to earn. */
-@Composable
-private fun RegionPlanned(region: StampRegion) {
-    val d = LocalCarDimens.current
-    Column(
-        Modifier.fillMaxSize().clip(RoundedCornerShape(d.u(14))).background(soft()).padding(d.u(28)).testTag("region-planned"),
-        verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(Modifier.size(d.u(112)).border(3.dp, line(), CircleShape).appear(region.id), contentAlignment = Alignment.Center) {
-            CarIcon(CarGlyph.PIN, d.u(44), muted())
-        }
-        Spacer(Modifier.height(d.u(18)))
-        T("${region.name} 스탬프는 다음 지역으로 준비하고 있어요", d.t(24), bold = true, align = TextAlign.Center)
-        Spacer(Modifier.height(d.u(8)))
-        T("지역 스탬프는 그 지역의 관광 기관과 함께 장소를 고르고 그림을 그려 만들 계획이에요", d.t(16), color = muted(), align = TextAlign.Center, maxLines = 2)
     }
 }
 
 @Composable
 private fun RegionStamps(region: StampRegion, stamps: Map<String, Stamp>) {
     val d = LocalCarDimens.current
-    Column(Modifier.fillMaxSize()) {
-        T("${region.name} 스탬프 ${region.places.count { it.id in stamps }}/${region.places.size}", d.t(22), Modifier.testTag("stamp-count"), bold = true)
-        Spacer(Modifier.height(d.u(4)))
-        T("관광지에 도착해 기록을 마치면 스탬프가 찍혀요. 시뮬레이션 기록은 세지 않아요", d.t(16), color = muted(), maxLines = 2)
-        Spacer(Modifier.height(d.u(12)))
-        LazyVerticalGrid(
-            GridCells.Fixed(if (d.stacked) 2 else 4), Modifier.fillMaxSize(),
-            horizontalArrangement = Arrangement.spacedBy(d.u(12)), verticalArrangement = Arrangement.spacedBy(d.u(12)),
-        ) {
-            itemsIndexed(region.places, key = { _, it -> it.id }) { index, place ->
-                val stamp = stamps[place.id]
-                Column(
-                    Modifier.revealOnce(index).fillMaxWidth().clip(RoundedCornerShape(d.u(12))).background(soft()).padding(d.u(14)).testTag("stamp-${place.id}"),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    StampArt(place, stamp != null, d.u(if (d.stacked) 96 else 112))
-                    Spacer(Modifier.height(d.u(8)))
-                    T(place.name, d.t(18), bold = stamp != null, color = if (stamp != null) fg() else muted(), align = TextAlign.Center, maxLines = 1)
-                    T(stamp?.let { "${stampDate(it.record.startedAtMillis)} 방문" } ?: place.motto, d.t(14), color = muted(), align = TextAlign.Center, maxLines = 1)
-                }
+    val collected = region.places.count { it.id in stamps }
+    // The introduction scrolls with the stamps, so a short split-screen window still has room for the collection.
+    LazyVerticalGrid(
+        GridCells.Adaptive(maxOf(d.u(220), 144.dp)), Modifier.fillMaxSize(),
+        horizontalArrangement = Arrangement.spacedBy(d.u(12)), verticalArrangement = Arrangement.spacedBy(d.u(12)),
+    ) {
+        item(key = "region-introduction", span = { GridItemSpan(maxLineSpan) }) {
+            Column(Modifier.padding(top = d.u(8), bottom = d.u(8))) {
+                T("${region.name}에서 남긴 스탬프", d.t(26), bold = true)
+                Spacer(Modifier.height(d.u(6)))
+                T(if (collected == 0) "아직 방문한 곳이 없어요" else "${collected}곳의 방문을 간직하고 있어요", d.t(18), Modifier.testTag("stamp-count"), bold = true)
+                Spacer(Modifier.height(d.u(6)))
+                T("아래 ${region.places.size}곳에 도착해 기록을 마치면 찍혀요. 시뮬레이션 기록은 세지 않아요", d.t(16), color = muted(), maxLines = 3)
+            }
+        }
+        itemsIndexed(region.places, key = { _, it -> it.id }) { index, place ->
+            val stamp = stamps[place.id]
+            Column(
+                Modifier.revealOnce(index).fillMaxWidth().clip(RoundedCornerShape(d.u(12)))
+                    .background(if (stamp != null) soft() else androidx.compose.ui.graphics.Color.Transparent)
+                    .border(1.dp, line(), RoundedCornerShape(d.u(12))).padding(d.u(18)).testTag("stamp-${place.id}"),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                StampArt(place, stamp != null, d.u(if (d.stacked) 96 else 112))
+                Spacer(Modifier.height(d.u(8)))
+                T(place.area, d.t(16), color = muted(), maxLines = 1)
+                T(place.name, d.t(18), Modifier.heightIn(min = d.u(50)), bold = stamp != null, color = fg(), align = TextAlign.Center, maxLines = 2)
+                T(stamp?.let { "${stampDate(it.record.startedAtMillis)} 첫 방문" } ?: place.motto, d.t(16), color = muted(), align = TextAlign.Center, maxLines = 2)
             }
         }
     }

@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DRIVELOG</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='9' fill='%23131417'/%3E%3Cpath d='M8 31C10 18 21 25 24 16C26 11 28 9.5 32 8.5' stroke='white' stroke-width='3.4' fill='none' stroke-linecap='round'/%3E%3Ccircle cx='8' cy='31' r='3.2' fill='white'/%3E%3Ccircle cx='32' cy='8.5' r='5.2' fill='white'/%3E%3C/svg%3E">
+<meta name="description" content="달린 길이 카드로 남아요. 목적지를 고르면 내비 안내와 기록이 함께 시작되고, 정차하면 경로를 그린 드라이브 카드가 남는 Pleos Connect 차량 앱.">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  /* One palette: the app's own grays (Pleos basic_*), with the drive cards always dark. No accent beyond ink. */
+  :root {
+    --bg: #ffffff; --ink: #131417; --muted: #686a72; --soft: #f3f3f3; --line: #e0e1e6;
+    --card: #131417; --card-ink: #ffffff; --card-muted: #b4b6ba;
+    --radius: 16px; --max: 1240px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0c0d0f; --ink: #f4f4f6; --muted: #a4a6ad; --soft: #18191c; --line: #2a2c31; --card: #18191c; }
+    .statement, .cell.dark, .closing .box, .card-face { box-shadow: inset 0 0 0 1px var(--line); }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+    font-feature-settings: "tnum"; -webkit-font-smoothing: antialiased; line-height: 1.6; word-break: keep-all;
+  }
+  img { display: block; max-width: 100%; height: auto; }
+  /* Grid and flex children may shrink below their content, so wide screenshots never push the page sideways. */
+  .wrap > *, .grid > *, .card-pair > *, .cols > *, .box > * { min-width: 0; }
+  html, body { overflow-x: clip; }
+  a { color: inherit; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+
+  /* Navigation */
+  nav { position: sticky; top: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(12px); border-bottom: 1px solid var(--line); }
+  nav .wrap { display: flex; align-items: center; height: 68px; gap: 32px; }
+  .mark { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; letter-spacing: 0.04em; font-size: 19px; text-decoration: none; }
+  nav ul { list-style: none; display: flex; gap: 28px; padding: 0; margin-left: auto; font-size: 15px; color: var(--muted); }
+  nav ul a { text-decoration: none; }
+  nav ul a:hover { color: var(--ink); }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap;
+    height: 52px; padding: 0 26px; border-radius: 999px; font-weight: 700; font-size: 16px; text-decoration: none;
+    background: var(--ink); color: var(--bg); transition: transform .2s cubic-bezier(.16,1,.3,1), opacity .2s;
+  }
+  .btn:active { transform: scale(.98); }
+  .btn.ghost { background: transparent; color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
+  nav .btn { height: 42px; padding: 0 20px; font-size: 14px; }
+
+  /* Hero: split, the product beside the promise */
+  .hero { padding: 72px 0 88px; }
+  .hero .wrap { display: grid; grid-template-columns: 6fr 7fr; gap: 56px; align-items: center; }
+  .hero h1 { font-size: clamp(38px, 4.4vw, 58px); line-height: 1.12; letter-spacing: -0.035em; font-weight: 800; }
+  .hero p { margin-top: 22px; font-size: 19px; color: var(--muted); max-width: 30ch; }
+  .hero .actions { margin-top: 34px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .shot { border-radius: var(--radius); overflow: hidden; box-shadow: 0 30px 80px -30px rgb(19 20 23 / .45); border: 1px solid var(--line); background: var(--soft); }
+  .note { margin-top: 12px; font-size: 13px; color: var(--muted); }
+
+  /* Problem: one statement, as large as it deserves */
+  .statement { padding: 120px 0; background: var(--card); color: var(--card-ink); }
+  .statement p { font-size: clamp(28px, 3.6vw, 48px); line-height: 1.35; letter-spacing: -0.025em; font-weight: 700; max-width: 22ch; }
+  .statement p span { color: var(--card-muted); }
+
+  /* Flow: a pinned screenshot beside the three things the driver does */
+  .flow { padding: 120px 0; }
+  .flow .wrap { display: grid; grid-template-columns: 7fr 5fr; gap: 64px; align-items: start; }
+  .flow .shot { position: sticky; top: 100px; }
+  .flow h2, .card-sec h2, .bento h2, .privacy h2 { font-size: clamp(30px, 3.4vw, 44px); line-height: 1.2; letter-spacing: -0.03em; font-weight: 800; }
+  .steps { list-style: none; padding: 0; margin-top: 40px; display: grid; gap: 40px; }
+  .steps h3 { font-size: 22px; letter-spacing: -0.02em; }
+  .steps p { margin-top: 8px; color: var(--muted); max-width: 40ch; }
+
+  /* The card: centred, because here the object is the message */
+  .card-sec { padding: 40px 0 140px; text-align: center; }
+  .card-sec > .wrap > p { margin: 18px auto 0; color: var(--muted); max-width: 46ch; font-size: 18px; }
+  .card-pair { margin-top: 56px; display: grid; grid-template-columns: 4fr 9fr; gap: 24px; align-items: end; text-align: left; }
+  .card-pair figure { margin: 0; }
+  .card-pair figcaption { margin-top: 12px; font-size: 14px; color: var(--muted); }
+  .card-face { border-radius: var(--radius); overflow: hidden; box-shadow: 0 30px 80px -30px rgb(19 20 23 / .55); }
+
+  /* What else it does: an uneven grid, two cells carry pictures */
+  .bento { padding: 120px 0; background: var(--soft); }
+  .grid { margin-top: 48px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 16px; }
+  .cell { background: var(--bg); border-radius: var(--radius); padding: 30px; border: 1px solid var(--line); overflow: hidden; }
+  .cell h3 { font-size: 21px; letter-spacing: -0.02em; }
+  .cell p { margin-top: 8px; color: var(--muted); font-size: 15.5px; max-width: 46ch; }
+  .cell.dark { background: var(--card); color: var(--card-ink); border-color: transparent; }
+  .cell.dark p { color: var(--card-muted); }
+  .cell img { margin-top: 24px; border-radius: 10px; border: 1px solid var(--line); }
+  .c-stamp { grid-column: span 4; }
+  .c-drive { grid-column: span 2; display: flex; flex-direction: column; }
+  .c-drive ul { list-style: none; padding: 32px 0 0; margin-top: auto; display: grid; gap: 4px; }
+  .c-drive li { font-size: clamp(40px, 4vw, 56px); font-weight: 800; letter-spacing: -0.04em; line-height: 1.15; }
+  .c-drive li.eg { font-size: 15px; font-weight: 700; color: var(--card-muted); letter-spacing: 0; line-height: 1.6; }
+  .c-drive li small { font-size: 16px; font-weight: 600; color: var(--card-muted); margin-left: 10px; letter-spacing: 0; }
+  .c-energy { grid-column: span 3; }
+  .c-phone { grid-column: span 3; }
+
+  /* Privacy: grouped promises in two columns */
+  .privacy { padding: 120px 0; }
+  .privacy .cols { margin-top: 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 48px 64px; }
+  .privacy h3 { font-size: 18px; }
+  .privacy p { margin-top: 6px; color: var(--muted); }
+
+  /* Closing call */
+  .closing { padding: 0 0 120px; }
+  .closing .box { background: var(--card); color: var(--card-ink); border-radius: var(--radius); padding: 64px; display: grid; grid-template-columns: 1fr auto; gap: 32px; align-items: center; }
+  .closing h2 { font-size: clamp(28px, 3vw, 40px); letter-spacing: -0.03em; line-height: 1.25; }
+  .closing .btn { background: var(--card-ink); color: var(--card); }
+
+  footer { border-top: 1px solid var(--line); padding: 32px 0 48px; font-size: 14px; color: var(--muted); }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 8px 32px; justify-content: space-between; }
+
+  /* Entrance and reveal: each block arrives once as it comes into view. */
+  @media (prefers-reduced-motion: no-preference) {
+    .reveal { opacity: 0; transform: translateY(28px); transition: opacity .8s cubic-bezier(.16,1,.3,1), transform .8s cubic-bezier(.16,1,.3,1); transition-delay: calc(var(--i, 0) * 90ms); }
+    .reveal.in { opacity: 1; transform: none; }
+  }
+
+  @media (max-width: 900px) {
+    nav ul { display: none; }
+    nav .btn { margin-left: auto; }
+    .hero { padding: 40px 0 64px; }
+    .hero .wrap, .flow .wrap, .card-pair, .privacy .cols, .closing .box { grid-template-columns: 1fr; }
+    .flow .shot { position: static; }
+    .statement, .flow, .bento, .privacy { padding: 80px 0; }
+    .grid { grid-template-columns: 1fr; }
+    .c-stamp, .c-drive, .c-energy, .c-phone { grid-column: auto; }
+    .card-pair figure:first-child { max-width: 360px; margin: 0 auto; }
+    .closing .box { padding: 40px 28px; }
+  }
+</style>
+</head>
+<body>
+
+<nav aria-label="주요 메뉴">
+  <div class="wrap">
+    <a class="mark" href="#top"><svg viewBox="0 0 40 40" width="26" height="26" aria-hidden="true" fill="none"><path d="M8 31C10 18 21 25 24 16C26 11 28 9.5 32 8.5" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/><circle cx="8" cy="31" r="3.2" fill="currentColor"/><circle cx="32" cy="8.5" r="5.2" fill="currentColor"/></svg>DRIVELOG</a>
+    <ul>
+      <li><a href="#flow">사용 방법</a></li>
+      <li><a href="#card">드라이브 카드</a></li>
+      <li><a href="#privacy">개인정보</a></li>
+    </ul>
+    <a class="btn" href="#card">화면 보기</a>
+  </div>
+</nav>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <div>
+        <h1 class="reveal">달린 길이<br>카드로 남아요</h1>
+        <p class="reveal" style="--i:1">목적지를 고르면 안내와 기록이 함께 시작되고, 정차하면 경로를 그린 카드가 남아요.</p>
+        <div class="actions reveal" style="--i:2">
+          <a class="btn" href="#card">화면 보기</a>
+          <a class="btn ghost" href="#flow">사용 방법</a>
+        </div>
+      </div>
+      <figure class="reveal" style="--i:2">
+        <div class="shot"><img src="img/record-open.jpg" width="1440" height="1033" alt="부산에 남긴 하루 카드를 옆으로 연 화면. 기록 시간 9분, 해운대 해수욕장 새 스탬프, 1km마다 1분대의 구간 기록" fetchpriority="high"></div>
+        <figcaption class="note">Pleos 에뮬레이터에 위치를 넣어 달린 시험 주행의 실제 앱 화면이에요. 내비 추천 경로는 에뮬레이터 내비가 다른 위치에서 계산한 값이고, 도착 혜택은 예시 화면이에요.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="statement" aria-label="풀려는 문제">
+    <div class="wrap">
+      <p class="reveal">드라이브를 마치면 운전한 사람에게는 남는 것이 없어요. <span>내비 기록은 연비와 점수이고, 운전 중에는 휴대폰을 켤 수 없으니까요.</span></p>
+    </div>
+  </section>
+
+  <section class="flow" id="flow">
+    <div class="wrap">
+      <div class="shot reveal"><img src="img/destination.jpg" width="1440" height="1033" alt="어디로 떠나볼까요? 검색창과 최근 검색한 장소 목록" loading="lazy"></div>
+      <div>
+        <h2 class="reveal">버튼 하나로 시작해서<br>정차하면 끝나요</h2>
+        <ol class="steps">
+          <li class="reveal" style="--i:1">
+            <h3>목적지 고르기</h3>
+            <p>말하거나 입력하면 Pleos 내비가 장소를 찾아요. 최근 검색과 저장한 장소에서 바로 고를 수도 있어요.</p>
+          </li>
+          <li class="reveal" style="--i:2">
+            <h3>그냥 달리기</h3>
+            <p>주행 중 화면에는 장소, 분 단위 시간, 거리만 보여요. 길 안내는 기본 내비가 맡고, 기록은 뒤에서 이어져요.</p>
+          </li>
+          <li class="reveal" style="--i:3">
+            <h3>카드 받기</h3>
+            <p>P에 두면 기록을 마칠지 물어요. 저장하면 지도 위에 흰 선으로 경로를 그린 카드가 만들어져요.</p>
+          </li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <section class="card-sec" id="card">
+    <div class="wrap">
+      <h2 class="reveal">한 장의 카드, 옆으로 밀면 기록</h2>
+      <p class="reveal" style="--i:1">카드는 제목, 경로, 거리, 장소와 날짜 순서로 읽혀요. 카드를 옆으로 밀면 같은 카드 안에서 구간 기록과 전비가 펼쳐져요.</p>
+      <div class="card-pair">
+        <figure class="reveal" style="--i:1">
+          <div class="card-face"><img src="img/card.jpg" width="805" height="1001" alt="부산에 남긴 하루, 5.6km 해안 경로가 흰 선으로 그려지고 해운대 스탬프가 찍힌 드라이브 카드" loading="lazy"></div>
+          <figcaption>저장 직후의 카드예요. 관광지에 도착하면 오른쪽 위에 스탬프가 찍혀요.</figcaption>
+        </figure>
+        <figure class="reveal" style="--i:2">
+          <div class="shot"><img src="img/home.jpg" width="1440" height="1033" alt="최근 드라이브 카드와 드라이브 시작 버튼, 이번 달 횟수와 거리, 스탬프 수가 보이는 홈 화면" loading="lazy"></div>
+          <figcaption>홈에는 가장 최근 카드와 이번 달 기록이 놓여요.</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section class="bento" aria-labelledby="more-title">
+    <div class="wrap">
+      <h2 id="more-title" class="reveal">운전을 방해하지 않는 선에서</h2>
+      <div class="grid">
+        <article class="cell c-stamp reveal">
+          <h3>관광지 스탬프</h3>
+          <p>기록의 끝 지점이 관광지에서 1km 안이면 그곳의 스탬프가 찍혀요. 속도나 연속 방문 같은 조건은 없어요.</p>
+          <img src="img/stamps.jpg" width="1440" height="1033" alt="부산 관광지 8곳의 스탬프 판, 해운대 해수욕장 하나가 찍혀 있음" loading="lazy">
+        </article>
+        <article class="cell dark c-drive reveal" style="--i:1">
+          <h3>주행 중에는 세 가지만</h3>
+          <p>움직이는 동안 바뀌는 것은 분 단위 시간과 거리뿐이에요. 애니메이션은 정차했을 때만 움직여요.</p>
+          <ul aria-label="주행 중 화면에 보이는 정보, 예시">
+            <li class="eg">예시</li>
+            <li>송정<small>장소</small></li>
+            <li>24분<small>시간</small></li>
+            <li>12.4km<small>거리</small></li>
+          </ul>
+        </article>
+        <article class="cell c-energy reveal">
+          <h3>차가 알려 주는 전비</h3>
+          <p>출발과 도착의 배터리 잔량 차이로 계산해요. 잔량을 너무 거칠게 주는 차에서는 틀린 값을 보이지 않도록 숨겨요.</p>
+        </article>
+        <article class="cell c-phone reveal" style="--i:1">
+          <h3>QR로 휴대폰에</h3>
+          <p>화면에 QR을 띄우면 카드가 그 휴대폰으로만 넘어가요. 휴대폰에서 사진을 깔고 같은 경로선을 올릴 수 있어요.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="privacy" id="privacy">
+    <div class="wrap">
+      <h2 class="reveal">경로는 내 차 안에 남아요</h2>
+      <div class="cols">
+        <div class="reveal">
+          <h3>경로는 서버에 저장하지 않아요</h3>
+          <p>카드의 선은 차 안에서 기록한 좌표로 기기에서 직접 그려요.</p>
+        </div>
+        <div class="reveal" style="--i:1">
+          <h3>휴대폰 전달은 QR을 띄웠을 때만</h3>
+          <p>주소의 # 뒤에 담겨 브라우저가 서버로 보내지 않아요. 출발 쪽 500m는 잘라서 담아요.</p>
+        </div>
+        <div class="reveal">
+          <h3>지도는 정차 중에만 받아요</h3>
+          <p>지도 조각을 받을 때 주행 지역이 지도 서비스에 전달되며, 앱 안에서 이를 밝혀요.</p>
+        </div>
+        <div class="reveal" style="--i:1">
+          <h3>공개하는 코스는 동네까지만</h3>
+          <p>코스를 추천할 때는 경로 앞뒤 500m를 자르고, 출발지는 동네 이름으로만 보여요.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="closing">
+    <div class="wrap">
+      <div class="box reveal">
+        <h2>다음 드라이브는<br>카드 한 장으로 남겨 보세요</h2>
+        <a class="btn" href="#top">처음으로</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <span class="mark"><svg viewBox="0 0 40 40" width="26" height="26" aria-hidden="true" fill="none"><path d="M8 31C10 18 21 25 24 16C26 11 28 9.5 32 8.5" stroke="currentColor" stroke-width="3.4" stroke-linecap="round"/><circle cx="8" cy="31" r="3.2" fill="currentColor"/><circle cx="32" cy="8.5" r="5.2" fill="currentColor"/></svg>DRIVELOG</span>
+    <span>Pleos Connect 차량 앱</span>
+    <span>화면 속 지도: OpenFreeMap · © OpenMapTiles · © OpenStreetMap 기여자</span>
+  </div>
+</footer>
+
+<script>
+  // Reveal each block once as it enters the viewport. Without IntersectionObserver everything is simply shown.
+  (function () {
+    var items = document.querySelectorAll('.reveal');
+    if (!('IntersectionObserver' in window)) { items.forEach(function (el) { el.classList.add('in'); }); return; }
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } });
+    }, { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
+    items.forEach(function (el) { io.observe(el); });
+  })();
+</script>
+</body>
+</html>

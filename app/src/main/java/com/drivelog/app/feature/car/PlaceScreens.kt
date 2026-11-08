@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -135,7 +136,7 @@ fun routeSummaryText(summary: RouteSummary) = "내비 추천 경로 · ${routeKm
 
 /** The latest drive as its card on the home screen: the same layout as every card, over its stored map. */
 @Composable
-private fun LatestDriveCard(routeMaps: RouteMapCache, record: RecordV, modifier: Modifier, onClick: () -> Unit) {
+internal fun LatestDriveCard(routeMaps: RouteMapCache, record: RecordV, modifier: Modifier, onClick: () -> Unit) {
     val d = LocalCarDimens.current
     Column(
         modifier.clip(RoundedCornerShape(d.u(14))).background(DriveCardBackground).pressClick(onClick = onClick)
@@ -153,39 +154,14 @@ private fun LatestDriveCard(routeMaps: RouteMapCache, record: RecordV, modifier:
         CardTearLine(d.u(18), Modifier.padding(vertical = d.u(4)))
         // The same label as every card, so a simulated or estimated number is named as one here too.
         PosterDistance(record, 48, DriveCardMuted)
-        T(posterLabel(record), d.t(14), Modifier.testTag("latest-drive-label"), color = DriveCardMuted, maxLines = 1)
+        T(posterLabel(record), d.t(16), Modifier.testTag("latest-drive-label"), color = DriveCardMuted, maxLines = 1)
         Spacer(Modifier.height(d.u(4)))
         PosterFooter(record)
         MapCredit(routeMaps, record)
-    }
-}
-
-/** The last few real drives under the home card, or a line saying where they will appear. All remain in 내 기록. */
-@Composable
-private fun RecentDrives(records: List<RecordV>, onRecord: (RecordV) -> Unit) {
-    val d = LocalCarDimens.current
-    val latest = remember(records) {
-        records.filterNot { barelyMoved(it.distanceKm, it.route.size >= 2) }.sortedByDescending { it.startedAtMillis }.take(3)
-    }
-    if (latest.isEmpty()) {
-        T("기록한 드라이브가 여기에 모여요", d.t(17), Modifier.fillMaxWidth().padding(vertical = d.u(14)).testTag("recent-empty"), color = muted(), align = TextAlign.Center)
-        return
-    }
-    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min)) {
-        latest.forEachIndexed { index, record ->
-            if (index > 0) VerticalRule(Modifier.fillMaxHeight().padding(vertical = d.u(10)))
-            Row(
-                Modifier.weight(1f).heightIn(min = maxOf(d.u(64), 64.dp)).clip(RoundedCornerShape(d.u(10)))
-                    .pressClick { onRecord(record) }.padding(horizontal = d.u(12)).testTag("recent-drive"),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                RouteGlyph(remember(record.id) { record.route.toMapPoints() }, Modifier.size(d.u(44)))
-                Spacer(Modifier.width(d.u(10)))
-                Column(Modifier.weight(1f)) {
-                    T(record.placeName, d.t(17), bold = true, maxLines = 1)
-                    T(distanceText(record.distanceKm) + " km" + (if (record.simulated) " · 시뮬레이션" else ""), d.t(14), color = muted(), maxLines = 1)
-                }
-            }
+        // Says the card opens; it looked like a picture before.
+        Row(Modifier.padding(top = d.u(10)), verticalAlignment = Alignment.CenterVertically) {
+            T("기록 보기", d.t(16), color = DriveCardText, bold = true)
+            CarIcon(CarGlyph.CHEVRON_RIGHT, d.u(22), DriveCardText)
         }
     }
 }
@@ -197,7 +173,7 @@ private fun SearchBar(query: String, speech: SpeechState, canSearch: Boolean, on
     val d = LocalCarDimens.current
     // Dropping focus, not just hiding the keyboard: a focused field reopens it on return from the navigation app.
     val focus = LocalFocusManager.current
-    val search = { focus.clearFocus(); onSearch() }
+    val search = { if (canSearch && query.isNotBlank()) { focus.clearFocus(); onSearch() } }
     Row(
         Modifier.fillMaxWidth().heightIn(min = maxOf(d.u(58), 64.dp)).clip(RoundedCornerShape(d.u(12))).border(d.u(2), fg(), RoundedCornerShape(d.u(12))).padding(start = d.u(16)),
         verticalAlignment = Alignment.CenterVertically,
@@ -221,20 +197,27 @@ private fun SearchBar(query: String, speech: SpeechState, canSearch: Boolean, on
         }
         val action: (@Composable (String, String, () -> Unit) -> Unit) = { label, tag, click ->
             Row(
-                Modifier.heightIn(min = 64.dp).clip(RoundedCornerShape(d.u(10))).pressClick(onClick = click).padding(horizontal = d.u(14), vertical = d.u(16)).testTag(tag),
+                Modifier.heightIn(min = 64.dp).clip(RoundedCornerShape(d.u(10)))
+                    .pressClick(enabled = canSearch || speech.listening, onClick = click)
+                    .padding(horizontal = d.u(14), vertical = d.u(16)).testTag(tag),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (tag == "voice-search") {
                     CarIcon(CarGlyph.MIC, d.u(22), fg())
                     Spacer(Modifier.width(d.u(6)))
                 }
-                T(label, d.t(18), bold = true, maxLines = 1)
+                T(label, d.t(18), color = if (canSearch || speech.listening) fg() else muted(), bold = true, maxLines = 1)
             }
         }
         when {
             speech.listening -> action("그만 듣기", "voice-search", onVoice)
             query.isNotBlank() -> {
-                if (onClear != null) action("지우기", "clear-query", onClear)
+                if (onClear != null) Box(
+                    Modifier.size(64.dp).clip(RoundedCornerShape(d.u(10)))
+                        .pressClick(enabled = canSearch, onClick = onClear)
+                        .semantics { contentDescription = "검색어 지우기" }.testTag("clear-query"),
+                    contentAlignment = Alignment.Center,
+                ) { T("×", d.t(28), color = muted()) }
                 action("찾기", "search-place", { search() })
             }
             speech.available -> action("말하기", "voice-search", onVoice)
@@ -246,18 +229,22 @@ private fun SearchBar(query: String, speech: SpeechState, canSearch: Boolean, on
 @Composable
 private fun Tabs(labels: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit) {
     val d = LocalCarDimens.current
-    val indicator = MaterialTheme.colorScheme.primary
-    val position by animateFloatAsState(selectedIndex.toFloat(), tween(220, easing = FastOutSlowInEasing), label = "tab indicator")
+    // A segmented control: the chosen tab is a page-coloured pill on the soft track, so it never reads as the
+    // screen's one filled primary action.
+    val indicator = MaterialTheme.colorScheme.background
+    val outline = line()
+    val position by animateFloatAsState(selectedIndex.toFloat(), motionTween(MOTION_STATE_MS), label = "tab indicator")
     Row(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(d.u(10))).background(soft()).drawBehind {
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(soft()).padding(d.u(4)).drawBehind {
             val width = size.width / labels.size
-            val corner = d.u(10).toPx()
+            val corner = 12.dp.toPx()
             drawRoundRect(indicator, Offset(width * position, 0f), Size(width, size.height), CornerRadius(corner, corner))
+            drawRoundRect(outline, Offset(width * position, 0f), Size(width, size.height), CornerRadius(corner, corner), style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
         },
     ) {
         labels.forEachIndexed { index, label ->
             val active = index == selectedIndex
-            val text by animateColorAsState(if (active) MaterialTheme.colorScheme.onPrimary else fg(), tween(180), label = "tab text")
+            val text by animateColorAsState(if (active) fg() else fg().copy(alpha = 0.68f), motionTween(MOTION_STATE_MS), label = "tab text")
             Box(
                 Modifier.weight(1f).heightIn(min = maxOf(d.u(48), 64.dp)).clip(RoundedCornerShape(d.u(10)))
                     .pressClick(Role.Tab) { onSelect(index) }.semantics { selected = active }.testTag("tab-$index"),
@@ -267,42 +254,44 @@ private fun Tabs(labels: List<String>, selectedIndex: Int, onSelect: (Int) -> Un
     }
 }
 
-// --- 01 홈: 장소 검색, 최근 검색, 저장한 장소, 지도 --------------------------------------------------
+// --- 01 목적지: 장소 검색, 최근 검색, 저장한 장소, 지도 --------------------------------------------------
 
 class SearchActions(val onQuery: (String) -> Unit, val onSearch: () -> Unit, val onVoice: () -> Unit, val onClear: () -> Unit)
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun HomeScreen(
-    query: String, speech: SpeechState, canSearch: Boolean, simulation: Boolean, note: String?, recents: List<NaviPlace>, saved: List<NaviPlace>, records: List<RecordV>,
-    actions: SearchActions, onPlace: (NaviPlace) -> Unit, onRecord: (RecordV) -> Unit, onHistory: () -> Unit, onHold: (() -> Unit)?, linkControl: (@Composable () -> Unit)?,
-    onCommunity: (() -> Unit)? = null,
-    routeMaps: RouteMapCache? = null,
+fun DestinationScreen(
+    query: String, speech: SpeechState, canSearch: Boolean, simulation: Boolean, note: String?, recents: List<NaviPlace>, saved: List<NaviPlace>,
+    actions: SearchActions, onPlace: (NaviPlace) -> Unit, onBack: () -> Unit,
 ) {
-    val latest = remember(records) {
-        records.filterNot { barelyMoved(it.distanceKm, it.route.size >= 2) }.maxByOrNull { it.startedAtMillis }
-    }
     val d = LocalCarDimens.current
     var tab by rememberSaveable { mutableIntStateOf(0) }
     Column(Modifier.fillMaxSize().padding(horizontal = d.u(22), vertical = d.u(8))) {
-        TopBar(null, onHold, {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(d.u(10))) {
-                if (simulation) SimulationBadge()
-                linkControl?.invoke()
-                if (onCommunity != null) SecondaryButton("추천 코스", "open-community", size = ButtonSize.MEDIUM, icon = CarGlyph.PIN, onClick = onCommunity)
-                SecondaryButton("내 기록", "open-history", size = ButtonSize.MEDIUM, icon = CarGlyph.LIST, onClick = onHistory)
-            }
-        })
-        Box(Modifier.fillMaxWidth().weight(1f)) {
-            MapPanes(left = {
+        TopBar(onBack, null, if (simulation) ({ SimulationBadge() }) else null, title = "드라이브 시작")
+        // Only finding a place: the drives themselves are on the home screen and in 내 기록.
+        Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(bottom = d.u(10))) {
+            run {
                 T("어디로 떠나볼까요?", d.t(42), display = true)
                 Spacer(Modifier.height(d.u(16)))
                 // 지우기 too: spoken text now waits here, and a misheard phrase needs a way out without the keyboard.
                 SearchBar(query, speech, canSearch, actions.onQuery, actions.onSearch, actions.onVoice, actions.onClear)
+                Spacer(Modifier.height(d.u(12)))
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(d.u(12))).background(soft()).padding(d.u(14))
+                        .testTag("navigation-handoff"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    CarIcon(CarGlyph.PIN, d.u(28), muted())
+                    Spacer(Modifier.width(d.u(12)))
+                    Column(Modifier.weight(1f)) {
+                        T(if (canSearch) "찾기를 누르면 내비가 열려요" else "저장한 장소에서 출발할 수 있어요", d.t(18), bold = true)
+                        T(if (canSearch) "목적지를 정하고 DRIVELOG로 돌아오면 기록을 시작해요" else "내비 연결을 기다리거나 아래 목록에서 장소를 골라주세요", d.t(16), color = muted())
+                    }
+                }
                 val line = when {
                     !canSearch -> "내비게이션에 연결할 수 없어요"
                     // The search leaves for the navigation app, and nothing there says to come back here.
-                    else -> speech.message ?: note ?: "찾기를 누르면 내비가 열려요. 목적지를 정하고 여정으로 돌아오면 기록을 시작할 수 있어요"
+                    else -> speech.message ?: note
                 }
                 if (line != null) {
                     Spacer(Modifier.height(d.u(6)))
@@ -332,18 +321,6 @@ fun HomeScreen(
                         CarIcon(CarGlyph.CHEVRON_RIGHT, d.u(20), fg())
                     }
                 }
-            }, stackedHeight = 360) { modifier ->
-                Column(modifier, verticalArrangement = Arrangement.spacedBy(d.u(8))) {
-                    // The driver's own latest drive is worth more here than a picture; the mood photo waits for the first one.
-                    if (latest != null && routeMaps != null) {
-                        LatestDriveCard(routeMaps, latest, Modifier.fillMaxWidth().weight(1f)) { onRecord(latest) }
-                        RecentDrives(records.filter { it.id != latest.id }, onRecord)
-                    } else {
-                        // A mood image, not a place, so it is the one photo that names nowhere.
-                        PlacePhoto("", Modifier.fillMaxWidth().weight(1f))
-                        RecentDrives(records, onRecord)
-                    }
-                }
             }
         }
     }
@@ -370,25 +347,34 @@ fun PlaceConfirmScreen(
             MapPanes(left = {
                 SearchBar(query, speech, canSearch, actions.onQuery, actions.onSearch, actions.onVoice, actions.onClear)
                 Spacer(Modifier.height(d.u(14)))
+                T(place.name, d.t(38), Modifier.fillMaxWidth().testTag("place-name"), maxLines = 2, display = true)
+                Spacer(Modifier.height(d.u(8)))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        T(place.name, d.t(38), Modifier.testTag("place-name"), maxLines = 2, display = true)
                         if (place.address.isNotBlank()) T(place.address, d.t(18), color = muted(), maxLines = 2)
                     }
                     Spacer(Modifier.width(d.u(12)))
-                    SecondaryButton(if (isSaved) "저장 취소" else "장소 저장", "save-place", size = ButtonSize.MEDIUM, icon = CarGlyph.BOOKMARK, onClick = onSave)
+                    SecondaryButton(if (isSaved) "저장 취소" else "장소 저장", "save-place", size = ButtonSize.SMALL, icon = CarGlyph.BOOKMARK, onClick = onSave)
                 }
                 Spacer(Modifier.height(d.u(14)))
                 Box(Modifier.fillMaxWidth().height(1.dp).background(line()))
                 Spacer(Modifier.height(d.u(14)))
                 // The navigation app's own figures lead when it is already guiding: they are what the driver decides on.
                 if (guidanceActive && routeSummary != null) {
-                    Row(Modifier.height(IntrinsicSize.Min).testTag("route-summary")) {
-                        Stat(routeKmText(routeSummary), "km", "내비 추천 경로")
-                        Spacer(Modifier.width(d.u(32)))
+                    Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min).testTag("route-summary")) {
+                        Column(Modifier.weight(1f)) {
+                            T("내비 추천 경로", d.t(16), color = muted())
+                            Spacer(Modifier.height(d.u(4)))
+                            T("${routeKmText(routeSummary)} km", d.t(32), bold = true, tabular = true)
+                        }
+                        Spacer(Modifier.width(d.u(16)))
                         VerticalRule(Modifier.fillMaxHeight())
-                        Spacer(Modifier.width(d.u(32)))
-                        Stat(routeTimeText(routeSummary), "", "예상 시간")
+                        Spacer(Modifier.width(d.u(16)))
+                        Column(Modifier.weight(1f)) {
+                            T("예상 시간", d.t(16), color = muted())
+                            Spacer(Modifier.height(d.u(4)))
+                            T(routeTimeText(routeSummary), d.t(32), bold = true, tabular = true)
+                        }
                     }
                 } else T(if (BuildConfig.PHONE_LINK_ENABLED) "이번 드라이브를 사진과 함께 남겨보세요" else "이번 드라이브를 경로와 시간으로 남겨보세요", d.t(20))
                 Spacer(Modifier.height(d.u(16)))
@@ -431,9 +417,9 @@ fun PlaceConfirmScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<RecordV>, onRecord: (RecordV) -> Unit, onBack: () -> Unit) {
+fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<RecordV>, onRecord: (RecordV) -> Unit, onBack: () -> Unit, initialTab: Int = 0) {
     val d = LocalCarDimens.current
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    var tab by rememberSaveable(initialTab) { mutableIntStateOf(initialTab) }
     var shortOpen by rememberSaveable { mutableStateOf(false) }
     val sorted = remember(records) { records.sortedByDescending { it.startedAtMillis } }
     val (drives, shortDrives) = remember(sorted) { sorted.partition { !barelyMoved(it.distanceKm, it.route.size >= 2) } }
@@ -629,7 +615,7 @@ internal fun PosterFooter(record: RecordV) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         CardFooterText(listOf(shortName(record.placeName), elapsedText(record.elapsedSeconds), posterDate(record.startedAtMillis)), Modifier.weight(1f))
         Spacer(Modifier.width(d.u(6)))
-        T("여정", d.t(15), color = DriveCardText, bold = true, maxLines = 1)
+        BrandWordmark(d.t(16), DriveCardText)
     }
 }
 
@@ -644,7 +630,7 @@ private fun BoxScope.PhotoPoster(record: RecordV, photo: ImageBitmap) {
         CardHeading(record, "나의 드라이브", 26, eyebrowColor = DriveCardText)
         RouteGlyph(remember(record.id) { record.route.toMapPoints() }, Modifier.fillMaxWidth().weight(1f).padding(vertical = d.u(8)), DriveCardText, d.u(3), trace = true)
         PosterDistance(record, 58)
-        T(posterLabel(record), d.t(14), color = DriveCardText, maxLines = 1)
+        T(posterLabel(record), d.t(16), color = DriveCardText, maxLines = 1)
         Spacer(Modifier.height(d.u(4)))
         PosterFooter(record)
     }

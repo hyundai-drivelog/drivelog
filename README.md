@@ -51,6 +51,8 @@ release 빌드에는 시뮬레이션이 없으므로 에뮬레이터에 위치�
 
 `web/card/index.html`을 HTTPS 정적 호스팅(GitHub Pages 등)에 올리고, 그 주소로 빌드하면 기록 화면의 `휴대폰으로 보내기`가 QR 코드를 보여 줍니다. 휴대폰 카메라로 찍으면 카드가 열리고 이미지로 저장할 수 있습니다. 서버는 필요 없습니다.
 
+소개 페이지는 `web/landing/index.html`입니다. 빌드 없이 같은 방식으로 정적 호스팅에 올리면 됩니다. 화면 사진(`web/landing/img/`)은 Pleos 에뮬레이터에서 찍은 실제 앱 화면이며, 앱 화면이 바뀌면 다시 찍어 교체합니다.
+
 ```powershell
 .\gradlew.bat :app:packageSubmissionApk -PsubmissionTeam=<팀명> -PcardWebUrl=https://<호스트>/card/
 ```
@@ -65,6 +67,8 @@ release 빌드에는 시뮬레이션이 없으므로 에뮬레이터에 위치�
 
 ## 문서
 
+- [전국 스탬프 카탈로그](docs/STAMP_CATALOG.md): 17개 지역·56곳의 명소, 좌표 출처와 목록 갱신 방법
+- [디자인 개선 및 검증](docs/DESIGN_DEVELOPMENT.md): 5개 에이전트 개선 내용, 화면 캡처와 검증 범위
 - [Pleos 설계 원칙](docs/guides/PLEOS_DESIGN_PRINCIPLES.md): 설계 기준, PRD에서 바뀐 결정, 미결 사항
 - [Pleos API 연동](docs/guides/PLEOS_API_INTEGRATION.md): API 선택 규칙, 퍼미션, 연동 방법, 검증 결과
 

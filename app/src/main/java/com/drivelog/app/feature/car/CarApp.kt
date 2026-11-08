@@ -94,17 +94,18 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                     place, shown.query, speech, canSearch, model.simulation, navi.available,
                     guiding, store.savedPlaces.any { it.toNaviPlace().sameLocation(place) },
                     model.message ?: navi.routeMessage, model.currentLocation, searchActions,
-                    model::toggleSaved, onStartPressed, model::cancelRoute, model::home,
+                    model::toggleSaved, onStartPressed, model::cancelRoute, model::openDestination,
                     if (model.locationRefused) model::openAppSettings else null,
                     model.routeMaps, navi.routeSummary.takeIf { guiding }, model::showRouteOverview,
                 )
             }
-            Screen.HISTORY -> HistoryScreen(model.store, model.routeMaps, store.journey.records, model::openRecord, model::home)
+            Screen.HISTORY -> HistoryScreen(model.store, model.routeMaps, store.journey.records, model::openRecord, model::home, model.historyTab)
             Screen.RECORD -> RecordSavedScreen(
                 model.routeMaps, shown.opened, "드라이브 기록", { model.goBack() }, null, model::deleteOpenedRecord,
                 shown.opened?.let { model.sendToPhone(it) },
                 shown.opened?.let { model.recommend(it) },
                 shown.opened?.let { stampResultFor(it, store.journey.records) },
+                returnsHome = model.returnAfterRecord == Screen.HOME,
             )
             Screen.COMMUNITY -> CommunityScreen(
                 model.communityCourses, model.courseOriginFilter, model.courseDestinationFilter,
@@ -133,16 +134,21 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                 shown.finished?.let { stampResultFor(it, store.journey.records) },
             )
             Screen.OFFLINE -> OfflineSavedScreen(shown.finished, shown.finished?.destinationPoint(), store.token != null, model.syncing, model::retrySync, model::home)
+            Screen.WELCOME -> WelcomeScreen(model::finishWelcome)
             Screen.HOME -> HomeScreen(
-                shown.query, speech, canSearch, model.simulation, navi.routeMessage,
-                remember(store.recentPlaces, navi) { model.recentPlaces() }, remember(store.savedPlaces, navi) { model.savedPlaces() },
-                store.journey.records, searchActions, model::selectPlace, model::openRecord, model::openHistory,
+                store.journey.records, model.routeMaps, model.simulation,
+                model::openDestination, model::openRecord, model::openHistory, model::openStamps,
+                // A mockup of a community: a submitted build must not offer it.
+                if (BuildConfig.DEBUG) model::openCommunity else null,
                 // A developer tool: a submitted build must not open it from a hidden gesture.
                 if (BuildConfig.DEBUG) ({ model.go(Screen.DIAGNOSTICS) }) else null,
                 if (BuildConfig.PHONE_LINK_ENABLED) ({ LinkControl(store.token != null, model::openLink, model::unlink) }) else null,
-                // A mockup of a community: a submitted build must not offer it.
-                if (BuildConfig.DEBUG) model::openCommunity else null,
-                model.routeMaps,
+                model::openWelcome,
+            )
+            Screen.DESTINATION -> DestinationScreen(
+                shown.query, speech, canSearch, model.simulation, navi.routeMessage,
+                remember(store.recentPlaces, navi) { model.recentPlaces() }, remember(store.savedPlaces, navi) { model.savedPlaces() },
+                searchActions, model::selectPlace, model::home,
             )
         }
     }

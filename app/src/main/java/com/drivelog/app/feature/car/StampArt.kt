@@ -44,7 +44,7 @@ fun StampArt(
         drawCircle(ink, 46f * u, center, style = ring)
         drawCircle(ink, 40f * u, center, style = Stroke(1.6f * u))
         val inside = Path().apply { addOval(Rect(center, 37f * u)) }
-        clipPath(inside) { StampPen(this, u, ink).draw(place.id) }
+        clipPath(inside) { StampPen(this, u, ink).draw(place.art) }
     }
 }
 
@@ -150,6 +150,128 @@ private class StampPen(val scope: DrawScope, val u: Float, val ink: Color) {
                 path(thinLine = true) { m(22f, 30f); q(25f, 26f, 28f, 30f); q(31f, 26f, 34f, 30f) }
                 path(thinLine = true) { m(68f, 24f); q(70.5f, 21f, 73f, 24f); q(75.5f, 21f, 78f, 24f) }
                 waves(82f, step = 11f)
+            }
+            "palace", "temple", "fortress" -> {
+                path { m(19f, 43f); q(34f, 42f, 50f, 27f); q(66f, 42f, 81f, 43f); l(76f, 48f); l(24f, 48f); close() }
+                line(28f, 49f, 28f, 69f); line(72f, 49f, 72f, 69f)
+                line(20f, 70f, 80f, 70f); line(16f, 76f, 84f, 76f, 2f)
+                if (id == "fortress") {
+                    path(thinLine = true) { m(16f, 61f); l(16f, 54f); l(23f, 54f); m(77f, 54f); l(84f, 54f); l(84f, 61f) }
+                } else {
+                    line(42f, 52f, 42f, 68f, 2f); line(58f, 52f, 58f, 68f, 2f)
+                }
+            }
+            "tower", "science", "lighthouse" -> {
+                line(50f, 17f, 50f, 29f, 2f)
+                path { m(43f, 41f); l(39f, 29f); l(61f, 29f); l(57f, 41f); close() }
+                path { m(46f, 42f); l(42f, 73f); l(58f, 73f); l(54f, 42f) }
+                line(31f, 75f, 69f, 75f)
+                if (id == "science") {
+                    scope.drawOval(ink, p(24f, 38f), androidx.compose.ui.geometry.Size(52f * u, 14f * u), style = thin)
+                } else if (id == "lighthouse") {
+                    line(65f, 28f, 80f, 22f, 2f); line(65f, 33f, 83f, 36f, 2f); waves(82f)
+                } else {
+                    line(18f, 75f, 18f, 59f, 2f); line(27f, 75f, 27f, 50f, 2f); line(76f, 75f, 76f, 57f, 2f)
+                }
+            }
+            "forest", "bamboo", "tea", "garden" -> {
+                if (id == "bamboo") {
+                    listOf(32f, 50f, 68f).forEach { x ->
+                        line(x, 24f, x, 78f)
+                        listOf(38f, 54f, 68f).forEach { y -> line(x - 3f, y, x + 3f, y, 2f); line(x, y - 4f, x + 10f, y - 12f, 2f) }
+                    }
+                } else if (id == "tea") {
+                    repeat(4) { i -> path { m(17f, 49f + i * 8f); q(40f, 29f + i * 7f, 83f, 49f + i * 8f) } }
+                    scope.drawCircle(ink, 6f * u, p(68f, 26f), style = thin)
+                } else if (id == "garden") {
+                    path { m(22f, 69f); l(22f, 45f); q(50f, 12f, 78f, 45f); l(78f, 69f); close() }
+                    line(50f, 27f, 50f, 69f, 2f); line(22f, 47f, 78f, 47f, 2f)
+                    path(thinLine = true) { m(34f, 69f); l(34f, 45f); q(50f, 24f, 66f, 45f); l(66f, 69f) }
+                    line(17f, 75f, 83f, 75f)
+                } else {
+                    listOf(30f, 50f, 70f).forEach { x ->
+                        path { m(x, 25f); l(x - 13f, 53f); l(x - 8f, 53f); l(x - 16f, 65f); l(x + 16f, 65f); l(x + 8f, 53f); l(x + 13f, 53f); close() }
+                        line(x, 66f, x, 77f)
+                    }
+                }
+            }
+            "lake", "river", "beach", "coast", "rocks", "mountain", "waterfall" -> {
+                when (id) {
+                    "waterfall" -> {
+                        path { m(18f, 32f); l(40f, 32f); l(40f, 61f); m(60f, 61f); l(60f, 32f); l(82f, 32f) }
+                        line(47f, 32f, 47f, 65f, 2f); line(54f, 37f, 54f, 69f, 2f)
+                    }
+                    "rocks", "mountain", "coast" -> {
+                        path { m(15f, 62f); l(32f, 36f); l(44f, 58f); l(58f, 27f); l(84f, 62f); close() }
+                        path(thinLine = true) { m(51f, 40f); l(58f, 45f); l(64f, 38f) }
+                    }
+                    "river" -> {
+                        path { m(18f, 36f); q(48f, 37f, 50f, 58f); m(82f, 36f); q(55f, 40f, 50f, 58f); l(50f, 77f) }
+                    }
+                    else -> {
+                        scope.drawCircle(ink, 9f * u, p(66f, 32f), style = stroke)
+                        path { m(16f, 57f); q(42f, 42f, 82f, 57f) }
+                    }
+                }
+                waves(73f); waves(82f, step = 11f)
+            }
+            "village", "city", "culture", "gate", "bridge" -> {
+                if (id == "bridge" || id == "gate") {
+                    path { m(20f, 70f); l(20f, 32f); l(31f, 32f); l(31f, 48f); l(69f, 48f); l(69f, 32f); l(80f, 32f); l(80f, 70f) }
+                    line(16f, 57f, 84f, 57f); waves(78f)
+                } else {
+                    listOf(27f, 50f, 73f).forEachIndexed { i, x ->
+                        val top = if (id == "city") 24f + i * 8f else 44f
+                        path { m(x - 10f, 70f); l(x - 10f, top); l(x + 10f, top); l(x + 10f, 70f); close() }
+                        if (id == "village") path { m(x - 13f, top); l(x, top - 12f); l(x + 13f, top) }
+                        line(x, top + 8f, x, top + 14f, 2f)
+                    }
+                    line(15f, 76f, 85f, 76f)
+                    if (id == "culture") path { m(16f, 36f); l(50f, 22f); l(84f, 36f); close() }
+                }
+            }
+            "wheel" -> {
+                scope.drawCircle(ink, 24f * u, p(50f, 43f), style = stroke)
+                repeat(8) { i ->
+                    val angle = i * Math.PI / 4
+                    val x = 50f + kotlin.math.cos(angle).toFloat() * 24f
+                    val y = 43f + kotlin.math.sin(angle).toFloat() * 24f
+                    line(50f, 43f, x, y, 1.6f)
+                    scope.drawCircle(ink, 4f * u, p(x, y), style = thin)
+                }
+                line(50f, 43f, 36f, 79f); line(50f, 43f, 64f, 79f); line(28f, 80f, 72f, 80f)
+            }
+            "spring", "lotus", "bear", "pagoda", "observatory" -> {
+                when (id) {
+                    "bear" -> {
+                        scope.drawCircle(ink, 7f * u, p(32f, 31f), style = stroke); scope.drawCircle(ink, 7f * u, p(68f, 31f), style = stroke)
+                        scope.drawOval(ink, p(25f, 28f), androidx.compose.ui.geometry.Size(50f * u, 45f * u), style = stroke)
+                        scope.drawCircle(ink, 2f * u, p(40f, 47f)); scope.drawCircle(ink, 2f * u, p(60f, 47f))
+                        scope.drawCircle(ink, 4f * u, p(50f, 58f), style = thin)
+                    }
+                    "spring" -> {
+                        path { m(20f, 59f); q(50f, 86f, 80f, 59f); close() }
+                        listOf(35f, 50f, 65f).forEach { x -> path { m(x, 48f); q(x - 9f, 39f, x, 27f) } }
+                    }
+                    "lotus" -> {
+                        path { m(50f, 63f); q(29f, 42f, 50f, 25f); q(71f, 42f, 50f, 63f) }
+                        path { m(50f, 63f); q(21f, 66f, 22f, 40f); q(43f, 40f, 50f, 63f); q(79f, 66f, 78f, 40f); q(57f, 40f, 50f, 63f) }
+                        waves(75f)
+                    }
+                    "pagoda" -> {
+                        repeat(3) { i -> val y = 34f + i * 15f; val w = 13f + i * 5f
+                            path { m(50f - w, y); l(50f, y - 9f); l(50f + w, y); close() }
+                            line(50f - w + 5f, y, 50f - w + 5f, y + 7f, 2f); line(50f + w - 5f, y, 50f + w - 5f, y + 7f, 2f)
+                        }
+                        line(50f, 19f, 50f, 25f); line(20f, 76f, 80f, 76f)
+                    }
+                    else -> {
+                        path { m(32f, 72f); q(43f, 46f, 40f, 29f); l(60f, 29f); q(57f, 46f, 68f, 72f); close() }
+                        line(36f, 52f, 64f, 52f, 2f); line(34f, 61f, 66f, 61f, 2f); line(39f, 40f, 61f, 40f, 2f)
+                        scope.drawRect(ink, p(47f, 43f), androidx.compose.ui.geometry.Size(6f * u, 6f * u))
+                        line(24f, 77f, 76f, 77f)
+                    }
+                }
             }
             // A place added without a drawing still gets a stamp: its pin.
             else -> {

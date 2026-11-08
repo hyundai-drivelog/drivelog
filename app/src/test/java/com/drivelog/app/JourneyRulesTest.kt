@@ -351,10 +351,32 @@ class JourneyRulesTest {
     }
 
     @Test fun onlyARegionWithPlacesIsReadyAndEveryStampBelongsToOne() {
-        assertEquals(listOf("busan"), StampRegions.filter { it.ready }.map { it.id })
-        // A region still being prepared shows no place, so nothing there can look like a stamp to earn.
-        assertTrue(StampRegions.filterNot { it.ready }.all { it.places.isEmpty() })
+        assertEquals(setOf("seoul", "busan", "incheon", "daegu", "gwangju", "daejeon", "ulsan", "sejong", "gyeonggi", "gangwon", "chungbuk", "chungnam", "jeonbuk", "jeonnam", "gyeongbuk", "gyeongnam", "jeju"), StampRegions.map { it.id }.toSet())
+        assertTrue(StampRegions.all { it.ready && it.places.size >= 3 })
         assertEquals(StampPlaces.map { it.id }.toSet(), StampRegions.flatMap { it.places }.map { it.id }.toSet())
+        assertEquals(StampPlaces.size, StampPlaces.map { it.id }.toSet().size)
+        assertEquals(56, StampPlaces.size)
+    }
+
+    @Test fun everyNationalLandmarkCanBeEarnedAtItsOwnCoordinate() {
+        StampPlaces.forEach { place ->
+            val record = stampDrive(place.id, 1_000, place.latitude, place.longitude)
+            assertEquals(place.id, place.id, stampPlaceFor(record)?.id)
+            assertNull(stampPlaceFor(record.copy(simulated = true)))
+            assertNull(stampPlaceFor(record.copy(distanceKm = 0.01)))
+        }
+    }
+
+    @Test fun aVisitUsesTheNearestLandmarkAndKeepsTheOneKilometreBoundary() {
+        val seoul = StampRegions.first { it.id == "seoul" }.places
+        val palace = seoul.first { it.id == "gyeongbokgung" }
+        val near = stampDrive("near", 1, palace.latitude + 0.004, palace.longitude)
+        val far = stampDrive("far", 1, palace.latitude + 0.012, palace.longitude)
+        assertEquals(palace.id, stampPlaceFor(near, seoul)?.id)
+        assertNull(stampPlaceFor(far, seoul))
+        // Neighbouring Sejong parks overlap within 1 km; the closest one wins, not catalogue order.
+        val arboretum = StampPlaces.first { it.id == "sejong-arboretum" }
+        assertEquals(arboretum.id, stampPlaceFor(stampDrive("park", 1, arboretum.latitude, arboretum.longitude))?.id)
     }
 
     private fun decodeFirstPoint(polyline: String): Pair<Double, Double> {

@@ -12,12 +12,64 @@
   const DARK = { paper: '#131417', ink: '#ffffff', muted: '#b4b6ba', faint: 'rgba(255,255,255,.4)', dot: '255,255,255' };
   const LIGHT = { paper: '#ffffff', ink: '#131417', muted: '#686a72', faint: 'rgba(19,20,23,.4)', dot: '19,20,23' };
 
-  // The car's stamp places (app StampPlaces.kt), so the phone presses the same stamp the car gave. Keep in step.
+  // Generated from app/stamps/catalog.json by scripts/sync-stamps.mjs.
   const STAMPS = [
-    ['광안리 해수욕장', 35.1532, 129.1186, -6], ['해운대 해수욕장', 35.1587, 129.1604, 4],
-    ['송정 해수욕장', 35.1786, 129.1996, -3], ['해동용궁사', 35.1884, 129.2233, 7],
-    ['오륙도 스카이워크', 35.1006, 129.1245, -8], ['흰여울문화마을', 35.0786, 129.0447, 5],
-    ['태종대', 35.0532, 129.0870, -5], ['다대포 해수욕장', 35.0466, 128.9662, 3],
+    ["경복궁",37.5786111,126.9772222,-6],
+    ["남산서울타워",37.551425,126.988,4],
+    ["올림픽공원",37.5203,127.1225,-3],
+    ["광안리 해수욕장",35.1532,129.1186,-6],
+    ["해운대 해수욕장",35.1587,129.1604,4],
+    ["송정 해수욕장",35.1786,129.1996,-3],
+    ["해동용궁사",35.1884,129.2233,7],
+    ["오륙도 스카이워크",35.1006,129.1245,-8],
+    ["흰여울문화마을",35.0786,129.0447,5],
+    ["태종대",35.0532,129.087,-5],
+    ["다대포 해수욕장",35.0466,128.9662,3],
+    ["송도 센트럴파크",37.3925,126.6394444,-6],
+    ["월미도",37.4809,126.475,4],
+    ["을왕리해수욕장",37.4479935,126.3844668,-3],
+    ["수성못",35.8274722,128.61775,-6],
+    ["대구수목원",35.800699,128.5200044,4],
+    ["83타워",35.8533056,128.5665667,-3],
+    ["국립아시아문화전당",35.14724,126.920687,-6],
+    ["양림동 역사문화마을",35.13519,126.91368,4],
+    ["증심사",35.1287374,126.9699579,-3],
+    ["한밭수목원",36.3695,127.3874828,-6],
+    ["엑스포과학공원",36.377,127.385,4],
+    ["유성온천",36.35588,127.3471,-3],
+    ["대왕암공원",35.492417,129.439444,-6],
+    ["간절곶",35.3597,129.3616,4],
+    ["태화강 국가정원",35.548712,129.291159,-3],
+    ["세종호수공원",36.494,127.274,-6],
+    ["국립세종수목원",36.494757,127.282967,4],
+    ["베어트리파크",36.6727961,127.2100874,-3],
+    ["수원 화성행궁",37.281829,127.013281,-6],
+    ["두물머리",37.5336226,127.3174715,4],
+    ["임진각",37.889583,126.740111,-3],
+    ["경포해수욕장",37.8056667,128.9107556,-6],
+    ["낙산사",38.1247222,128.6280556,4],
+    ["소양강스카이워크",37.8932774,127.7236633,-3],
+    ["도담삼봉",37.000164,128.343975,-6],
+    ["청풍문화재단지",37.0038,128.172,4],
+    ["법주사",36.5425,127.8338889,-3],
+    ["공주 공산성",36.4619444,127.1272222,-6],
+    ["궁남지",36.269056,126.913633,4],
+    ["해미읍성",36.7127778,126.5486111,-3],
+    ["전주한옥마을",35.814715,127.152636,-6],
+    ["광한루원",35.4038889,127.3797222,4],
+    ["내소사",35.617977,126.587428,-3],
+    ["순천만국가정원",34.928092,127.50444,-6],
+    ["죽녹원",35.3259982,126.9859176,4],
+    ["보성 대한다원",34.7150291,127.0787128,-3],
+    ["불국사",35.7902778,129.3319444,-6],
+    ["첨성대",35.8347222,129.2191667,4],
+    ["안동 하회마을",36.5380556,128.5205556,-3],
+    ["진주성",35.19,128.0733333,-6],
+    ["동피랑마을",34.8458333,128.4275,4],
+    ["해인사",35.8011111,128.0983333,-3],
+    ["성산일출봉",33.4585278,126.94225,-6],
+    ["협재해수욕장",33.3941667,126.2394444,4],
+    ["천지연폭포",33.246944,126.554417,-3],
   ];
 
   function font(ctx, weight, size) { ctx.font = `${weight} ${size}px ${FONT}`; }
@@ -214,11 +266,11 @@
   function stampFor(record) {
     const route = record.route || [];
     const end = route[route.length - 1];
-    if (record.simulated || !end || !(record.distanceKm >= 0.1)) return null;
+    if (record.simulated || route.length < 2 || !end || !(record.distanceKm >= 0.1)) return null;
     let best = null, bestKm = 1.0;
     for (const s of STAMPS) {
       const km = haversineKm([end[0], end[1]], [s[1], s[2]]);
-      if (km <= bestKm) { best = s; bestKm = km; }
+      if (km <= 1.0 && (best === null || km < bestKm)) { best = s; bestKm = km; }
     }
     return best && { name: best[0], tilt: best[3] };
   }
@@ -239,7 +291,7 @@
     return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
   }
 
-  function shortPlace(name) { return name.replace(/\s*(해수욕장|해변)$/, ''); }
+  function shortPlace(name) { return name.replace(/\s*(해수욕장|해변|광역시|특별자치시|특별자치도|특별시)$/, ''); }
 
   /** Truthful labels stay on the image even when other fields are hidden. */
   function caveats(record) {
@@ -269,13 +321,13 @@
     const parts = [o.showPlace ? shortPlace(record.placeName) : null, o.showTime ? minutes(record) : null, o.showDate ? date(record.startedAtMillis) : null].filter(Boolean);
     font(ctx, 500, 30);
     let x = PAD;
-    const right = W - PAD - 110;
+    const right = W - PAD - 220;
     parts.forEach((part, i) => {
       if (i > 0) { ctx.fillStyle = t.faint; ctx.fillText(' · ', x, 1288); x += ctx.measureText(' · ').width; }
       const room = Math.max(40, right - x);
       ctx.fillStyle = t.ink; ctx.fillText(part, x, 1288, room); x += Math.min(ctx.measureText(part).width, room);
     });
-    text(ctx, '여정', W - PAD, 1288, 800, 36, t.ink, 'right');
+    text(ctx, 'DRIVELOG', W - PAD, 1288, 800, 36, t.ink, 'right');
   }
 
   /** Eyebrow and title, kept clear of the stamp. The stamp names the place, so it follows the place toggle. */
@@ -356,7 +408,7 @@
       if (i > 0) { ctx.fillStyle = t.faint; ctx.fillText(' · ', x, 1288); x += ctx.measureText(' · ').width; }
       ctx.fillStyle = t.muted; ctx.fillText(note, x, 1288); x += ctx.measureText(note).width;
     });
-    text(ctx, '여정', W - PAD, 1288, 800, 36, t.ink, 'right');
+    text(ctx, 'DRIVELOG', W - PAD, 1288, 800, 36, t.ink, 'right');
   }
 
   window.DriveCard = {

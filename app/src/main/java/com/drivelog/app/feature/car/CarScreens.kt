@@ -1,6 +1,19 @@
 package com.drivelog.app.feature.car
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.unit.lerp
+import androidx.compose.foundation.layout.wrapContentWidth
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.animateFloatAsState
+import com.drivelog.app.ui.theme.NightColors
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -12,6 +25,7 @@ import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -45,6 +59,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
+import java.util.Locale
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -69,7 +84,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-fun shortName(name: String) = name.removeSuffix("해수욕장").removeSuffix("해변").trim().ifEmpty { name }
+/** The name as a card says it: 송정 for 송정해수욕장, 부산 for 부산광역시. */
+fun shortName(name: String) = name.removeSuffix("해수욕장").removeSuffix("해변").removeSuffix("광역시").removeSuffix("특별자치시")
+    .removeSuffix("특별자치도").removeSuffix("특별시").trim().ifEmpty { name }
 /** 으로 after a final consonant except ㄹ, otherwise 로: 송정으로, 광안리로, 다대포로. */
 fun withDirectionParticle(name: String): String {
     // Names come from any search result now, so one can end in Latin letters or digits ("수서역 SRT").
@@ -350,7 +367,7 @@ fun PhoneLinkScreen(
     val expired = code != null && left == 0L
     Frame(onBack, simulated = preview) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Heading("휴대폰과 여정을 연결하세요", if (preview) 40 else 36, align = TextAlign.Center)
+            Heading("휴대폰과 DRIVELOG를 연결하세요", if (preview) 40 else 36, align = TextAlign.Center)
             Spacer(Modifier.height(d.u(4)))
             T(if (preview) "차량에서 기록한 여정을 휴대폰으로 이어볼 수 있어요" else "차량에서 기록한 여정을 휴대폰으로 이어볼 수 있어요", d.t(18), color = muted(), align = TextAlign.Center)
             Spacer(Modifier.height(d.u(16)))
@@ -401,7 +418,7 @@ fun PhoneLinkScreen(
                         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                             AppMark(d.u(46).value)
                             Spacer(Modifier.height(d.u(6)))
-                            T("여정", d.t(13))
+                            T("DRIVELOG", d.t(13))
                         }
                     }
                     Box(Modifier.weight(1f)) { steps() }
@@ -520,24 +537,35 @@ fun ContinueOnPhoneScreen(record: RecordV?, onBackToGoal: () -> Unit, preview: B
 
 /** Shown after a drive and again from 내 기록; only the latter offers deletion, as a two-step action. */
 @Composable
-fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String, onBack: () -> Unit, onHistory: (() -> Unit)?, onDelete: (() -> Unit)?, onPhonePreview: (() -> Unit)? = null, onRecommend: (() -> Unit)? = null, stamp: StampResult? = null) {
+fun RecordSavedScreen(
+    routeMaps: RouteMapCache, record: RecordV?, title: String, onBack: () -> Unit, onHistory: (() -> Unit)?, onDelete: (() -> Unit)?,
+    onPhonePreview: (() -> Unit)? = null, onRecommend: (() -> Unit)? = null, stamp: StampResult? = null,
+    /** Opened from the home card, so leaving goes home rather than to 내 기록. */
+    returnsHome: Boolean = false,
+) {
     val d = LocalCarDimens.current
     var confirmDelete by rememberConfirmState(record?.id)
     var replay by remember(record?.id) { mutableIntStateOf(0) }
     val splits = remember(record?.id) { record?.let { kmSplits(it.route.toMapPoints(), it.rests.orEmpty()) }.orEmpty() }
-    Frame(onBack, simulated = record?.simulated == true) {
-        Panes(0.38f, left = {
-            Column {
-                // The place is the poster's title, so it is not repeated here.
-                Heading(title, 28, Modifier.testTag("record-saved"))
+    val onReplay: (() -> Unit)? = if (record != null && record.route.size >= 2) ({ replay += 1 }) else null
+    val motion = LocalMotionEnabled.current
+    var open by remember(record?.id) { mutableStateOf(false) }
+    // 0 is the face alone, 1 the face with the drive's figures beside it: the card widens to the side, using the
+    // landscape screen, and the figures are part of the card rather than a panel next to it.
+    val opened by animateFloatAsState(if (open) 1f else 0f, if (motion) tween(RECORD_OPEN_MS, easing = FastOutSlowInEasing) else snap(), label = "record card")
+    val figures: @Composable (Modifier) -> Unit = { modifier ->
+        NightColors {
+            Column(modifier.testTag("card-figures")) {
+                Heading(title, 26, Modifier.testTag("record-title"))
                 if (record != null) {
-                    Spacer(Modifier.height(d.u(18)))
-                    RecordStats(record)
+                    Spacer(Modifier.height(d.u(14)))
+                    RecordStats(record, headline = false)
                     if (stamp != null) {
                         Spacer(Modifier.height(d.u(14)))
-                        StampLine(stamp)
+                        // The stamp is pressed once, on the card's face; here it is simply listed.
+                        StampLine(stamp, press = false)
                         // A mockup of the partner model: debug builds only, and it changes nothing.
-                        if (com.drivelog.app.BuildConfig.DEBUG) {
+                        if (BuildConfig.DEBUG) {
                             Spacer(Modifier.height(d.u(8)))
                             BenefitPreview(stamp.place)
                         }
@@ -547,46 +575,133 @@ fun RecordSavedScreen(routeMaps: RouteMapCache, record: RecordV?, title: String,
                         SplitList(splits)
                     }
                 }
-                Spacer(Modifier.height(d.u(22)))
-                // One size and the main action first: the poster is what this screen is for, not the list of what to do next.
+                Spacer(Modifier.height(d.u(20)))
                 if (onHistory != null) {
-                    PrimaryButton("내 기록 보기", "open-history-after", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onHistory)
+                    SecondaryButton("내 기록 보기", "open-history-after", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onHistory)
                     Spacer(Modifier.height(d.u(8)))
                 }
-                SecondaryButton(if (onHistory != null) "홈으로" else "돌아가기", "back-from-record", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onBack)
                 if (onPhonePreview != null) {
-                    Spacer(Modifier.height(d.u(8)))
                     SecondaryButton("휴대폰으로 보내기", "open-phone-preview", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onPhonePreview)
+                    Spacer(Modifier.height(d.u(8)))
                 }
                 if (onRecommend != null) {
-                    Spacer(Modifier.height(d.u(8)))
                     SecondaryButton("코스 추천하기", "open-course-share", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onRecommend)
+                    Spacer(Modifier.height(d.u(8)))
                 }
                 if (onDelete != null) {
-                    Spacer(Modifier.height(d.u(8)))
-                    SecondaryButton(if (confirmDelete) "한 번 더 누르면 삭제" else "기록 삭제", "delete-record", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, danger = confirmDelete) {
+                    // Last and smaller, apart from what to do next: it is the one action that cannot be undone.
+                    Spacer(Modifier.height(d.u(16)))
+                    SecondaryButton(if (confirmDelete) "한 번 더 누르면 삭제" else "기록 삭제", "delete-record", size = ButtonSize.SMALL, danger = confirmDelete) {
                         if (confirmDelete) onDelete() else confirmDelete = true
                     }
                 }
             }
-        }, right = {
-            // A fixed slice in the scrolling column would be shorter than the image, which then spills over the buttons.
-            val frame = if (d.stacked) Modifier.fillMaxWidth() else paneFill(280)
-            // Motion is parked-only like every effect, and this screen is never shown while moving.
-            val onReplay: (() -> Unit)? = if (record != null && record.route.size >= 2) ({ replay += 1 }) else null
-            RecordPoster(routeMaps, record, frame.padding(bottom = d.u(8)), fillHeight = !d.stacked, replay = replay, onReplay = onReplay)
-        }, rightFirstWhenStacked = true)
+        }
+    }
+    val shape = RoundedCornerShape(d.u(14))
+    val cardFrame = Modifier.clip(shape).background(DriveCardBackground).border(1.dp, line(), shape).testTag("record-saved")
+    // A sideways swipe on the card opens or closes the figures, as the button does.
+    val swipe = Modifier.pointerInput(record?.id) {
+        var dragged = 0f
+        detectHorizontalDragGestures(onDragStart = { dragged = 0f }, onDragEnd = {
+            if (dragged < -SWIPE_PX) open = true else if (dragged > SWIPE_PX) open = false
+        }) { _, amount -> dragged += amount }
+    }
+    // Back closes the card first, as the arrow does; only a closed card leaves the screen.
+    androidx.activity.compose.BackHandler(enabled = open) { open = false }
+    // Right after saving the card says so; opened from 내 기록 it is simply the drive.
+    val eyebrow = if (onHistory != null) "방금 저장했어요" else "나의 드라이브"
+    val actions: @Composable (Modifier) -> Unit = { modifier ->
+        Row(modifier, horizontalArrangement = Arrangement.spacedBy(d.u(12))) {
+            if (!d.stacked) PrimaryButton(if (open) "카드만 보기" else "기록 보기", "record-details", Modifier.weight(1f), size = ButtonSize.MEDIUM) { open = !open }
+            SecondaryButton(if (onHistory != null || returnsHome) "홈으로" else "돌아가기", "back-from-record", Modifier.weight(1f), size = ButtonSize.MEDIUM, onClick = onBack)
+        }
+    }
+    Frame(if (open) ({ open = false }) else onBack, simulated = record?.simulated == true) {
+        if (d.stacked) Column(Modifier.fillMaxSize().padding(bottom = d.u(10))) {
+            // A narrow window has no width to spare: the figures follow the face downwards instead.
+            Column(Modifier.fillMaxWidth().weight(1f).then(cardFrame).verticalScroll(rememberScrollState())) {
+                RecordPoster(routeMaps, record, Modifier.fillMaxWidth().height(d.u(560)), fillHeight = true, replay = replay, onReplay = onReplay, framed = false, eyebrow = eyebrow, pressStamp = stamp?.isNew == true)
+                CardTearLine(d.u(20), Modifier.padding(bottom = d.u(14)))
+                figures(Modifier.fillMaxWidth().padding(horizontal = d.u(20)).padding(bottom = d.u(20)))
+            }
+            Spacer(Modifier.height(d.u(14)))
+            actions(Modifier.fillMaxWidth())
+        } else BoxWithConstraints(Modifier.fillMaxSize().padding(bottom = d.u(10)), contentAlignment = Alignment.TopCenter) {
+            val actionsHeight = ButtonSize.MEDIUM.height + d.u(14)
+            val face = minOf((maxHeight - actionsHeight) * 0.82f, maxWidth * 0.5f)
+            val cardWidth = lerp(face, maxWidth, opened)
+            val figuresWidth = maxWidth - face - 1.dp
+            Column(Modifier.width(cardWidth).fillMaxHeight()) {
+                Row(Modifier.fillMaxWidth().weight(1f).then(cardFrame).then(swipe)) {
+                    Box(Modifier.width(face).fillMaxHeight()) {
+                        // A tap on the face turns the card either way, as the swipe and the button do.
+                        RecordPoster(
+                            routeMaps, record, Modifier.matchParentSize().pressClick { open = !open },
+                            fillHeight = true, replay = replay, onReplay = onReplay, framed = false,
+                            eyebrow = eyebrow, pressStamp = stamp?.isNew == true, tearNotch = 1f - opened,
+                        )
+                        // What says the card opens: a tab on the face's right edge, gone once it is open.
+                        if (opened < 1f) Box(
+                            Modifier.align(Alignment.CenterEnd).size(64.dp).graphicsLayer { alpha = 1f - opened }
+                                .pressClick { open = true }.semantics { contentDescription = "기록 열기" }.testTag("card-open-tab"),
+                            contentAlignment = Alignment.CenterEnd,
+                        ) { CarIcon(CarGlyph.CHEVRON_RIGHT, 40.dp, DriveCardMuted) }
+                    }
+                    // Always composed, at no width while closed, so what it remembers (the stamp already pressed) stays.
+                    if (opened > 0f) CardTearLineVertical(Modifier.fillMaxHeight().padding(vertical = d.u(20)).graphicsLayer { alpha = opened })
+                    Box(Modifier.weight(1f, fill = true).fillMaxHeight().clipToBounds()) {
+                        // Full width from the start and uncovered as the card widens, so no line reflows mid-way.
+                        figures(
+                            Modifier.wrapContentWidth(Alignment.Start, unbounded = true).width(figuresWidth).fillMaxHeight()
+                                .verticalScroll(rememberScrollState()).padding(d.u(28)).graphicsLayer { alpha = opened },
+                        )
+                    }
+                }
+                Spacer(Modifier.height(d.u(14)))
+                // The buttons follow the card's own width, closed or open.
+                actions(Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+/** How long the card takes to widen and show the drive's figures beside its face. */
+private const val RECORD_OPEN_MS = MOTION_ENTER_MS
+
+/** How far a sideways swipe on the card must travel before it opens or closes. */
+private const val SWIPE_PX = 80f
+
+/** The tear line of every card, standing up: dashes and half-circle notches at the two ends. */
+@Composable
+private fun CardTearLineVertical(modifier: Modifier) {
+    Canvas(modifier.width(2.dp)) {
+        val dash = 6.dp.toPx()
+        var y = 0f
+        while (y < size.height) {
+            drawLine(Color.White.copy(alpha = 0.22f), Offset(size.width / 2, y), Offset(size.width / 2, minOf(y + dash, size.height)), strokeWidth = 1.dp.toPx())
+            y += dash * 2
+        }
     }
 }
 
 /** The drive as a keepsake, as the mockup cards set it, and dark in either theme like the cards. */
 @Composable
-private fun RecordPoster(routeMaps: RouteMapCache, record: RecordV?, modifier: Modifier, fillHeight: Boolean, replay: Int = 0, onReplay: (() -> Unit)? = null) {
+private fun RecordPoster(
+    routeMaps: RouteMapCache, record: RecordV?, modifier: Modifier, fillHeight: Boolean, replay: Int = 0, onReplay: (() -> Unit)? = null,
+    /** False when it is the face of a card that already draws the frame around it. */
+    framed: Boolean = true,
+    eyebrow: String = "나의 드라이브",
+    /** A stamp earned by this drive just now: pressed onto the face once. */
+    pressStamp: Boolean = false,
+    tearNotch: Float = 1f,
+) {
     val d = LocalCarDimens.current
     val shape = RoundedCornerShape(d.u(14))
+    val outer = if (framed) modifier.clip(shape).background(DriveCardBackground).border(1.dp, line(), shape) else modifier
     // The same order as the cards and the phone card: title, route, the distance, then a footer line.
-    Column(modifier.clip(shape).background(DriveCardBackground).border(1.dp, line(), shape).padding(d.u(20)).testTag("record-poster")) {
-        CardHeading(record, "나의 드라이브", 30)
+    Column(outer.padding(d.u(20)).testTag("record-poster")) {
+        CardHeading(record, eyebrow, 30, pressStamp = pressStamp)
         Spacer(Modifier.height(d.u(14)))
         // The map's own shape. A north–south drive's tall map takes the height the pane has, centred.
         val aspect = routeImageAspect(record)
@@ -600,9 +715,9 @@ private fun RecordPoster(routeMaps: RouteMapCache, record: RecordV?, modifier: M
         }
         if (tall) Spacer(Modifier.height(d.u(14))) else if (fillHeight) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(d.u(14)))
         if (record != null) {
-            CardTearLine(d.u(20), Modifier.padding(bottom = d.u(4)))
+            CardTearLine(d.u(20), Modifier.padding(bottom = d.u(4)), endNotch = tearNotch)
             PosterDistance(record, 58, DriveCardMuted)
-            T(distanceLabel(record.distanceSource) + if (record.simulated) " · 시뮬레이션" else "", d.t(15), color = DriveCardMuted, maxLines = 1)
+            T(distanceLabel(record.distanceSource) + if (record.simulated) " · 시뮬레이션" else "", d.t(16), color = DriveCardMuted, maxLines = 2)
             Spacer(Modifier.height(d.u(6)))
             PosterFooter(record)
             MapCredit(routeMaps, record)
@@ -643,28 +758,27 @@ private fun splitRange(split: KmSplit): String {
 }
 
 /**
- * Time per stretch of the drive, from its own recorded points. Each row carries the same numbered marker as the
- * map, so the list and the route read together. A record of the drive, not a ranking of it.
+ * Time per stretch of the drive, from its own recorded points. Breaks sit below the driving time so they
+ * remain readable in a narrow card. These are the drive's own stretches, with no ranking.
  */
 @Composable
 private fun SplitList(splits: List<KmSplit>) {
     val d = LocalCarDimens.current
     Column(Modifier.fillMaxWidth().testTag("splits")) {
-        T("구간 기록", d.t(16), color = muted())
-        Spacer(Modifier.height(d.u(6)))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            T("구간 기록", d.t(18), Modifier.weight(1f), bold = true)
+            T("운전 시간", d.t(16), color = muted())
+        }
+        Spacer(Modifier.height(d.u(10)))
         splits.forEachIndexed { index, split ->
-            // Down the list in drive order, as the numbered marks appear along the route on the card.
-            Row(Modifier.revealOnce(index + 2).fillMaxWidth().padding(vertical = d.u(3)), verticalAlignment = Alignment.CenterVertically) {
-                val whole = split.toKm == Math.floor(split.toKm)
-                Box(Modifier.size(d.u(28)).clip(CircleShape).background(fg()), contentAlignment = Alignment.Center) {
-                    if (whole) T(split.toKm.toInt().toString(), d.t(13), color = MaterialTheme.colorScheme.background, bold = true, maxLines = 1)
-                    else Box(Modifier.size(d.u(10)).clip(CircleShape).background(MaterialTheme.colorScheme.background))
-                }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(line()))
+            Row(Modifier.revealOnce(index + 2).fillMaxWidth().padding(vertical = d.u(10)), verticalAlignment = Alignment.CenterVertically) {
+                T(splitRange(split), d.t(18), Modifier.weight(1f), color = muted(), maxLines = 2, tabular = true)
                 Spacer(Modifier.width(d.u(12)))
-                T(splitRange(split), d.t(18), Modifier.weight(1f), color = muted(), maxLines = 1, tabular = true)
-                // A break is said beside the stretch it fell in, apart from the driving time.
-                if (split.restSeconds >= 60) T("휴게 ${elapsedText(split.restSeconds)} · ", d.t(16), color = muted(), maxLines = 1)
-                T(splitTime(split.seconds), d.t(18), bold = true, maxLines = 1, tabular = true)
+                Column(horizontalAlignment = Alignment.End) {
+                    T(splitTime(split.seconds), d.t(18), bold = true, maxLines = 1, tabular = true)
+                    if (split.restSeconds >= 60) T("휴게 ${elapsedText(split.restSeconds)}", d.t(16), color = muted(), maxLines = 1)
+                }
             }
         }
     }
@@ -680,16 +794,19 @@ fun clockRange(start: String, end: String): String {
 
 /** The distance is the headline, as on the cards. Below it, the other figures share one cell form: value over label. */
 @Composable
-private fun RecordStats(record: RecordV) {
+private fun RecordStats(record: RecordV, headline: Boolean = true) {
     val d = LocalCarDimens.current
     val shown = rememberCountUp(record.distanceKm ?: 0.0)
     Column {
-        Row(verticalAlignment = Alignment.Bottom) {
-            T(if (record.distanceKm != null) distanceText(shown) else distanceText(null), d.t(84), maxLines = 1, display = true)
-            if (record.distanceKm != null) T("km", d.t(34), Modifier.padding(start = d.u(8), bottom = d.u(12)), bold = true)
+        // Inside the card the distance is already its headline, on the face above.
+        if (headline) {
+            Row(verticalAlignment = Alignment.Bottom) {
+                T(if (record.distanceKm != null) distanceText(shown) else distanceText(null), d.t(84), maxLines = 1, display = true)
+                if (record.distanceKm != null) T("km", d.t(34), Modifier.padding(start = d.u(8), bottom = d.u(12)), bold = true)
+            }
+            T(distanceLabel(record.distanceSource), d.t(16), color = muted())
+            Spacer(Modifier.height(d.u(16)))
         }
-        T(distanceLabel(record.distanceSource), d.t(16), color = muted())
-        Spacer(Modifier.height(d.u(16)))
         Row(Modifier.height(IntrinsicSize.Min)) {
             StatCell(elapsedText(record.elapsedSeconds), "기록 시간")
             Spacer(Modifier.width(d.u(24)))
@@ -697,19 +814,38 @@ private fun RecordStats(record: RecordV) {
             Spacer(Modifier.width(d.u(24)))
             StatCell(clockRange(clockTime(record.startedAtMillis), clockTime(record.endedAtMillis)), "출발–도착 시각")
         }
+        // Its own row: beside the times it is cut short on a half-width panel.
+        efficiencyCell(record)?.let { (value, label) ->
+            Spacer(Modifier.height(d.u(12)))
+            Box(Modifier.testTag("record-efficiency")) { StatCell(value, label) }
+        }
         val rest = record.restSeconds()
         if (rest >= 60) {
             Spacer(Modifier.height(d.u(10)))
-            T("휴게 ${record.rests.orEmpty().size}회 · ${elapsedText(rest)} 포함", d.t(16), Modifier.testTag("record-rest"), color = muted(), maxLines = 1)
+            T("휴게 ${record.rests.orEmpty().size}회 · ${elapsedText(rest)} 포함", d.t(16), Modifier.testTag("record-rest"), color = muted(), maxLines = 2)
         }
         // The navigation app's own figures, as it reported them. Beside the drive, not against it.
         val naviMeters = record.naviDistanceMeters
         val naviSeconds = record.naviDurationSeconds
         if (naviMeters != null && naviSeconds != null && naviMeters > 0) {
             Spacer(Modifier.height(d.u(6)))
-            T(routeSummaryText(RouteSummary(naviMeters, naviSeconds)), d.t(16), Modifier.testTag("record-navi-route"), color = muted(), maxLines = 1)
+            T(routeSummaryText(RouteSummary(naviMeters, naviSeconds)), d.t(16), Modifier.testTag("record-navi-route"), color = muted(), maxLines = 2)
         }
     }
+}
+
+/**
+ * "6.8 km/kWh" over "전비 · 0.50 kWh 사용". Measured from the vehicle's energy left at start and end, so a
+ * simulated drive never has one.
+ */
+fun efficiencyCell(record: RecordV): Pair<String, String>? {
+    val value = record.efficiency ?: return null
+    val unit = record.efficiencyUnit ?: return null
+    if (record.simulated) return null
+    val name = if (unit == "km/kWh") "전비" else "연비"
+    val usedUnit = if (unit == "km/kWh") "kWh" else "L"
+    val used = record.energyUsed?.let { " · ${String.format(Locale.US, "%.2f", it)} $usedUnit 사용" }.orEmpty()
+    return "${String.format(Locale.US, "%.1f", value)} $unit" to "$name$used"
 }
 
 @Composable
@@ -717,7 +853,7 @@ private fun StatCell(value: String, label: String) {
     val d = LocalCarDimens.current
     Column {
         T(value, d.t(26), bold = true, maxLines = 1, tabular = true)
-        T(label, d.t(15), color = muted(), maxLines = 1)
+        T(label, d.t(16), color = muted(), maxLines = 2)
     }
 }
 

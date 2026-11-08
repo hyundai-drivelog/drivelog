@@ -1,0 +1,780 @@
+{
+  "version": 1,
+  "checkedAt": "2026-11-08",
+  "regions": [
+    {
+      "id": "seoul",
+      "name": "서울",
+      "places": [
+        {
+          "id": "gyeongbokgung",
+          "name": "경복궁",
+          "area": "종로구",
+          "latitude": 37.5786111,
+          "longitude": 126.9772222,
+          "motto": "궁궐의 지붕 너머 북악산",
+          "tilt": -6,
+          "art": "palace",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q482485",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "nseoul",
+          "name": "남산서울타워",
+          "area": "용산구",
+          "latitude": 37.551425,
+          "longitude": 126.988,
+          "motto": "남산 위에서 만나는 서울",
+          "tilt": 4,
+          "art": "tower",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q69134",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "olympic",
+          "name": "올림픽공원",
+          "area": "송파구",
+          "latitude": 37.5203,
+          "longitude": 127.1225,
+          "motto": "평화의 문과 넓은 잔디",
+          "tilt": -3,
+          "art": "gate",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q486694",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "busan",
+      "name": "부산",
+      "places": [
+        {
+          "id": "gwangalli",
+          "name": "광안리 해수욕장",
+          "area": "수영구",
+          "latitude": 35.1532,
+          "longitude": 129.1186,
+          "motto": "광안대교가 보이는 바다",
+          "tilt": -6,
+          "art": "gwangalli",
+          "sourceUrl": null,
+          "coordinateNote": "기존 부산 카탈로그 좌표 유지. docs/guides/PLEOS_DESIGN_PRINCIPLES.md 참고."
+        },
+        {
+          "id": "haeundae",
+          "name": "해운대 해수욕장",
+          "area": "해운대구",
+          "latitude": 35.1587,
+          "longitude": 129.1604,
+          "motto": "파라솔이 늘어선 백사장",
+          "tilt": 4,
+          "art": "haeundae",
+          "sourceUrl": null,
+          "coordinateNote": "기존 부산 카탈로그 좌표 유지. docs/guides/PLEOS_DESIGN_PRINCIPLES.md 참고."
+        },
+        {
+          "id": "songjeong",
+          "name": "송정 해수욕장",
+          "area": "해운대구",
+          "latitude": 35.1786,
+          "longitude": 129.1996,
+          "motto": "파도 타는 서핑 바다",
+          "tilt": -3,
+          "art": "songjeong",
+          "sourceUrl": null,
+          "coordinateNote": "기존 부산 카탈로그 좌표 유지. docs/guides/PLEOS_DESIGN_PRINCIPLES.md 참고."
+        },
+        {
+          "id": "yonggungsa",
+          "name": "해동용궁사",
+          "area": "기장군",
+          "latitude": 35.1884,
+          "longitude": 129.2233,
+          "motto": "바닷가 바위 위의 절",
+          "tilt": 7,
+          "art": "yonggungsa",
+          "sourceUrl": null,
+          "coordinateNote": "기존 부산 카탈로그 좌표 유지. docs/guides/PLEOS_DESIGN_PRINCIPLES.md 참고."
+        },
+        {
+          "id": "oryukdo",
+          "name": "오륙도 스카이워크",
+          "area": "남구",
+          "latitude": 35.1006,
+          "longitude": 129.1245,
+          "motto": "바다 위 유리 다리와 섬들",
+          "tilt": -8,
+          "art": "oryukdo",
+          "sourceUrl": null,
+          "coordinateNote": "기존 부산 카탈로그 좌표 유지. docs/guides/PLEOS_DESIGN_PRINCIPLES.md 참고."
+        },
+        {
+          "id": "huinnyeoul",
+          "name": "흰여울문화마을",
+          "area": "영도구",
+          "latitude": 35.0786,
+          "longitude": 129.0447,
+          "motto": "절벽 위 계단 골목",
+          "tilt": 5,
+          "art": "huinnyeoul",
+          "sourceUrl": null,
+          "coordinateNote": "기존 부산 카탈로그 좌표 유지. docs/guides/PLEOS_DESIGN_PRINCIPLES.md 참고."
+        },
+        {
+          "id": "taejongdae",
+          "name": "태종대",
+          "area": "영도구",
+          "latitude": 35.0532,
+          "longitude": 129.087,
+          "motto": "해안 절벽의 등대",
+          "tilt": -5,
+          "art": "taejongdae",
+          "sourceUrl": null,
+          "coordinateNote": "기존 부산 카탈로그 좌표 유지. docs/guides/PLEOS_DESIGN_PRINCIPLES.md 참고."
+        },
+        {
+          "id": "dadaepo",
+          "name": "다대포 해수욕장",
+          "area": "사하구",
+          "latitude": 35.0466,
+          "longitude": 128.9662,
+          "motto": "낙조가 지는 바다",
+          "tilt": 3,
+          "art": "dadaepo",
+          "sourceUrl": null,
+          "coordinateNote": "기존 부산 카탈로그 좌표 유지. docs/guides/PLEOS_DESIGN_PRINCIPLES.md 참고."
+        }
+      ]
+    },
+    {
+      "id": "incheon",
+      "name": "인천",
+      "places": [
+        {
+          "id": "songdo",
+          "name": "송도 센트럴파크",
+          "area": "연수구",
+          "latitude": 37.3925,
+          "longitude": 126.6394444,
+          "motto": "도시 사이로 흐르는 수로",
+          "tilt": -6,
+          "art": "city",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q7561251",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "wolmido",
+          "name": "월미도",
+          "area": "중구",
+          "latitude": 37.4809,
+          "longitude": 126.475,
+          "motto": "바다를 바라보는 관람차",
+          "tilt": 4,
+          "art": "wheel",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q623728",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "eurwangni",
+          "name": "을왕리해수욕장",
+          "area": "중구",
+          "latitude": 37.4479935,
+          "longitude": 126.3844668,
+          "motto": "서해의 노을과 백사장",
+          "tilt": -3,
+          "art": "beach",
+          "sourceUrl": "https://qad.purpleo.kr/article/6461",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "daegu",
+      "name": "대구",
+      "places": [
+        {
+          "id": "suseong",
+          "name": "수성못",
+          "area": "수성구",
+          "latitude": 35.8274722,
+          "longitude": 128.61775,
+          "motto": "물가를 따라 걷는 호수",
+          "tilt": -6,
+          "art": "lake",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q55731190",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "daegu-arboretum",
+          "name": "대구수목원",
+          "area": "달서구",
+          "latitude": 35.800699,
+          "longitude": 128.5200044,
+          "motto": "계절마다 빛이 바뀌는 숲",
+          "tilt": 4,
+          "art": "forest",
+          "sourceUrl": "https://qav.purpleo.kr/article/8",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "83tower",
+          "name": "83타워",
+          "area": "달서구",
+          "latitude": 35.8533056,
+          "longitude": 128.5665667,
+          "motto": "도시 위로 솟은 전망탑",
+          "tilt": -3,
+          "art": "tower",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q2472610",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "gwangju",
+      "name": "광주",
+      "places": [
+        {
+          "id": "acc",
+          "name": "국립아시아문화전당",
+          "area": "동구",
+          "latitude": 35.14724,
+          "longitude": 126.920687,
+          "motto": "빛과 문화가 만나는 광장",
+          "tilt": -6,
+          "art": "culture",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q12585739",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "yangnim",
+          "name": "양림동 역사문화마을",
+          "area": "남구",
+          "latitude": 35.13519,
+          "longitude": 126.91368,
+          "motto": "오래된 집과 골목의 풍경",
+          "tilt": 4,
+          "art": "village",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q12606241",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "jeungsimsa",
+          "name": "증심사",
+          "area": "동구",
+          "latitude": 35.1287374,
+          "longitude": 126.9699579,
+          "motto": "무등산 자락의 고즈넉한 절",
+          "tilt": -3,
+          "art": "temple",
+          "sourceUrl": "https://dh.aks.ac.kr/~gwangju/wiki/index.php/증심사",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "daejeon",
+      "name": "대전",
+      "places": [
+        {
+          "id": "hanbat",
+          "name": "한밭수목원",
+          "area": "서구",
+          "latitude": 36.3695,
+          "longitude": 127.3874828,
+          "motto": "도심에 펼쳐진 나무 정원",
+          "tilt": -6,
+          "art": "forest",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q16172014",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "expo",
+          "name": "엑스포과학공원",
+          "area": "유성구",
+          "latitude": 36.377,
+          "longitude": 127.385,
+          "motto": "한빛탑에 남은 과학의 기억",
+          "tilt": 4,
+          "art": "science",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q624528",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "yuseong",
+          "name": "유성온천",
+          "area": "유성구",
+          "latitude": 36.35588,
+          "longitude": 127.3471,
+          "motto": "따뜻한 물이 흐르는 온천길",
+          "tilt": -3,
+          "art": "spring",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q624171",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "ulsan",
+      "name": "울산",
+      "places": [
+        {
+          "id": "daewangam",
+          "name": "대왕암공원",
+          "area": "동구",
+          "latitude": 35.492417,
+          "longitude": 129.439444,
+          "motto": "소나무 숲 끝 바위와 바다",
+          "tilt": -6,
+          "art": "coast",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q61100314",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "ganjeolgot",
+          "name": "간절곶",
+          "area": "울주군",
+          "latitude": 35.3597,
+          "longitude": 129.3616,
+          "motto": "등대 너머 해가 뜨는 곶",
+          "tilt": 4,
+          "art": "lighthouse",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q10855091",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "taehwagang",
+          "name": "태화강 국가정원",
+          "area": "중구",
+          "latitude": 35.548712,
+          "longitude": 129.291159,
+          "motto": "강변을 채운 대나무 숲",
+          "tilt": -3,
+          "art": "bamboo",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q109455705",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "sejong",
+      "name": "세종",
+      "places": [
+        {
+          "id": "sejong-lake",
+          "name": "세종호수공원",
+          "area": "어진동",
+          "latitude": 36.494,
+          "longitude": 127.274,
+          "motto": "다섯 섬을 품은 도심 호수",
+          "tilt": -6,
+          "art": "lake",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q64506499",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "sejong-arboretum",
+          "name": "국립세종수목원",
+          "area": "연기면",
+          "latitude": 36.494757,
+          "longitude": 127.282967,
+          "motto": "사계절 온실과 한국 정원",
+          "tilt": 4,
+          "art": "garden",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q12585765",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "beartree",
+          "name": "베어트리파크",
+          "area": "전동면",
+          "latitude": 36.6727961,
+          "longitude": 127.2100874,
+          "motto": "나무 정원에서 만나는 곰",
+          "tilt": -3,
+          "art": "bear",
+          "sourceUrl": "https://qab.purpleo.kr/article/2994",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "gyeonggi",
+      "name": "경기",
+      "places": [
+        {
+          "id": "hwaseong-haenggung",
+          "name": "수원 화성행궁",
+          "area": "수원시",
+          "latitude": 37.281829,
+          "longitude": 127.013281,
+          "motto": "정조의 발자취를 따라 걷는 궁",
+          "tilt": -6,
+          "art": "palace",
+          "sourceUrl": "https://dh.aks.ac.kr/Encyves/wiki/index.php/화성행궁",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "dumulmeori",
+          "name": "두물머리",
+          "area": "양평군",
+          "latitude": 37.5336226,
+          "longitude": 127.3174715,
+          "motto": "두 강이 만나는 느티나무 아래",
+          "tilt": 4,
+          "art": "river",
+          "sourceUrl": "https://eng.clubrichtour.co.kr/bbs/board.php?bo_table=public_trrsrt&device=pc&wr_id=736",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "imjingak",
+          "name": "임진각",
+          "area": "파주시",
+          "latitude": 37.889583,
+          "longitude": 126.740111,
+          "motto": "평화를 바라보는 북녘의 길",
+          "tilt": -3,
+          "art": "bridge",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q489493",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "gangwon",
+      "name": "강원",
+      "places": [
+        {
+          "id": "gyeongpo",
+          "name": "경포해수욕장",
+          "area": "강릉시",
+          "latitude": 37.8056667,
+          "longitude": 128.9107556,
+          "motto": "솔숲과 호수 곁 동해 바다",
+          "tilt": -6,
+          "art": "beach",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q16182443",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "naksansa",
+          "name": "낙산사",
+          "area": "양양군",
+          "latitude": 38.1247222,
+          "longitude": 128.6280556,
+          "motto": "바다를 바라보는 산사의 지붕",
+          "tilt": 4,
+          "art": "temple",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q562760",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "soyang-skywalk",
+          "name": "소양강스카이워크",
+          "area": "춘천시",
+          "latitude": 37.8932774,
+          "longitude": 127.7236633,
+          "motto": "소양강 위로 이어진 유리 산책길",
+          "tilt": -3,
+          "art": "bridge",
+          "sourceUrl": "https://qae.purpleo.kr/article/1278",
+          "coordinateNote": "WGS84 대표 지점. 차량 도착은 인근 도로와 주차장에서 판정."
+        }
+      ]
+    },
+    {
+      "id": "chungbuk",
+      "name": "충북",
+      "places": [
+        {
+          "id": "dodam",
+          "name": "도담삼봉",
+          "area": "단양군",
+          "latitude": 37.000164,
+          "longitude": 128.343975,
+          "motto": "강 한가운데 솟은 세 봉우리",
+          "tilt": -6,
+          "art": "rocks",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q277173",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "cheongpung",
+          "name": "청풍문화재단지",
+          "area": "제천시",
+          "latitude": 37.0038,
+          "longitude": 128.172,
+          "motto": "호수를 마주한 옛 마을",
+          "tilt": 4,
+          "art": "village",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q5091662",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "beopjusa",
+          "name": "법주사",
+          "area": "보은군",
+          "latitude": 36.5425,
+          "longitude": 127.8338889,
+          "motto": "속리산에 자리한 목탑과 산사",
+          "tilt": -3,
+          "art": "pagoda",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q484931",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "chungnam",
+      "name": "충남",
+      "places": [
+        {
+          "id": "gongsanseong",
+          "name": "공주 공산성",
+          "area": "공주시",
+          "latitude": 36.4619444,
+          "longitude": 127.1272222,
+          "motto": "금강을 감싸는 백제 성곽",
+          "tilt": -6,
+          "art": "fortress",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q12584692",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "gungnamji",
+          "name": "궁남지",
+          "area": "부여군",
+          "latitude": 36.269056,
+          "longitude": 126.913633,
+          "motto": "연꽃 사이로 떠 있는 정자",
+          "tilt": 4,
+          "art": "lotus",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q16092393",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "haemi",
+          "name": "해미읍성",
+          "area": "서산시",
+          "latitude": 36.7127778,
+          "longitude": 126.5486111,
+          "motto": "돌담 안에 남은 조선의 시간",
+          "tilt": -3,
+          "art": "fortress",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q625268",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "jeonbuk",
+      "name": "전북",
+      "places": [
+        {
+          "id": "jeonju-hanok",
+          "name": "전주한옥마을",
+          "area": "전주시",
+          "latitude": 35.814715,
+          "longitude": 127.152636,
+          "motto": "기와지붕이 이어지는 골목",
+          "tilt": -6,
+          "art": "village",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q11269655",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "gwanghallu",
+          "name": "광한루원",
+          "area": "남원시",
+          "latitude": 35.4038889,
+          "longitude": 127.3797222,
+          "motto": "연못 위에 비친 누각",
+          "tilt": 4,
+          "art": "palace",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q12585210",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "naesosa",
+          "name": "내소사",
+          "area": "부안군",
+          "latitude": 35.617977,
+          "longitude": 126.587428,
+          "motto": "전나무 숲길 끝 산사",
+          "tilt": -3,
+          "art": "temple",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q10856109",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "jeonnam",
+      "name": "전남",
+      "places": [
+        {
+          "id": "suncheon-garden",
+          "name": "순천만국가정원",
+          "area": "순천시",
+          "latitude": 34.928092,
+          "longitude": 127.50444,
+          "motto": "물길과 꽃밭이 어우러진 정원",
+          "tilt": -6,
+          "art": "garden",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q21257333",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "juknokwon",
+          "name": "죽녹원",
+          "area": "담양군",
+          "latitude": 35.3259982,
+          "longitude": 126.9859176,
+          "motto": "바람이 머무는 대나무 숲",
+          "tilt": 4,
+          "art": "bamboo",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q63135681",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "daehan-tea",
+          "name": "보성 대한다원",
+          "area": "보성군",
+          "latitude": 34.7150291,
+          "longitude": 127.0787128,
+          "motto": "언덕을 따라 굽이치는 차밭",
+          "tilt": -3,
+          "art": "tea",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q28671311",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "gyeongbuk",
+      "name": "경북",
+      "places": [
+        {
+          "id": "bulguksa",
+          "name": "불국사",
+          "area": "경주시",
+          "latitude": 35.7902778,
+          "longitude": 129.3319444,
+          "motto": "돌계단 위 천년의 사찰",
+          "tilt": -6,
+          "art": "temple",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q408318",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "cheomseongdae",
+          "name": "첨성대",
+          "area": "경주시",
+          "latitude": 35.8347222,
+          "longitude": 129.2191667,
+          "motto": "별을 바라보던 돌탑",
+          "tilt": 4,
+          "art": "observatory",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q562765",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "hahoe",
+          "name": "안동 하회마을",
+          "area": "안동시",
+          "latitude": 36.5380556,
+          "longitude": 128.5205556,
+          "motto": "강이 굽어 감싸는 기와 마을",
+          "tilt": -3,
+          "art": "village",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q45865",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "gyeongnam",
+      "name": "경남",
+      "places": [
+        {
+          "id": "jinjuseong",
+          "name": "진주성",
+          "area": "진주시",
+          "latitude": 35.19,
+          "longitude": 128.0733333,
+          "motto": "남강을 따라 이어진 성벽",
+          "tilt": -6,
+          "art": "fortress",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q12618350",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "dongpirang",
+          "name": "동피랑마을",
+          "area": "통영시",
+          "latitude": 34.8458333,
+          "longitude": 128.4275,
+          "motto": "항구가 내려다보이는 벽화 골목",
+          "tilt": 4,
+          "art": "village",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q20444179",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "haeinsa",
+          "name": "해인사",
+          "area": "합천군",
+          "latitude": 35.8011111,
+          "longitude": 128.0983333,
+          "motto": "가야산 숲에 품은 팔만대장경",
+          "tilt": -3,
+          "art": "temple",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q489795",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    },
+    {
+      "id": "jeju",
+      "name": "제주",
+      "places": [
+        {
+          "id": "seongsan",
+          "name": "성산일출봉",
+          "area": "서귀포시",
+          "latitude": 33.4585278,
+          "longitude": 126.94225,
+          "motto": "바다 위로 솟은 화산 능선",
+          "tilt": -6,
+          "art": "mountain",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q122225",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "hyeopjae",
+          "name": "협재해수욕장",
+          "area": "제주시",
+          "latitude": 33.3941667,
+          "longitude": 126.2394444,
+          "motto": "비양도 앞 맑은 빛의 바다",
+          "tilt": 4,
+          "art": "beach",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q12625130",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        },
+        {
+          "id": "cheonjiyeon",
+          "name": "천지연폭포",
+          "area": "서귀포시",
+          "latitude": 33.246944,
+          "longitude": 126.554417,
+          "motto": "절벽 아래로 쏟아지는 물줄기",
+          "tilt": -3,
+          "art": "waterfall",
+          "sourceUrl": "https://www.wikidata.org/wiki/Q626162",
+          "coordinateNote": "WGS84 대표 지점. 입구·주차장 좌표가 아니며 실차 도착 판정은 별도 검증 필요."
+        }
+      ]
+    }
+  ]
+}
