@@ -39,6 +39,11 @@ tasks.test {
     useJUnitPlatform { excludeTags("postgres") }
 }
 
+// Package the vehicle's canonical catalog directly so server arrival matching cannot drift.
+tasks.processResources {
+    from("../app/stamps/catalog.json") { into("stamps") }
+}
+
 tasks.register<Test>("integrationTest") {
     description = "Checks real PostgreSQL connectivity and both health endpoints; requires DB_* environment variables."
     group = "verification"

@@ -69,6 +69,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -86,6 +87,31 @@ import kotlin.math.sin
 
 // Touch targets never drop below this, however small the window gets.
 private val MinTouch = 64.dp
+
+/**
+ * Spacing in design units (pass through `d.u()`), on an 8-unit rhythm with 4 for tightly paired lines such as a
+ * number and its label. Gaps between groups grow by steps of 8; nothing in between.
+ */
+object CarSpace {
+    const val XS = 4
+    const val S = 8
+    const val M = 16
+    const val L = 24
+    const val XL = 32
+    const val XXL = 48
+}
+
+/**
+ * Corner radii in design units for the app's own surfaces; buttons keep the guide's fixed sizes ([ButtonSize]).
+ * BADGE for outlined labels, CONTROL for chips and inline controls, TILE for list rows and grid tiles, CARD for
+ * the large example and drive cards. A shape inside a tile keeps a smaller corner than the tile around it.
+ */
+object CarRadius {
+    const val BADGE = 8
+    const val CONTROL = 12
+    const val TILE = 20
+    const val CARD = 24
+}
 
 @Composable fun fg() = MaterialTheme.colorScheme.onBackground
 @Composable fun muted() = MaterialTheme.colorScheme.onSurfaceVariant
@@ -107,8 +133,10 @@ fun T(
     align: TextAlign? = null, maxLines: Int = Int.MAX_VALUE, display: Boolean = false, tracking: Float = 0f,
     /** Equal-width digits, so numbers in a column line up. */
     tabular: Boolean = false,
+    /** Lines reserved even when the text is shorter, so tiles in a grid keep one height whatever their names. */
+    minLines: Int = 1,
 ) = Text(
-    keepWordsTogether(text), modifier, color = color, fontSize = size,
+    keepWordsTogether(text), modifier, color = color, fontSize = size, minLines = minLines,
     style = if (tabular) LocalTextStyle.current.copy(fontFeatureSettings = "tnum") else LocalTextStyle.current,
     // Display text is what the mockups lead with: the heaviest weight, set slightly tight.
     fontWeight = if (display) FontWeight.ExtraBold else if (bold) FontWeight.Bold else FontWeight.Normal,
@@ -239,7 +267,7 @@ fun TopBar(onBack: (() -> Unit)?, onTitleHold: (() -> Unit)? = null, trailing: (
         ) { CarIcon(CarGlyph.CHEVRON_LEFT, 48.dp, fg()) }
         Box(Modifier.heightIn(min = MinTouch).combinedClickable(interactionSource = null, indication = null, onClick = {}, onLongClick = onTitleHold).padding(horizontal = d.u(4)).testTag("title"), contentAlignment = Alignment.Center) {
             // The app's own name is the brand lockup; any other title is plain text.
-            if (title == BRAND_NAME) BrandLockup(d.u(30), fg()) else T(title, d.t(CarTextSize.BODY), bold = true)
+            if (title == BRAND_NAME) BrandLockup() else T(title, d.t(CarTextSize.BODY), bold = true)
         }
         Spacer(Modifier.weight(1f))
         trailing?.invoke()
@@ -326,7 +354,8 @@ fun Stat(value: String, unit: String, label: String, modifier: Modifier = Modifi
             // Units at 0.4 of the number, as on every screen and card.
             if (unit.isNotEmpty()) T(unit, d.t(size * 2 / 5), Modifier.padding(start = d.u(6), bottom = d.u(size / 7)), bold = true)
         }
-        T(label, d.t(CarTextSize.CAPTION), color = muted(), maxLines = 2)
+        // The label sits a half step under its number, so a row of stats reads as pairs rather than two lines.
+        T(label, d.t(CarTextSize.CAPTION), Modifier.padding(top = d.u(CarSpace.XS)), color = muted(), maxLines = 2)
     }
 }
 
@@ -338,8 +367,43 @@ fun VerticalRule(modifier: Modifier = Modifier) {
 @Composable
 fun SimulationBadge() {
     val d = LocalCarDimens.current
-    // Outlined, because a filled shape on these screens is something to press.
-    T("시뮬레이션 데이터", d.t(CarTextSize.CAPTION), Modifier.border(1.dp, muted(), RoundedCornerShape(d.u(6))).padding(horizontal = d.u(10), vertical = d.u(4)).testTag("sim-badge"), bold = true)
+    // Outlined, because a filled shape on these screens is something to press. Muted ink: a notice, not an action.
+    T(
+        "시뮬레이션 데이터", d.t(CarTextSize.CAPTION),
+        Modifier.border(1.dp, muted(), RoundedCornerShape(d.u(CarRadius.BADGE)))
+            .padding(horizontal = d.u(12), vertical = d.u(CarSpace.XS)).testTag("sim-badge"),
+        color = muted(), bold = true, maxLines = 1,
+    )
+}
+
+/**
+ * A filter or tag chip, as route apps lay them out (komoot, AllTrails): unselected on the soft 5% tint, selected as
+ * a page-coloured pill with an ink outline and bold label. Never the filled primary colour, which belongs to the
+ * screen's one main action. Pressed is the guide's fill overlay from [pressClick]; nothing changes size.
+ */
+@Composable
+fun ChoiceChip(label: String, selected: Boolean, tag: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val d = LocalCarDimens.current
+    val shape = RoundedCornerShape(d.u(CarRadius.CONTROL))
+    val fill by animateColorAsState(if (selected) MaterialTheme.colorScheme.background else soft(), motionTween(), label = "chip fill")
+    val edge by animateColorAsState(if (selected) fg() else Color.Transparent, motionTween(), label = "chip edge")
+    val text by animateColorAsState(if (selected) fg() else fg().copy(alpha = 0.68f), motionTween(), label = "chip text")
+    Box(
+        modifier.heightIn(min = MinTouch).clip(shape).background(fill).border(2.dp, edge, shape)
+            .pressClick(onClick = onClick).semantics { this.selected = selected }
+            .padding(horizontal = d.u(CarSpace.M)).testTag(tag),
+        contentAlignment = Alignment.Center,
+    ) { T(label, d.t(18), color = text, bold = selected, maxLines = 1) }
+}
+
+/** What a list says when it has nothing to show: one calm line and, if it helps, how to get something there. */
+@Composable
+fun EmptyState(title: String, modifier: Modifier = Modifier, body: String? = null, align: TextAlign? = null) {
+    val d = LocalCarDimens.current
+    Column(modifier.padding(vertical = d.u(CarSpace.L))) {
+        T(title, d.t(CarTextSize.BODY), Modifier.fillMaxWidth(), bold = true, align = align)
+        if (body != null) T(body, d.t(CarTextSize.CAPTION), Modifier.fillMaxWidth().padding(top = d.u(CarSpace.S)), color = muted(), align = align, maxLines = 3)
+    }
 }
 
 enum class CarGlyph { CHEVRON_LEFT, CHEVRON_RIGHT, CHECK, PIN, INFO, CLOUD_OFF, REFRESH, DOCUMENT, PHOTO, SEARCH, CLOCK, BOOKMARK, LIST, MIC, ROUTE, STAMP }
@@ -474,41 +538,24 @@ fun dashedEffect(unit: Float) = PathEffect.dashPathEffect(floatArrayOf(unit * 2.
 const val BRAND_NAME = "DRIVELOG"
 
 /**
- * The brand mark: the launcher icon's motif, a drive from a small start dot along a curve to a larger end dot.
- * Monochrome, in whatever ink it sits on.
+ * The wordmark: heavy, slightly tracked and slanted, one style wherever it appears. Inside the app the brand is
+ * this word alone; the route mark stays on the launcher icon.
  */
-@Composable
-fun BrandGlyph(size: Dp, color: Color, modifier: Modifier = Modifier) {
-    androidx.compose.foundation.Canvas(modifier.size(size)) {
-        val k = this.size.width / 40f
-        val path = androidx.compose.ui.graphics.Path().apply {
-            moveTo(8f * k, 31f * k)
-            cubicTo(10f * k, 18f * k, 21f * k, 25f * k, 24f * k, 16f * k)
-            cubicTo(26f * k, 11f * k, 28f * k, 9.5f * k, 32f * k, 8.5f * k)
-        }
-        drawPath(path, color, style = androidx.compose.ui.graphics.drawscope.Stroke(3.4f * k, cap = StrokeCap.Round))
-        drawCircle(color, 3.2f * k, androidx.compose.ui.geometry.Offset(8f * k, 31f * k))
-        drawCircle(color, 5.2f * k, androidx.compose.ui.geometry.Offset(32f * k, 8.5f * k))
-    }
-}
-
-/** The wordmark alone: heavy, slightly tracked, one weight wherever it appears. */
 @Composable
 fun BrandWordmark(size: androidx.compose.ui.unit.TextUnit, color: Color, modifier: Modifier = Modifier) {
     BasicText(
         BRAND_NAME, modifier,
-        style = TextStyle(color = color, fontSize = size, fontWeight = FontWeight.ExtraBold, letterSpacing = androidx.compose.ui.unit.TextUnit(0.04f, androidx.compose.ui.unit.TextUnitType.Em)),
+        style = TextStyle(
+            color = color, fontSize = size, fontWeight = FontWeight.ExtraBold, fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+            letterSpacing = androidx.compose.ui.unit.TextUnit(0.04f, androidx.compose.ui.unit.TextUnitType.Em),
+        ),
         maxLines = 1,
     )
 }
 
-/** Glyph and wordmark together, for the header of the app's own screens. */
+/** The header of the app's own screens: the wordmark alone, no mark beside it. */
 @Composable
-fun BrandLockup(height: Dp, color: Color, modifier: Modifier = Modifier) {
+fun BrandLockup(modifier: Modifier = Modifier, color: Color = fg()) {
     val d = LocalCarDimens.current
-    Row(modifier.testTag("brand-lockup"), verticalAlignment = Alignment.CenterVertically) {
-        BrandGlyph(height, color)
-        Spacer(Modifier.width(d.u(8)))
-        BrandWordmark(d.t(CarTextSize.BODY), color)
-    }
+    BrandWordmark(d.t(CarTextSize.BODY), color, modifier.testTag("brand-lockup"))
 }

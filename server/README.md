@@ -3,6 +3,14 @@
 Java 21 / Spring Boot 3.5.16 / Gradle 8.14.3 / PostgreSQL 17.11 기반 로컬 데모 백엔드.
 Android와 독립된 Gradle 프로젝트이며 서버 명령은 이 디렉터리에서 실행한다.
 
+## 차량·모바일 스탬프 연동
+
+`GET /api/v1/stamps`는 기존 차량 또는 모바일 Bearer 토큰으로 인증하며 해당 계정의 스탬프 배열을 반환한다. 각 항목은 `place`(id, name, region, area, motto, latitude, longitude, art, tilt), `recordId`, `visitedAtMillis`(첫 주행 시작 시각, epoch ms)다. 원본은 저장된 주행 기록이며 별도 도장 업로드나 DB 마이그레이션은 필요 없다.
+
+카탈로그는 `app/stamps/catalog.json`을 서버 빌드에 직접 포함한다. 실제 주행 0.1km 이상·위치 2점 이상·마지막 위치 1km 이내의 가장 가까운 명소 하나를 인정한다. 같은 명소는 최초 방문 한 건만 반환하고 기록 삭제 시 재계산한다. `/journey`의 최근 200건 제한과 별개로 전체 기록을 사용한다. 시뮬레이션·거리 미상·짧은 주행은 제외한다.
+
+모바일 앱의 홈 `내 스탬프`에서 새로고침할 수 있고, 성공한 응답은 모바일 계정별 파일에 저장된다. 서버 배포 후 두 앱을 새 버전으로 설치해야 하며, 연결·주소 설정과 검증 범위는 [스탬프 연동 기록](../docs/verification/STAMP_SYNC_2026-11-10.md)을 참고한다.
+
 ## 로컬 PostgreSQL: 기존 데이터 유지
 
 기존 `drivelog-local-postgres-1`과 `drivelog-local_postgres-data` 볼륨을 그대로 사용한다.

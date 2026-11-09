@@ -1,6 +1,6 @@
 # DRIVELOG
 
-Pleos Connect 차량 앱(`app/`), Spring 서버와 모바일 웹(`server/`), QR로 여는 휴대폰 카드 페이지(`web/card/`).
+Pleos Connect 차량 앱(`app/`), Spring 서버와 모바일 웹(`server/`). 휴대폰 앱은 별도 저장소 `hyundai-drivelog-mobile/drivelog-mobile`(6자리 코드로 연결). QR 카드 웹 페이지(`web/`)는 2026-11-10에 뺐다.
 
 설계나 API 연동을 바꾸기 전에 반드시 읽는다.
 

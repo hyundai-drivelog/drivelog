@@ -95,17 +95,17 @@ private fun stampDate(millis: Long) = SimpleDateFormat("yyyy.MM.dd", Locale.KORE
 fun StampLine(result: StampResult, press: Boolean = result.isNew) {
     val d = LocalCarDimens.current
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(d.u(10))).background(soft())
-            .padding(horizontal = d.u(14), vertical = d.u(10)).testTag("stamp-line"),
+        Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(d.u(CarRadius.TILE))).background(soft())
+            .padding(horizontal = d.u(CarSpace.M), vertical = d.u(CarSpace.S)).testTag("stamp-line"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // A stamp just earned is pressed down; one already held is simply there.
         StampArt(result.place, true, d.u(64), Modifier.stampPress(result.place.id, enabled = press))
-        Spacer(Modifier.width(d.u(12)))
+        Spacer(Modifier.width(d.u(CarSpace.M)))
         Column(Modifier.weight(1f)) {
-            T(if (result.isNew) "새 스탬프" else "다시 찾은 곳", d.t(16), color = muted(), maxLines = 1)
-            T(result.place.name, d.t(20), bold = true, maxLines = 2)
-            T(result.place.motto, d.t(16), color = muted(), maxLines = 2)
+            T(if (result.isNew) "새 스탬프" else "다시 찾은 곳", d.t(CarTextSize.CAPTION), color = muted(), bold = result.isNew, maxLines = 1)
+            T(result.place.name, d.t(CarTextSize.BODY), bold = true, maxLines = 2)
+            T(result.place.motto, d.t(CarTextSize.CAPTION), color = muted(), maxLines = 2)
         }
     }
 }
@@ -114,18 +114,20 @@ fun StampLine(result: StampResult, press: Boolean = result.isNew) {
 @Composable
 private fun RegionChip(region: StampRegion, collected: Int, modifier: Modifier, onClick: () -> Unit) {
     val d = LocalCarDimens.current
-    val shape = RoundedCornerShape(d.u(12))
+    val shape = RoundedCornerShape(d.u(CarRadius.TILE))
+    // One surface treatment, the soft tint: a fill and an outline together read as heavier than a list tile needs.
     Column(
-        modifier.heightIn(min = 64.dp).clip(shape).background(soft()).border(1.dp, line(), shape).pressClick(Role.Button, onClick = onClick)
-            .padding(horizontal = d.u(16), vertical = d.u(14)).testTag("region-${region.id}"),
+        modifier.heightIn(min = 64.dp).clip(shape).background(soft()).pressClick(Role.Button, onClick = onClick)
+            .padding(d.u(CarSpace.M)).testTag("region-${region.id}"),
         verticalArrangement = Arrangement.Center,
     ) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             T(region.name, d.t(22), Modifier.weight(1f), bold = true, maxLines = 1)
             CarIcon(CarGlyph.CHEVRON_RIGHT, d.u(24), muted())
         }
-        T("${collected}곳 방문 · ${region.places.size}곳", d.t(16), color = muted(), maxLines = 2)
-        T(region.places.take(2).joinToString(" · ") { it.name }, d.t(16), Modifier.padding(top = d.u(6)), color = muted(), maxLines = 2)
+        T("${collected}곳 방문 · ${region.places.size}곳", d.t(CarTextSize.CAPTION), Modifier.padding(top = d.u(CarSpace.XS)), color = if (collected > 0) fg() else muted(), maxLines = 2)
+        // Two lines kept for every region: long names (광주's) wrapped and made that one tile taller than its row.
+        T(region.places.take(2).joinToString(" · ") { it.name }, d.t(CarTextSize.CAPTION), Modifier.padding(top = d.u(CarSpace.S)), color = muted(), maxLines = 2, minLines = 2)
     }
 }
 
@@ -141,13 +143,13 @@ fun StampBoard(records: List<RecordV>) {
         if (region == null) {
             LazyVerticalGrid(
                 GridCells.Adaptive(maxOf(d.u(220), 144.dp)), Modifier.fillMaxSize().testTag("stamp-regions"),
-                horizontalArrangement = Arrangement.spacedBy(d.u(12)), verticalArrangement = Arrangement.spacedBy(d.u(12)),
+                horizontalArrangement = Arrangement.spacedBy(d.u(CarSpace.M)), verticalArrangement = Arrangement.spacedBy(d.u(CarSpace.M)),
             ) {
                 item(key = "national-introduction", span = { GridItemSpan(maxLineSpan) }) {
-                    Column(Modifier.padding(vertical = d.u(12))) {
-                        T("전국에 남기는 드라이브", d.t(32), display = true)
-                        T("${StampRegions.size}개 지역 · ${StampPlaces.size}곳의 관광명소", d.t(18), Modifier.padding(top = d.u(6)), color = muted())
-                        T("지역을 골라 다녀온 곳과 다음 여행지를 살펴보세요", d.t(16), Modifier.padding(top = d.u(6)), color = muted())
+                    Column(Modifier.padding(vertical = d.u(CarSpace.S))) {
+                        T("전국에 남기는 드라이브", d.t(CarTextSize.TITLE), display = true)
+                        T("${StampRegions.size}개 지역 · ${StampPlaces.size}곳의 관광명소", d.t(18), Modifier.padding(top = d.u(CarSpace.S)), color = muted())
+                        T("지역을 골라 다녀온 곳과 다음 여행지를 살펴보세요", d.t(CarTextSize.CAPTION), Modifier.padding(top = d.u(CarSpace.XS)), color = muted())
                     }
                 }
                 items(StampRegions, key = { it.id }) { each ->
@@ -155,14 +157,15 @@ fun StampBoard(records: List<RecordV>) {
                 }
             }
         } else {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(d.u(12))) {
+            // The region's one title, as an awards page heads its section; the collection line follows below.
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(d.u(CarSpace.M))) {
                 Column(Modifier.weight(1f)) {
-                    T(region.name, d.t(26), bold = true)
-                    T("${region.places.count { it.id in stamps }}곳 방문 · 전체 ${region.places.size}곳", d.t(16), color = muted())
+                    T(region.name, d.t(CarTextSize.TITLE), display = true, maxLines = 1)
+                    T("${region.places.count { it.id in stamps }}곳 방문 · 전체 ${region.places.size}곳", d.t(CarTextSize.CAPTION), Modifier.padding(top = d.u(CarSpace.XS)), color = muted())
                 }
                 SecondaryButton("전체 지역", "all-stamp-regions", size = ButtonSize.SMALL, icon = CarGlyph.LIST) { regionId = null }
             }
-            Spacer(Modifier.height(d.u(12)))
+            Spacer(Modifier.height(d.u(CarSpace.S)))
             RegionStamps(region, stamps)
         }
     }
@@ -175,67 +178,31 @@ private fun RegionStamps(region: StampRegion, stamps: Map<String, Stamp>) {
     // The introduction scrolls with the stamps, so a short split-screen window still has room for the collection.
     LazyVerticalGrid(
         GridCells.Adaptive(maxOf(d.u(220), 144.dp)), Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.spacedBy(d.u(12)), verticalArrangement = Arrangement.spacedBy(d.u(12)),
+        horizontalArrangement = Arrangement.spacedBy(d.u(CarSpace.M)), verticalArrangement = Arrangement.spacedBy(d.u(CarSpace.M)),
     ) {
         item(key = "region-introduction", span = { GridItemSpan(maxLineSpan) }) {
-            Column(Modifier.padding(top = d.u(8), bottom = d.u(8))) {
-                T("${region.name}에서 남긴 스탬프", d.t(26), bold = true)
-                Spacer(Modifier.height(d.u(6)))
-                T(if (collected == 0) "아직 방문한 곳이 없어요" else "${collected}곳의 방문을 간직하고 있어요", d.t(18), Modifier.testTag("stamp-count"), bold = true)
-                Spacer(Modifier.height(d.u(6)))
-                T("아래 ${region.places.size}곳에 도착해 기록을 마치면 찍혀요. 시뮬레이션 기록은 세지 않아요", d.t(16), color = muted(), maxLines = 3)
+            // The header above already names the region, so this is a small section label, the line and the rule.
+            Column(Modifier.padding(vertical = d.u(CarSpace.S))) {
+                T("${region.name}에서 남긴 스탬프", d.t(CarTextSize.CAPTION), color = muted(), bold = true)
+                T(if (collected == 0) "아직 방문한 곳이 없어요" else "${collected}곳의 방문을 간직하고 있어요", d.t(CarTextSize.BODY), Modifier.padding(top = d.u(CarSpace.XS)).testTag("stamp-count"), bold = true)
+                T("아래 ${region.places.size}곳에 도착해 기록을 마치면 찍혀요. 시뮬레이션 기록은 세지 않아요", d.t(CarTextSize.CAPTION), Modifier.padding(top = d.u(CarSpace.XS)), color = muted(), maxLines = 3)
             }
         }
         itemsIndexed(region.places, key = { _, it -> it.id }) { index, place ->
             val stamp = stamps[place.id]
             Column(
-                Modifier.revealOnce(index).fillMaxWidth().clip(RoundedCornerShape(d.u(12)))
-                    .background(if (stamp != null) soft() else androidx.compose.ui.graphics.Color.Transparent)
-                    .border(1.dp, line(), RoundedCornerShape(d.u(12))).padding(d.u(18)).testTag("stamp-${place.id}"),
+                // Earned: the soft tile. Not yet: an outline only, so the page divides into two clear states.
+                Modifier.revealOnce(index).fillMaxWidth().clip(RoundedCornerShape(d.u(CarRadius.TILE)))
+                    .then(if (stamp != null) Modifier.background(soft()) else Modifier.border(1.dp, line(), RoundedCornerShape(d.u(CarRadius.TILE))))
+                    .padding(d.u(CarSpace.M)).testTag("stamp-${place.id}"),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 StampArt(place, stamp != null, d.u(if (d.stacked) 96 else 112))
-                Spacer(Modifier.height(d.u(8)))
-                T(place.area, d.t(16), color = muted(), maxLines = 1)
-                T(place.name, d.t(18), Modifier.heightIn(min = d.u(50)), bold = stamp != null, color = fg(), align = TextAlign.Center, maxLines = 2)
-                T(stamp?.let { "${stampDate(it.record.startedAtMillis)} 첫 방문" } ?: place.motto, d.t(16), color = muted(), align = TextAlign.Center, maxLines = 2)
-            }
-        }
-    }
-}
-
-/**
- * Debug builds only, like every mockup: what a partner's arrival benefit would look like, shown beside a stamp. No
- * partner exists, nothing is sent and no record changes; the card says it is an example in two places.
- */
-@Composable
-fun BenefitPreview(place: StampPlace) {
-    val d = LocalCarDimens.current
-    var open by remember(place.id) { mutableStateOf(false) }
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(d.u(10))).border(2.dp, line(), RoundedCornerShape(d.u(10)))
-            .padding(horizontal = d.u(14), vertical = d.u(12)).testTag("benefit-preview"),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            T("도착 혜택", d.t(14), Modifier.weight(1f), color = muted(), bold = true, maxLines = 1)
-            T("예시 화면", d.t(13), Modifier.clip(RoundedCornerShape(d.u(6))).border(1.dp, line(), RoundedCornerShape(d.u(6))).padding(horizontal = d.u(8), vertical = d.u(2)), color = muted(), maxLines = 1)
-        }
-        Spacer(Modifier.height(d.u(4)))
-        T("${shortName(place.name)} 근처 제휴 카페 · 음료 10% 할인", d.t(18), bold = true, maxLines = 1)
-        T("실제 제휴가 없는 예시예요. 도착이 확인된 운전자만 받는 혜택을 보여 줘요", d.t(14), color = muted(), maxLines = 2)
-        Spacer(Modifier.height(d.u(8)))
-        SecondaryButton(if (open) "접기" else "혜택 보기", "benefit-open", Modifier.fillMaxWidth(), size = ButtonSize.SMALL) { open = !open }
-        androidx.compose.animation.AnimatedVisibility(
-            open,
-            enter = androidx.compose.animation.expandVertically(motionTween()) + androidx.compose.animation.fadeIn(motionTween(MOTION_ENTER_MS)),
-            exit = androidx.compose.animation.shrinkVertically(motionTween()) + androidx.compose.animation.fadeOut(motionTween()),
-        ) {
-            Column(
-                Modifier.padding(top = d.u(10)).fillMaxWidth().clip(RoundedCornerShape(d.u(10))).background(soft()).padding(d.u(14)),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                T("매장에서 이 화면을 보여 주세요", d.t(16), bold = true, align = TextAlign.Center)
-                T("예시 코드 · 실제로 쓸 수 없어요", d.t(14), color = muted(), align = TextAlign.Center)
+                Spacer(Modifier.height(d.u(CarSpace.S)))
+                T(place.area, d.t(CarTextSize.CAPTION), color = muted(), maxLines = 1)
+                // Name and line below each keep two lines, so every tile in a region is the same height.
+                T(place.name, d.t(18), bold = stamp != null, color = fg(), align = TextAlign.Center, maxLines = 2, minLines = 2)
+                T(stamp?.let { "${stampDate(it.record.startedAtMillis)} 첫 방문" } ?: place.motto, d.t(16), color = muted(), align = TextAlign.Center, maxLines = 2, minLines = 2)
             }
         }
     }

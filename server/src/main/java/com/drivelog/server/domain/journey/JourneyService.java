@@ -39,12 +39,14 @@ public class JourneyService {
     private final ObjectMapper json;
     private final Path uploadDir;
     private final String webUrl;
+    private final StampCollection stampCollection;
 
     public JourneyService(JdbcClient db, ObjectMapper json,
                           @Value("${drivelog.upload-dir}") String uploadDir,
                           @Value("${drivelog.web-url:}") String webUrl) {
         this.db = db;
         this.json = json;
+        this.stampCollection = new StampCollection(json);
         this.uploadDir = Path.of(uploadDir).toAbsolutePath().normalize();
         this.webUrl = webUrl;
     }
@@ -237,9 +239,10 @@ public class JourneyService {
             route = new ArrayList<>();
         }
         double distance = rs.getDouble("distance_km");
+        Double nullableDistance = rs.wasNull() ? null : distance;
         return new RecordView(rs.getString("id"), rs.getString("goal_id"), rs.getString("place_id"),
                 rs.getString("place_name"), millis(rs, "started_at"), millis(rs, "ended_at"),
-                rs.getLong("elapsed_seconds"), rs.wasNull() ? null : distance, rs.getString("distance_source"),
+                rs.getLong("elapsed_seconds"), nullableDistance, rs.getString("distance_source"),
                 rs.getString("status"), rs.getBoolean("simulated"), route, rs.getString("title"),
                 rs.getString("card_json"), rs.getString("photo_file") != null);
     }
@@ -248,6 +251,13 @@ public class JourneyService {
         return db.sql("SELECT * FROM drivelog.drive_records WHERE id = ? AND account_id = ?").params(recordId, account)
                 .query((rs, n) -> recordRow(rs)).optional()
                 .orElseThrow(() -> status(HttpStatus.NOT_FOUND, "record not found"));
+    }
+
+    public List<StampCollection.Visit> stamps(String account) {
+        // Do not use the journey response's 200-record window: old visits must stay visible.
+        var records = db.sql("SELECT * FROM drivelog.drive_records WHERE account_id = ? ORDER BY started_at, id")
+                .param(account).query((rs, n) -> recordRow(rs)).list();
+        return stampCollection.collect(records);
     }
 
     /** Idempotent by the client-generated id, so sync retries can never store a drive twice. */
