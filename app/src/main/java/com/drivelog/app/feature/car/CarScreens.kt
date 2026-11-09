@@ -306,15 +306,28 @@ fun StopConfirmScreen(routeMaps: RouteMapCache, recording: Recording, onEnd: () 
                 })
             }
             Spacer(Modifier.height(d.u(16)))
-            // The irreversible choice sits last, away from the main one. The one primary action is the widest.
-            Row(Modifier.fillMaxWidth().padding(bottom = d.u(8)), horizontalArrangement = Arrangement.spacedBy(d.u(16))) {
+            if (!barelyMoved && onRest != null) {
+                T("잠깐 쉬는 동안에도 기록은 유지돼요. 출발하면 휴게가 끝나요", d.t(CarTextSize.CAPTION),
+                    Modifier.fillMaxWidth().padding(bottom = d.u(12)).testTag("rest-explanation"), color = muted(), maxLines = 2)
+            }
+            // Full-width choices keep their labels readable when navigation shares the display.
+            val actions: @Composable (Modifier, Modifier) -> Unit = { primaryModifier, secondaryModifier ->
                 // While the drive is written out the guide's Loading state holds every choice, so none can race the save.
-                PrimaryButton("저장하고 마치기", "confirm-end", Modifier.weight(1.3f), loading = saving, onClick = onEnd)
-                SecondaryButton("계속 기록", "keep-recording", Modifier.weight(1f), enabled = !saving, onClick = onContinue)
+                PrimaryButton("저장하고 마치기", "confirm-end", primaryModifier, loading = saving, onClick = onEnd)
+                SecondaryButton("계속 기록", "keep-recording", secondaryModifier, enabled = !saving, onClick = onContinue)
                 // A stop on the way, such as a rest area: recording goes on and the time is marked as a break.
-                if (!barelyMoved && onRest != null) SecondaryButton("잠깐 쉬어요", "rest-recording", Modifier.weight(1f), enabled = !saving, onClick = onRest)
-                if (barelyMoved) SecondaryButton(if (confirmDiscard) "한 번 더 누르면 삭제" else "저장 안 함", "discard-recording", Modifier.weight(1f), enabled = !saving, danger = confirmDiscard) {
+                if (!barelyMoved && onRest != null) SecondaryButton("잠깐 쉬어요", "rest-recording", secondaryModifier, enabled = !saving, onClick = onRest)
+                if (barelyMoved) SecondaryButton(if (confirmDiscard) "한 번 더 누르면 삭제" else "저장 안 함", "discard-recording", secondaryModifier, enabled = !saving, danger = confirmDiscard) {
                     if (confirmDiscard) onDiscard() else confirmDiscard = true
+                }
+            }
+            if (d.stacked) {
+                Column(Modifier.fillMaxWidth().padding(bottom = d.u(8)), verticalArrangement = Arrangement.spacedBy(d.u(8))) {
+                    actions(Modifier.fillMaxWidth(), Modifier.fillMaxWidth())
+                }
+            } else {
+                Row(Modifier.fillMaxWidth().padding(bottom = d.u(8)), horizontalArrangement = Arrangement.spacedBy(d.u(16))) {
+                    actions(Modifier.weight(1.3f), Modifier.weight(1f))
                 }
             }
         }

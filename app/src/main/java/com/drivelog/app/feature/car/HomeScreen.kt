@@ -67,7 +67,7 @@ fun HomeScreen(
                     Stat("${month.size}", "회", "이번 달 드라이브", Modifier.weight(1f), size = 36)
                     Stat(distanceText(month.sumOf { it.distanceKm ?: 0.0 }), "km", "이번 달 거리", Modifier.weight(1f).padding(start = d.u(16)), size = 36)
                     Stat(
-                        "$stamps", "/${StampPlaces.size}", "모은 스탬프",
+                        "$stamps", "/${StampPlaces.size}", "모은 스탬프 ›",
                         Modifier.weight(1f).heightIn(min = 64.dp).clip(RoundedCornerShape(d.u(10)))
                             .pressClick(onClick = onStamps)
                             .semantics(mergeDescendants = true) {
