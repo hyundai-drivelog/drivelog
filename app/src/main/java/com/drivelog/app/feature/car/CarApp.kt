@@ -108,8 +108,8 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                 returnsHome = model.returnAfterRecord == Screen.HOME,
             )
             Screen.COMMUNITY -> CommunityScreen(
-                model.communityCourses, model.courseOriginFilter, model.courseDestinationFilter,
-                { model.courseOriginFilter = it }, { model.courseDestinationFilter = it }, model::openCourse, model::home,
+                model.routeMaps, model.communityCourses, model.courseRegionFilter, model.courseThemeFilter,
+                { model.courseRegionFilter = it }, { model.courseThemeFilter = it }, model::openCourse, model::home,
             )
             Screen.COURSE_DETAIL -> model.openedCourse?.let { course ->
                 CourseDetailScreen(model.routeMaps, course, { model.selectPlace(course.toPlace()) }, { model.removeCourse(course) }, { model.goBack() })
@@ -144,6 +144,8 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                 if (BuildConfig.DEBUG) ({ model.go(Screen.DIAGNOSTICS) }) else null,
                 if (BuildConfig.PHONE_LINK_ENABLED) ({ LinkControl(store.token != null, model::openLink, model::unlink) }) else null,
                 model::openWelcome,
+                remember(store.recentPlaces, store.savedPlaces, navi) { quickPlaces(model.savedPlaces(), model.recentPlaces()) },
+                model::selectPlace,
             )
             Screen.DESTINATION -> DestinationScreen(
                 shown.query, speech, canSearch, model.simulation, navi.routeMessage,

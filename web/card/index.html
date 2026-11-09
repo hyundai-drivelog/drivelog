@@ -227,7 +227,8 @@ function drawPill(text, right, top) {
   ctx.textBaseline = "alphabetic";
 }
 
-const MAP_CREDIT = "지도 OpenFreeMap · © OpenMapTiles · © OpenStreetMap 기여자";
+// Required by the map data's licences; kept small in the map's own corner, as in the car.
+const MAP_CREDIT = "© OpenMapTiles © OpenStreetMap";
 const MAP_INSET = 60;
 // Pinned and checked, so a changed copy of the map library never runs on a page that holds someone's drive.
 const MAPLIBRE = {
@@ -314,11 +315,11 @@ function drawArrival(at, from) {
   ctx.save();
   ctx.translate(...at);
   ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 16;
-  ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(0, 0, 32, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.fill();
   ctx.shadowBlur = 0;
   ctx.rotate(angle + Math.PI / 2);
   ctx.fillStyle = BG; ctx.beginPath();
-  ctx.moveTo(0, -17); ctx.lineTo(13, 14); ctx.lineTo(0, 7); ctx.lineTo(-13, 14); ctx.closePath(); ctx.fill();
+  ctx.moveTo(0, -13); ctx.lineTo(10, 10.5); ctx.lineTo(0, 5); ctx.lineTo(-10, 10.5); ctx.closePath(); ctx.fill();
   ctx.restore();
 }
 
@@ -362,28 +363,31 @@ function drawRouteArea(box, pieces, destination, map) {
   ctx.beginPath(); ctx.roundRect(box.x, box.y, box.w, box.h, 28); ctx.clip();
   ctx.lineCap = "round"; ctx.lineJoin = "round";
   // A recording gap is not driving: it is drawn dotted, never as a solid road.
-  ctx.setLineDash([2, 18]); ctx.lineWidth = 7; ctx.strokeStyle = "rgba(255,255,255,0.6)";
+  ctx.setLineDash([2, 14]); ctx.lineWidth = 5; ctx.strokeStyle = "rgba(255,255,255,0.6)";
   for (let i = 1; i < pieces.length; i++) {
     ctx.beginPath(); ctx.moveTo(...at(pieces[i - 1][pieces[i - 1].length - 1])); ctx.lineTo(...at(pieces[i][0])); ctx.stroke();
   }
   ctx.setLineDash([]);
-  // Thinner over a zoomed-out map, where a thick line would bury the coast road it follows.
-  ctx.lineWidth = map && map.zoom < 10 ? 7 : 10; ctx.strokeStyle = INK;
-  for (const piece of pieces) {
+  // A fine line, as in the car: thinner still over a zoomed-out map, where it would bury the coast road it follows.
+  const routeWidth = map && map.zoom < 10 ? 4.5 : 6;
+  const trace = () => { for (const piece of pieces) {
     ctx.beginPath();
     piece.forEach((p, i) => i === 0 ? ctx.moveTo(...at(p)) : ctx.lineTo(...at(p)));
     ctx.stroke();
-  }
+  } };
+  // Over a real map a faint dark casing keeps the thin white line apart from the white roads under it.
+  if (map) { ctx.lineWidth = routeWidth * 2.6; ctx.strokeStyle = "rgba(0,0,0,0.4)"; trace(); }
+  ctx.lineWidth = routeWidth; ctx.strokeStyle = INK; trace();
   const line = pieces.flat();
   if (line.length >= 2) {
     const start = at(line[0]), end = at(line[line.length - 1]);
-    ctx.fillStyle = BG; ctx.beginPath(); ctx.arc(...start, 15, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(...start, 9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = BG; ctx.beginPath(); ctx.arc(...start, 12, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = INK; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(...start, 10, 0, Math.PI * 2); ctx.stroke();
     if (destination) {
       // The place itself: the trimmed line stops short of it, so the last stretch is left dotted.
       const pin = at(destination);
-      ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(...end, 9, 0, Math.PI * 2); ctx.fill();
-      ctx.setLineDash([2, 16]); ctx.lineWidth = 7; ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(...end, 8, 0, Math.PI * 2); ctx.fill();
+      ctx.setLineDash([2, 14]); ctx.lineWidth = 5; ctx.strokeStyle = "rgba(255,255,255,0.6)";
       ctx.beginPath(); ctx.moveTo(...end); ctx.lineTo(...pin); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = INK; ctx.beginPath(); ctx.arc(pin[0], pin[1] - 36, 28, Math.PI * 0.85, Math.PI * 2.15);
       ctx.lineTo(pin[0], pin[1]); ctx.closePath(); ctx.fill();
@@ -460,8 +464,12 @@ function draw(map) {
     ctx.font = font(800, L.figure * 0.4); ctx.fillStyle = MUTED; ctx.fillText("km", pad - 8 + w + 18, L.figureY);
   }
   const label = course ? "코스 거리 · 앞뒤 500m 제외" : params.get("d") === "v" ? "차량 주행거리" : "추정 거리";
+  // Measured in the car from the energy used; the car never sends it for a simulated drive.
+  const ef = params.get("ef"), eu = params.get("eu");
+  const efficiency = !course && !simulated && /^\d+(\.\d)?$/.test(ef || "") && (eu === "km/kWh" || eu === "km/L")
+    ? `${eu === "km/kWh" ? "전비" : "연비"} ${ef} ${eu}` : null;
   ctx.fillStyle = MUTED; ctx.font = font(500, 28);
-  ctx.fillText(label + (simulated ? " · 시뮬레이션" : ""), pad, L.labelY);
+  ctx.fillText([label, efficiency, simulated ? "시뮬레이션" : null].filter(Boolean).join(" · "), pad, L.labelY);
 
   // The same footer as the cards in the car: place · time · date. A course has no date, only where it sets out from.
   const date = `${started.getFullYear()}.${String(started.getMonth() + 1).padStart(2, "0")}.${String(started.getDate()).padStart(2, "0")}`;
@@ -479,7 +487,12 @@ function draw(map) {
   ctx.fillText("DRIVELOG", W - pad, L.footerY);
   ctx.textAlign = "start";
   // The map's credit cannot be left off. It goes under the card, not over the map, as in the car.
-  if (map && !photo) { ctx.fillStyle = FAINT; ctx.font = font(500, 20); ctx.fillText(MAP_CREDIT, pad, L.creditY, W - pad * 2); }
+  if (map && !photo) {
+    ctx.save();
+    ctx.font = font(500, 18); ctx.textAlign = "right"; ctx.textBaseline = "bottom"; ctx.fillStyle = FAINT;
+    ctx.fillText(MAP_CREDIT, box.x + box.w - 14, box.y + box.h - 10);
+    ctx.restore();
+  }
   return true;
 }
 

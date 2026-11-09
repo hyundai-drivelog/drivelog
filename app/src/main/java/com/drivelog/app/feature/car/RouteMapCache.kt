@@ -26,6 +26,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -59,8 +60,11 @@ import org.maplibre.android.snapshotter.MapSnapshot
 import org.maplibre.android.snapshotter.MapSnapshotter
 
 private const val STYLE_URL = "https://tiles.openfreemap.org/styles/dark"
-/** Required by the data's licences (ODbL for OpenStreetMap, and OpenMapTiles and OpenFreeMap's terms); never removed. */
-const val ATTRIBUTION = "지도 OpenFreeMap · © OpenMapTiles · © OpenStreetMap 기여자"
+/**
+ * Required by the data's licences (ODbL for OpenStreetMap, OpenMapTiles' terms); never removed, only kept small.
+ * Shown in the map's own corner, as map services do (user decision, 2026-11-09), so cards need no caption line.
+ */
+const val ATTRIBUTION = "© OpenMapTiles © OpenStreetMap"
 private const val IMAGE_WIDTH = 1200
 private const val IMAGE_HEIGHT = 800
 private const val RENDER_TIMEOUT_MS = 30_000L
@@ -315,16 +319,16 @@ class RouteMapCache(context: Context) {
     private companion object { const val TAG = "DriveLogMap" }
 }
 
-/**
- * The map's credit as a caption at the foot of a card, so the map itself stays clear. Shown only when this card has
- * a real map; a card without one credits nobody.
- */
+/** The map's credit in its bottom corner: small and faint, on a dark map only. A drawing with no map credits nobody. */
 @Composable
-fun MapCredit(cache: RouteMapCache, record: RecordV?, modifier: Modifier = Modifier) {
-    val ready by cache.ready.collectAsState()
-    if (record == null || !(record.id in ready || cache.has(record.id))) return
+fun MapCornerCredit(modifier: Modifier = Modifier) {
     val d = LocalCarDimens.current
-    T(ATTRIBUTION, d.t(12), modifier.padding(top = d.u(6)).testTag("map-credit"), color = DriveCardMuted.copy(alpha = 0.7f), maxLines = 2) // A credit cut short is no credit, so narrow cards wrap it.
+    T(
+        ATTRIBUTION, d.t(11),
+        modifier.padding(d.u(6)).clip(RoundedCornerShape(d.u(4))).background(Color.Black.copy(alpha = 0.45f))
+            .padding(horizontal = d.u(6), vertical = d.u(1)).testTag("map-credit"),
+        color = Color.White.copy(alpha = 0.7f), maxLines = 1,
+    )
 }
 
 /**

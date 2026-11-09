@@ -164,26 +164,26 @@
     const { solid, dashed } = routePaths(shape);
     ctx.save();
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
-    ctx.strokeStyle = t.faint; ctx.lineWidth = 6; ctx.setLineDash([4, 18]); ctx.stroke(dashed); ctx.setLineDash([]);
-    // As the car and the phone card draw it: one clean line, no glow. Over a photo a soft shadow keeps it readable.
-    ctx.strokeStyle = t.ink; ctx.lineWidth = 10;
+    ctx.strokeStyle = t.faint; ctx.lineWidth = 5; ctx.setLineDash([2, 14]); ctx.stroke(dashed); ctx.setLineDash([]);
+    // As the car and the phone card draw it: one fine clean line, no glow. Over a photo a soft shadow keeps it readable.
+    ctx.strokeStyle = t.ink; ctx.lineWidth = 6;
     if (overPhoto) { ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 16; }
     ctx.stroke(solid);
     ctx.restore();
     const start = shape[0], end = shape[shape.length - 1];
-    ctx.fillStyle = t.paper; ctx.beginPath(); ctx.arc(start[0], start[1], 15, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = t.ink; ctx.beginPath(); ctx.arc(start[0], start[1], 9, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = t.paper; ctx.beginPath(); ctx.arc(start[0], start[1], 12, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = t.ink; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(start[0], start[1], 10, 0, Math.PI * 2); ctx.stroke();
     // The car's arrow where the drive ended, pointing the way it went; the heading from a little way back.
     let from = start;
     for (let i = shape.length - 2; i >= 0; i--) if (Math.hypot(shape[i][0] - end[0], shape[i][1] - end[1]) >= 24) { from = shape[i]; break; }
     ctx.save();
     ctx.translate(end[0], end[1]);
     ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 16;
-    ctx.fillStyle = t.ink; ctx.beginPath(); ctx.arc(0, 0, 32, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = t.ink; ctx.beginPath(); ctx.arc(0, 0, 24, 0, Math.PI * 2); ctx.fill();
     ctx.shadowBlur = 0;
     ctx.rotate(Math.atan2(end[1] - from[1], end[0] - from[0]) + Math.PI / 2);
     ctx.fillStyle = t.paper; ctx.beginPath();
-    ctx.moveTo(0, -17); ctx.lineTo(13, 14); ctx.lineTo(0, 7); ctx.lineTo(-13, 14); ctx.closePath(); ctx.fill();
+    ctx.moveTo(0, -13); ctx.lineTo(10, 10.5); ctx.lineTo(0, 5); ctx.lineTo(-10, 10.5); ctx.closePath(); ctx.fill();
     ctx.restore();
   }
 

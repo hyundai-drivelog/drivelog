@@ -668,8 +668,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     var postedCourses by mutableStateOf(emptyList<CommunityCourse>())
         private set
     val communityCourses get() = postedCourses + SampleCourses
-    var courseOriginFilter by mutableStateOf<String?>(null)
-    var courseDestinationFilter by mutableStateOf<String?>(null)
+    var courseRegionFilter by mutableStateOf<String?>(null)
+    var courseThemeFilter by mutableStateOf<String?>(null)
     var openedCourse by mutableStateOf<CommunityCourse?>(null)
         private set
     var courseDraft by mutableStateOf<CourseDraft?>(null)
@@ -678,8 +678,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     private var courseDraftRecordId: String? = null
 
     fun openCommunity() {
-        courseOriginFilter = null
-        courseDestinationFilter = null
+        courseRegionFilter = null
+        courseThemeFilter = null
         go(Screen.COMMUNITY)
     }
 

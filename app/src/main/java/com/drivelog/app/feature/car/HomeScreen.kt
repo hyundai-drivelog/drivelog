@@ -14,6 +14,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.MaterialTheme
+import com.drivelog.app.core.platform.NaviPlace
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -42,6 +47,8 @@ fun HomeScreen(
     onStart: () -> Unit, onRecord: (RecordV) -> Unit, onHistory: () -> Unit, onStamps: () -> Unit,
     onCommunity: (() -> Unit)?, onHold: (() -> Unit)?, linkControl: (@Composable () -> Unit)?,
     onWelcome: (() -> Unit)? = null,
+    /** Saved places first, then recent ones: one tap opens the place's own screen, where guidance is asked for. */
+    quickPlaces: List<QuickPlace> = emptyList(), onPlace: (NaviPlace) -> Unit = {},
 ) {
     val d = LocalCarDimens.current
     val latest = remember(records) {
@@ -61,7 +68,7 @@ fun HomeScreen(
         })
         if (d.stacked) {
             Column(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(d.u(18))) {
-                HomeSide(records, onStart, onHistory, onStamps, onCommunity)
+                HomeSide(records, quickPlaces, onStart, onPlace, onHistory, onStamps, onCommunity)
                 card(Modifier.fillMaxWidth().height(d.u(520)))
             }
         } else {
@@ -69,7 +76,7 @@ fun HomeScreen(
                 card(Modifier.weight(0.52f).fillMaxHeight())
                 // Top and bottom line up with the card beside it, instead of floating in the middle.
                 Column(Modifier.weight(0.48f).fillMaxHeight().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.SpaceBetween) {
-                    HomeSide(records, onStart, onHistory, onStamps, onCommunity)
+                    HomeSide(records, quickPlaces, onStart, onPlace, onHistory, onStamps, onCommunity)
                 }
             }
         }
@@ -78,7 +85,8 @@ fun HomeScreen(
 
 @Composable
 private fun ColumnScope.HomeSide(
-    records: List<RecordV>, onStart: () -> Unit, onHistory: () -> Unit, onStamps: () -> Unit, onCommunity: (() -> Unit)?,
+    records: List<RecordV>, quickPlaces: List<QuickPlace>, onStart: () -> Unit, onPlace: (NaviPlace) -> Unit,
+    onHistory: () -> Unit, onStamps: () -> Unit, onCommunity: (() -> Unit)?,
 ) {
     val d = LocalCarDimens.current
     val month = remember(records) { thisMonth(records) }
@@ -89,6 +97,10 @@ private fun ColumnScope.HomeSide(
         T("오늘은 어디로 떠나볼까요?", d.t(42), display = true, maxLines = 2)
         Spacer(Modifier.height(d.u(22)))
         PrimaryButton("드라이브 시작", "start-journey", Modifier.fillMaxWidth(), chevron = true, icon = CarGlyph.ROUTE, onClick = onStart)
+        if (quickPlaces.isNotEmpty()) {
+            Spacer(Modifier.height(d.u(22)))
+            QuickPlaces(quickPlaces, onPlace)
+        }
     }
     // Two groups let the wide layout align its first and last actions with the card's edges.
     Column(Modifier.padding(top = d.u(26))) {
@@ -121,6 +133,57 @@ private fun ColumnScope.HomeSide(
         if (onCommunity != null) {
             Spacer(Modifier.height(d.u(10)))
             SecondaryButton("추천 코스", "open-community", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, icon = CarGlyph.PIN, onClick = onCommunity)
+        }
+    }
+}
+
+/** A place to set out for straight from home: a saved one, or one gone to or searched for lately. */
+data class QuickPlace(val place: NaviPlace, val saved: Boolean)
+
+/** At most this many, so the list never pushes the month's figures off a parked screen. */
+const val QUICK_PLACE_COUNT = 3
+
+/** Saved places lead, then recent ones, each place once. */
+fun quickPlaces(saved: List<NaviPlace>, recent: List<NaviPlace>): List<QuickPlace> {
+    val out = mutableListOf<QuickPlace>()
+    fun add(place: NaviPlace, isSaved: Boolean) {
+        if (out.size < QUICK_PLACE_COUNT && out.none { it.place.sameLocation(place) || it.place.name == place.name }) out += QuickPlace(place, isSaved)
+    }
+    saved.forEach { add(it, true) }
+    recent.forEach { add(it, false) }
+    return out
+}
+
+@Composable
+private fun QuickPlaces(places: List<QuickPlace>, onPlace: (NaviPlace) -> Unit) {
+    val d = LocalCarDimens.current
+    Column(Modifier.fillMaxWidth().testTag("home-quick-places")) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            T("바로 출발", d.t(20), bold = true, maxLines = 1)
+            Spacer(Modifier.width(d.u(10)))
+            T("저장한 장소 · 최근 장소", d.t(15), Modifier.padding(bottom = d.u(2)), color = muted(), maxLines = 1)
+        }
+        Spacer(Modifier.height(d.u(10)))
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(d.u(14))).background(soft())) {
+            places.forEachIndexed { index, quick ->
+                if (index > 0) Spacer(Modifier.fillMaxWidth().padding(horizontal = d.u(18)).height(1.dp).background(line()))
+                Row(
+                    Modifier.fillMaxWidth().heightIn(min = maxOf(d.u(76), 64.dp)).pressClick(Role.Button) { onPlace(quick.place) }
+                        .padding(horizontal = d.u(18), vertical = d.u(10)).testTag("home-quick-place"),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(d.u(44)).clip(CircleShape).background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
+                        CarIcon(if (quick.saved) CarGlyph.BOOKMARK else CarGlyph.CLOCK, d.u(24), fg())
+                    }
+                    Spacer(Modifier.width(d.u(14)))
+                    Column(Modifier.weight(1f)) {
+                        T(quick.place.name, d.t(20), bold = true, maxLines = 1)
+                        val address = quick.place.address.takeIf { it.isNotBlank() && it != quick.place.name }
+                        T(address ?: if (quick.saved) "저장한 장소" else "최근 장소", d.t(15), color = muted(), maxLines = 1)
+                    }
+                    CarIcon(CarGlyph.CHEVRON_RIGHT, d.u(22), muted())
+                }
+            }
         }
     }
 }

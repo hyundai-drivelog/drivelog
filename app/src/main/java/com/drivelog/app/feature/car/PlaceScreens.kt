@@ -157,7 +157,6 @@ internal fun LatestDriveCard(routeMaps: RouteMapCache, record: RecordV, modifier
         T(posterLabel(record), d.t(16), Modifier.testTag("latest-drive-label"), color = DriveCardMuted, maxLines = 1)
         Spacer(Modifier.height(d.u(4)))
         PosterFooter(record)
-        MapCredit(routeMaps, record)
         // Says the card opens; it looked like a picture before.
         Row(Modifier.padding(top = d.u(10)), verticalAlignment = Alignment.CenterVertically) {
             T("기록 보기", d.t(16), color = DriveCardText, bold = true)
@@ -491,6 +490,15 @@ private fun HistorySummary(records: List<RecordV>) {
         VerticalRule(Modifier.fillMaxHeight())
         Spacer(Modifier.width(d.u(36)))
         Stat(elapsedText(shownSeconds.roundToLong()), "", "기록 시간")
+        // Only once a real drive has been measured; simulated drives never carry one.
+        // A narrow window has no room for a fourth figure; the month line below still carries the average.
+        val average = remember(records) { averageEfficiency(records) }
+        if (average != null && !d.stacked) {
+            Spacer(Modifier.width(d.u(36)))
+            VerticalRule(Modifier.fillMaxHeight())
+            Spacer(Modifier.width(d.u(36)))
+            Box(Modifier.testTag("history-efficiency")) { Stat(average.first, average.second, "평균 ${efficiencyName(average.second)} · 실측 기록") }
+        }
     }
 }
 
@@ -503,7 +511,8 @@ private fun MonthLine(records: List<RecordV>) {
     val shownCount = rememberCountUp(month.size.toDouble())
     val shownKm = rememberCountUp(month.sumOf { it.distanceKm ?: 0.0 })
     val text = if (month.isEmpty()) "이번 달은 아직 드라이브가 없어요"
-    else "이번 달 ${shownCount.roundToInt()}회 · ${distanceText(shownKm)} km"
+    else "이번 달 ${shownCount.roundToInt()}회 · ${distanceText(shownKm)} km" +
+        averageEfficiency(month)?.let { (value, unit) -> " · 평균 ${efficiencyName(unit)} $value $unit" }.orEmpty()
     T(text, d.t(16), Modifier.padding(bottom = d.u(4)).testTag("history-month"), color = muted(), maxLines = 1)
 }
 
@@ -545,7 +554,10 @@ private fun DriveRow(record: RecordV, index: Int, onClick: () -> Unit) {
         Spacer(Modifier.width(d.u(14)))
         Column(Modifier.weight(1f)) {
             T(record.placeName, d.t(20), bold = true, maxLines = 1)
-            T(recordClock(record.startedAtMillis) + " · " + elapsedText(record.elapsedSeconds) + labels(record), d.t(15), color = muted(), maxLines = 1)
+            T(
+                listOfNotNull(recordClock(record.startedAtMillis), elapsedText(record.elapsedSeconds), efficiencyText(record)).joinToString(" · ") + labels(record),
+                d.t(15), color = muted(), maxLines = 1,
+            )
         }
         T(if (record.distanceKm != null) "${distanceText(record.distanceKm)} km" else "—", d.t(24), maxLines = 1, display = true, tabular = true)
         Spacer(Modifier.width(d.u(14)))
@@ -596,7 +608,7 @@ private fun DrivePoster(store: JourneyStore, routeMaps: RouteMapCache, record: R
 }
 
 /** Says what the number is, and that a simulated drive is one, right beside it. */
-private fun posterLabel(record: RecordV) = distanceLabel(record.distanceSource) + labels(record)
+private fun posterLabel(record: RecordV) = (listOf(distanceLabel(record.distanceSource)) + listOfNotNull(efficiencyText(record))).joinToString(" · ") + labels(record)
 
 @Composable
 internal fun PosterDistance(record: RecordV, size: Int, unitColor: Color = DriveCardText) {
@@ -661,7 +673,6 @@ private fun BlackPoster(routeMaps: RouteMapCache, record: RecordV) {
         T(posterLabel(record), d.t(14), color = DriveCardMuted, maxLines = 1)
         Spacer(Modifier.height(d.u(4)))
         PosterFooter(record)
-        MapCredit(routeMaps, record)
     }
 }
 

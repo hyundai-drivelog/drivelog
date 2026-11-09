@@ -16,10 +16,16 @@ much, so the app's efficiency from start and end energy can be tried. The emulat
 driving, so without it the drive has no efficiency. The battery is left where the drive ended. These are injected
 figures, not a measurement of any car.
 
+The emulator's Virtual Console keeps the battery in whole kWh, and the app only works out efficiency once the
+energy has fallen by five of the reading's smallest steps. One pass of the route uses about 1 kWh, so for a drive
+that shows efficiency add -Laps: the route is driven out and back that many times (an odd number ends at the far
+end), e.g. -Laps 5 -KmPerKwh 4.5 uses about 6 kWh over about 28 km. Keep the speeds high to keep it short.
+
 .EXAMPLE
 .\scripts\demo-drive.ps1 -Serial emulator-5556 -Prepare
 .\scripts\demo-drive.ps1 -Serial emulator-5556
 .\scripts\demo-drive.ps1 -Serial emulator-5556 -KmPerKwh 6.5
+.\scripts\demo-drive.ps1 -Serial emulator-5554 -KmPerKwh 4.5 -Laps 5 -MinSpeedKmh 150 -MaxSpeedKmh 190
 #>
 param(
     [string]$Serial = "emulator-5556",
@@ -30,6 +36,8 @@ param(
     [ValidateRange(1, 10)][int]$IntervalSeconds = 2,
     # 0 leaves the battery alone. Otherwise the injected efficiency, in km per kWh.
     [ValidateRange(0, 15)][double]$KmPerKwh = 0,
+    # Passes over the route, alternating out and back, so the drive is long enough to move a whole-kWh battery.
+    [ValidateRange(1, 9)][int]$Laps = 1,
     [switch]$Prepare
 )
 
@@ -37,6 +45,18 @@ $ErrorActionPreference = "Stop"
 $console = "http://127.0.0.1:8088"
 $culture = [System.Globalization.CultureInfo]::InvariantCulture
 $route = (Get-Content (Join-Path $PSScriptRoot "demo-route.json") -Raw | ConvertFrom-Json).coordinates
+if ($Laps -gt 1) {
+    $one = @($route)
+    $back = @($one); [Array]::Reverse($back)
+    $all = [System.Collections.Generic.List[object]]::new()
+    $all.AddRange($one)
+    # Each turn drops the point it starts from, which the previous pass already ended on.
+    for ($lap = 1; $lap -lt $Laps; $lap++) {
+        $pass = if ($lap % 2 -eq 1) { $back } else { $one }
+        $all.AddRange([object[]]($pass[1..($pass.Count - 1)]))
+    }
+    $route = $all.ToArray()
+}
 
 function Invoke-Adb {
     & $Adb -s $Serial @args
