@@ -17,7 +17,7 @@ val pleosSdkEnabled = providers.gradleProperty("pleosSdkEnabled")
 val phoneLinkEnabled = providers.gradleProperty("phoneLinkEnabled")
     .orElse("false").get().toBooleanStrict()
 val releaseApiBaseUrl = providers.gradleProperty("releaseApiBaseUrl").orElse("").get()
-// Where web/card/ is published. Without it the car offers no QR, as the code would open nothing.
+// Where a phone card page is published (the old web/card/ was removed on 2026-11-10). Without it the car offers no QR.
 val cardWebUrl = providers.gradleProperty("cardWebUrl").orElse("").get()
 require(cardWebUrl.isBlank() || (cardWebUrl.startsWith("https://") && cardWebUrl.endsWith("/") && !cardWebUrl.contains('"') && !cardWebUrl.contains('#'))) {
     "cardWebUrl must be an HTTPS URL ending in /"

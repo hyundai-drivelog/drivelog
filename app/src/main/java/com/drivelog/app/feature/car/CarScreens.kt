@@ -126,6 +126,12 @@ internal fun Frame(
     }
 }
 
+/** Two corner radii on the drive-flow screens: cards and maps, and the smaller tiles and chips inside a pane. */
+private const val CARD_RADIUS = CarRadius.CARD
+private const val TILE_RADIUS = CarRadius.CONTROL
+/** The drive card's inner margin, on the 8-unit rhythm. */
+private const val CARD_PAD = 24
+
 // --- 휴대폰 연결 버튼 -------------------------------------------------------------------------------
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -141,9 +147,10 @@ fun LinkControl(linked: Boolean, onLink: () -> Unit, onUnlink: () -> Unit) {
 fun DrivingLockScreen() {
     val d = LocalCarDimens.current
     Column(Modifier.fillMaxSize().padding(d.u(24)), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-        Heading("주행 중이에요", 36, align = TextAlign.Center)
-        Spacer(Modifier.height(d.u(10)))
-        T("정차 후 이어서 사용할 수 있어요", d.t(20), color = muted(), align = TextAlign.Center)
+        // One headline and one quiet line, as Android for Cars' parked-only notice: nothing else to read while moving.
+        Heading("주행 중이에요", CarTextSize.HEADING.baseSp, align = TextAlign.Center)
+        Spacer(Modifier.height(d.u(16)))
+        T("정차 후 이어서 사용할 수 있어요", d.t(CarTextSize.LABEL), color = muted(), align = TextAlign.Center)
     }
 }
 
@@ -165,64 +172,64 @@ fun RecordingScreen(
         else -> null
     }
     val arrivalShown = !parked && !routeEnded && !recording.locationStale && recording.arrived
+    // A trip computer's hierarchy (Polestar, Tesla): where, then one hero number, then one secondary number.
+    // No road drawing or divider: space alone separates the figures from the parked actions.
     Box(Modifier.fillMaxSize().padding(horizontal = d.u(22), vertical = d.u(8))) {
-        if (!d.stacked && parked) RoadLines(Modifier.fillMaxSize())
         Column(Modifier.align(Alignment.TopStart).fillMaxWidth()) {
             // No back arrow: Back hides the app everywhere else, and ending a drive has its own labelled button.
             TopBar(null, null, if (recording.simulated) ({ SimulationBadge() }) else null)
         }
         Column(
-            Modifier.align(Alignment.Center).padding(top = d.u(20)).verticalScroll(rememberScrollState()),
+            Modifier.align(Alignment.Center).padding(top = d.u(24)).verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (d.stacked) {
-                T("드라이브 기록 중", d.t(30), bold = true)
-                Spacer(Modifier.height(d.u(18)))
-                T(elapsedText(recording.elapsedSeconds), d.t(82), Modifier.testTag("elapsed"), bold = true, maxLines = 1)
-                Spacer(Modifier.height(d.u(18)))
-                T(recording.place.name, d.t(30), bold = true, align = TextAlign.Center)
-                Spacer(Modifier.height(d.u(6)))
-                T("$distance km · 추정 거리", d.t(24), color = muted())
-            } else {
-                T("${withDirectionParticle(shortName(recording.place.name))} 가는 길", d.t(38), align = TextAlign.Center, display = true)
-                Spacer(Modifier.height(d.u(10)))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    PulsingDot(d.u(14), fg())
-                    Spacer(Modifier.width(d.u(10)))
-                    T("기록 중", d.t(18))
-                }
-                T(elapsedText(recording.elapsedSeconds), d.t(84), Modifier.testTag("elapsed"), bold = true, maxLines = 1)
-                Spacer(Modifier.height(d.u(14)))
-                // The label is quieter than the number, so it never competes with the time above.
-                Row(verticalAlignment = Alignment.Bottom) {
-                    T("$distance km", d.t(36), Modifier.testTag("distance"), bold = true, maxLines = 1)
-                    Spacer(Modifier.width(d.u(10)))
-                    T("추정 거리", d.t(18), Modifier.padding(bottom = d.u(6)), color = muted(), maxLines = 1)
-                }
-            }
-            if (parked || status != null) {
-                Spacer(Modifier.height(d.u(10)))
-                Box(Modifier.width(d.u(if (d.stacked) 420 else 190)).height(1.dp).background(line()))
+                T("드라이브 기록 중", d.t(CarTextSize.TITLE), bold = true)
+                Spacer(Modifier.height(d.u(24)))
+                T(elapsedText(recording.elapsedSeconds), d.t(80), Modifier.testTag("elapsed"), maxLines = 1, display = true, tabular = true)
+                Spacer(Modifier.height(d.u(24)))
+                T(recording.place.name, d.t(CarTextSize.TITLE), bold = true, align = TextAlign.Center)
                 Spacer(Modifier.height(d.u(8)))
+                T("$distance km · 추정 거리", d.t(CarTextSize.LABEL), color = muted(), tabular = true)
+            } else {
+                T("${withDirectionParticle(shortName(recording.place.name))} 가는 길", d.t(CarTextSize.HEADING), align = TextAlign.Center, display = true, maxLines = 2)
+                Spacer(Modifier.height(d.u(16)))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    PulsingDot(d.u(12), fg())
+                    Spacer(Modifier.width(d.u(8)))
+                    T("기록 중", d.t(CarTextSize.BODY), color = muted())
+                }
+                T(elapsedText(recording.elapsedSeconds), d.t(CarTextSize.HERO), Modifier.testTag("elapsed"), maxLines = 1, display = true, tabular = true)
+                Spacer(Modifier.height(d.u(8)))
+                // Number, a unit at 0.4 of it, and the label quieter beside: it never competes with the time above.
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Row(Modifier.semantics(mergeDescendants = true) {}.testTag("distance"), verticalAlignment = Alignment.Bottom) {
+                        T(distance, d.t(CarTextSize.HEADING), maxLines = 1, display = true, tabular = true)
+                        T(" km", d.t(CarTextSize.CAPTION), Modifier.padding(bottom = d.u(6)), bold = true, maxLines = 1)
+                    }
+                    Spacer(Modifier.width(d.u(16)))
+                    T("추정 거리", d.t(CarTextSize.BODY), Modifier.padding(bottom = d.u(4)), color = muted(), maxLines = 1)
+                }
             }
+            if (parked || status != null) Spacer(Modifier.height(d.u(32)))
             if (parked) {
                 if (recording.restingSinceMillis != null) {
-                    T("쉬는 중이에요 · 출발하면 기록이 이어져요", d.t(17), Modifier.testTag("resting"), color = muted(), align = TextAlign.Center)
-                    Spacer(Modifier.height(d.u(8)))
+                    T("쉬는 중이에요 · 출발하면 기록이 이어져요", d.t(CarTextSize.BODY), Modifier.testTag("resting"), color = muted(), align = TextAlign.Center)
+                    Spacer(Modifier.height(d.u(16)))
                 }
                 // Reaching P is what makes these usable, so they arrive with it (motion is on only from that moment).
-                PrimaryButton("기록 종료", "end-recording", Modifier.width(d.u(280)).appear(parked), onClick = onEnd)
+                PrimaryButton("기록 종료", "end-recording", Modifier.width(d.u(320)).appear(parked), onClick = onEnd)
                 if (naviAvailable) {
                     Spacer(Modifier.height(d.u(8)))
-                    SecondaryButton("내비 화면 보기", "open-navigation", Modifier.width(d.u(280)).appear(parked, 60), onClick = onOpenNavigation)
+                    SecondaryButton("내비 화면 보기", "open-navigation", Modifier.width(d.u(320)).appear(parked, 60), onClick = onOpenNavigation)
                 }
                 if (routeMessage != null) {
-                    Spacer(Modifier.height(d.u(6)))
-                    T(routeMessage, d.t(15), color = muted(), align = TextAlign.Center)
+                    Spacer(Modifier.height(d.u(8)))
+                    T(routeMessage, d.t(CarTextSize.CAPTION), color = muted(), align = TextAlign.Center)
                 }
             } else if (status != null) {
                 // Arriving is the one change on this screen the drive has been heading for.
-                T(status, d.t(if (arrivalShown) 30 else if (d.stacked) 22 else 17), color = if (arrivalShown) fg() else muted(), bold = arrivalShown, align = TextAlign.Center)
+                T(status, d.t(if (arrivalShown) CarTextSize.TITLE.baseSp else if (d.stacked) 22 else CarTextSize.BODY.baseSp), color = if (arrivalShown) fg() else muted(), bold = arrivalShown, align = TextAlign.Center)
             }
         }
         if (showSimControls) SimGearControl(gear, onSimGear, Modifier.align(Alignment.BottomEnd))
@@ -245,41 +252,6 @@ private fun SimGearControl(gear: CarGear, onSimGear: (CarGear) -> Unit, modifier
     }
 }
 
-@Composable
-private fun RoadLines(modifier: Modifier) {
-    val color = line()
-    val strong = muted().copy(alpha = 0.45f)
-    Canvas(modifier) {
-        val w = size.width
-        val h = size.height
-        val horizon = h * 0.58f
-        fun side(left: Boolean) {
-            fun x(v: Float) = if (left) w * v else w * (1 - v)
-            // The road's edge bends toward the horizon, as a real one does in perspective.
-            drawPath(Path().apply {
-                moveTo(x(0f), h * 0.84f)
-                cubicTo(x(0.1f), h * 0.74f, x(0.22f), h * 0.62f, x(0.335f), horizon)
-            }, strong, style = Stroke(2.5f * density, cap = StrokeCap.Round))
-            drawPath(Path().apply {
-                moveTo(x(0f), h * (if (left) 0.42f else 0.50f))
-                cubicTo(x(0.05f), h * (if (left) 0.46f else 0.47f), x(0.10f), h * 0.57f, x(0.335f), horizon)
-            }, color, style = Stroke(1.6f))
-            drawPath(Path().apply {
-                moveTo(x(0.10f), h * 0.51f)
-                cubicTo(x(0.16f), h * 0.51f, x(0.17f), h * 0.45f, x(0.22f), h * 0.51f)
-                cubicTo(x(0.25f), h * 0.54f, x(0.27f), h * 0.57f, x(0.33f), horizon)
-            }, color, style = Stroke(1.3f))
-            drawPath(Path().apply {
-                moveTo(x(0.20f), horizon)
-                cubicTo(x(0.23f), h * 0.56f, x(0.25f), h * 0.53f, x(0.28f), h * 0.56f)
-                lineTo(x(0.31f), horizon)
-            }, color, style = Stroke(1.1f))
-        }
-        side(true)
-        side(false)
-    }
-}
-
 // --- 05 정차 후 기록 종료 ---------------------------------------------------------------------------
 
 @Composable
@@ -295,51 +267,49 @@ fun StopConfirmScreen(routeMaps: RouteMapCache, recording: Recording, onEnd: () 
             Box(Modifier.fillMaxWidth().weight(1f)) {
                 Panes(0.5f, left = {
                     Column {
-                        Heading(if (barelyMoved) "기록할 만큼 움직이지 않았어요" else "드라이브를 마칠까요?", 40)
-                        Spacer(Modifier.height(d.u(22)))
-                        Row(Modifier.height(IntrinsicSize.Min)) {
+                        Heading(if (barelyMoved) "기록할 만큼 움직이지 않았어요" else "드라이브를 마칠까요?", CarTextSize.HEADING.baseSp)
+                        Spacer(Modifier.height(d.u(32)))
+                        // Apple Fitness' summary grid: figures side by side on one baseline, held apart by space alone.
+                        Row(horizontalArrangement = Arrangement.spacedBy(d.u(48))) {
                             Stat(if (hasRoute) distanceText(recording.distanceKm) else "—", if (hasRoute) "km" else "", "추정 거리")
-                            Spacer(Modifier.width(d.u(32)))
-                            VerticalRule(Modifier.fillMaxHeight())
-                            Spacer(Modifier.width(d.u(32)))
                             Stat(elapsedText(recording.elapsedSeconds), "", "기록 시간")
                         }
-                        Spacer(Modifier.height(d.u(22)))
+                        Spacer(Modifier.height(d.u(32)))
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            CarIcon(CarGlyph.PIN, d.u(24), fg())
-                            Spacer(Modifier.width(d.u(10)))
+                            CarIcon(CarGlyph.PIN, d.u(24), muted())
+                            Spacer(Modifier.width(d.u(8)))
                             T(
                                 when {
                                     away == null -> "위치 정보를 확인할 수 없어요"
                                     away <= VISIT_CANDIDATE_RADIUS_KM -> "${recording.place.name} 주변"
                                     else -> "${recording.place.name}까지 ${distanceText(away)} km"
                                 },
-                                d.t(20), bold = true,
+                                d.t(CarTextSize.BODY), bold = true,
                             )
                         }
                         if (barelyMoved) {
-                            Spacer(Modifier.height(d.u(14)))
+                            Spacer(Modifier.height(d.u(16)))
                             T("거의 움직이지 않았어요. 저장하지 않고 끝낼 수도 있어요", d.t(18), Modifier.testTag("barely-moved"), color = muted())
                         }
                         // Told only here, parked: the driving screen shows place, minutes and distance and nothing else.
                         if (recording.storageFailed) {
-                            Spacer(Modifier.height(d.u(14)))
+                            Spacer(Modifier.height(d.u(16)))
                             T("저장 공간이 부족해 경로 일부를 기기에 남기지 못했어요. 앱이 꺼지면 그 구간은 복구되지 않아요", d.t(18), Modifier.testTag("storage-failed"), color = muted(), maxLines = 2)
                         }
                     }
                 }, right = {
                     // Without a route there is nothing to place on a map, so none is requested.
                     if (hasRoute) LiveRouteMap(routeMaps, routePoints, null, null, paneFill(280))
-                    else Box(paneFill(280).clip(RoundedCornerShape(d.u(14))).background(soft()), contentAlignment = Alignment.Center) {
+                    else Box(paneFill(280).clip(RoundedCornerShape(d.u(CARD_RADIUS))).background(soft()), contentAlignment = Alignment.Center) {
                         T("기록된 경로가 없어요", d.t(18), Modifier.testTag("no-route"), color = muted())
                     }
                 })
             }
-            Spacer(Modifier.height(d.u(14)))
-            // The irreversible choice sits last, away from the main one.
-            Row(Modifier.fillMaxWidth().padding(bottom = d.u(10)), horizontalArrangement = Arrangement.spacedBy(d.u(14))) {
+            Spacer(Modifier.height(d.u(16)))
+            // The irreversible choice sits last, away from the main one. The one primary action is the widest.
+            Row(Modifier.fillMaxWidth().padding(bottom = d.u(8)), horizontalArrangement = Arrangement.spacedBy(d.u(16))) {
                 // While the drive is written out the guide's Loading state holds every choice, so none can race the save.
-                PrimaryButton("저장하고 마치기", "confirm-end", Modifier.weight(1f), loading = saving, onClick = onEnd)
+                PrimaryButton("저장하고 마치기", "confirm-end", Modifier.weight(1.3f), loading = saving, onClick = onEnd)
                 SecondaryButton("계속 기록", "keep-recording", Modifier.weight(1f), enabled = !saving, onClick = onContinue)
                 // A stop on the way, such as a rest area: recording goes on and the time is marked as a break.
                 if (!barelyMoved && onRest != null) SecondaryButton("잠깐 쉬어요", "rest-recording", Modifier.weight(1f), enabled = !saving, onClick = onRest)
@@ -367,42 +337,39 @@ fun PhoneLinkScreen(
     val expired = code != null && left == 0L
     Frame(onBack, simulated = preview) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Heading("휴대폰과 DRIVELOG를 연결하세요", if (preview) 40 else 36, align = TextAlign.Center)
-            Spacer(Modifier.height(d.u(4)))
-            T(if (preview) "차량에서 기록한 여정을 휴대폰으로 이어볼 수 있어요" else "차량에서 기록한 여정을 휴대폰으로 이어볼 수 있어요", d.t(18), color = muted(), align = TextAlign.Center)
-            Spacer(Modifier.height(d.u(16)))
+            Heading("휴대폰과 DRIVELOG를 연결하세요", CarTextSize.HEADING.baseSp, align = TextAlign.Center)
+            Spacer(Modifier.height(d.u(8)))
+            T(if (preview) "차량에서 기록한 여정을 휴대폰으로 이어볼 수 있어요" else "차량에서 기록한 여정을 휴대폰으로 이어볼 수 있어요", d.t(CarTextSize.BODY), color = muted(), align = TextAlign.Center)
+            Spacer(Modifier.height(d.u(32)))
             val steps = @Composable {
-                Column(verticalArrangement = Arrangement.spacedBy(d.u(16))) {
-                    LinkStep(1, "휴대폰에서 여정 열기", when {
-                        preview -> "휴대폰에 설치된 여정 앱을 실행하세요"
-                        !webUrl.isNullOrBlank() -> "휴대폰 브라우저로 $webUrl 에 접속하세요."
-                        else -> "휴대폰 브라우저로 여정 웹 주소에 접속하세요."
-                    })
-                    if (preview) LinkStep(2, "연결 코드 입력", "여정 앱의 \"차량과 연결\"에서\n${if (d.stacked) "아래" else "오른쪽"} 코드를 입력하세요")
-                    else LinkStep(2, "아래 연결 코드 입력", "\"차량과 연결\" 화면에\n코드를 입력하세요.")
+                Column(verticalArrangement = Arrangement.spacedBy(d.u(24))) {
+                    // The phone side is the DRIVELOG phone app (drivelog-mobile), not a web page; webUrl is no longer shown.
+                    LinkStep(1, "휴대폰에서 DRIVELOG 앱 열기", "휴대폰에 설치한 DRIVELOG 앱을 실행하세요.")
+                    LinkStep(2, "연결 코드 입력", "앱의 \"차량과 연결\" 화면에\n${if (d.stacked) "아래" else "오른쪽"} 코드를 입력하세요.")
                 }
             }
             val codeCard = @Composable { modifier: Modifier ->
                 Column(
-                    modifier.clip(RoundedCornerShape(d.u(14))).background(soft()).padding(d.u(18)),
+                    modifier.clip(RoundedCornerShape(d.u(CARD_RADIUS))).background(soft()).padding(d.u(24)),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     when {
-                        failed -> T("서버에 연결할 수 없어요", d.t(20), bold = true, align = TextAlign.Center)
+                        failed -> T("서버에 연결할 수 없어요", d.t(CarTextSize.BODY), bold = true, align = TextAlign.Center)
                         code == null -> {
                             LoadingIndicator(LoadingStyle.TENSION)
                             Spacer(Modifier.height(d.u(8)))
-                            T("코드를 받는 중이에요", d.t(20), color = muted())
+                            T("코드를 받는 중이에요", d.t(CarTextSize.BODY), color = muted())
                         }
-                        expired -> T("코드가 만료되었어요", d.t(20), bold = true)
+                        expired -> T("코드가 만료되었어요", d.t(CarTextSize.BODY), bold = true)
                         else -> {
-                            T("연결 코드 · 남은 시간  ${pad(left / 60)}:${pad(left % 60)}", d.t(17), bold = false)
-                            Spacer(Modifier.height(d.u(6)))
-                            T("${code.take(3)} ${code.drop(3)}", d.t(if (preview) 64 else 56), Modifier.testTag("link-code"), bold = !preview, maxLines = 1, display = preview)
-                            if (preview) T("예시 코드예요. 실제로 연결되지 않아요", d.t(15), Modifier.testTag("preview-note"), color = muted(), align = TextAlign.Center)
+                            // The code is the one thing to read: one display size, equal-width digits; the timer is a quiet caption.
+                            T("연결 코드 · 남은 시간  ${pad(left / 60)}:${pad(left % 60)}", d.t(CarTextSize.CAPTION), color = muted(), tabular = true)
+                            Spacer(Modifier.height(d.u(8)))
+                            T("${code.take(3)} ${code.drop(3)}", d.t(CarTextSize.DISPLAY), Modifier.testTag("link-code"), maxLines = 1, display = true, tabular = true)
+                            if (preview) T("예시 코드예요. 실제로 연결되지 않아요", d.t(CarTextSize.CAPTION), Modifier.testTag("preview-note"), color = muted(), align = TextAlign.Center)
                         }
                     }
-                    Spacer(Modifier.height(d.u(12)))
+                    Spacer(Modifier.height(d.u(16)))
                     SecondaryButton("새 코드 받기", "new-code", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, icon = CarGlyph.REFRESH, onClick = onNewCode)
                     if (onPreviewNext != null) {
                         Spacer(Modifier.height(d.u(8)))
@@ -411,49 +378,34 @@ fun PhoneLinkScreen(
                 }
             }
             if (d.stacked) {
-                steps(); Spacer(Modifier.height(d.u(18))); codeCard(Modifier.fillMaxWidth())
+                steps(); Spacer(Modifier.height(d.u(24))); codeCard(Modifier.fillMaxWidth())
             } else {
-                Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(d.u(32))) {
-                    PhoneFrame(if (preview) Modifier.width(d.u(136)).height(d.u(256)) else Modifier.width(d.u(112)).height(d.u(210))) {
-                        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                            AppMark(d.u(46).value)
-                            Spacer(Modifier.height(d.u(6)))
-                            T("DRIVELOG", d.t(13))
-                        }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(d.u(40))) {
+                    // Inside the app the brand is the wordmark alone; the route mark stays on the launcher icon.
+                    PhoneFrame(if (preview) Modifier.width(d.u(136)).height(d.u(256)) else Modifier.width(d.u(112)).height(d.u(208))) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { BrandWordmark(d.t(13), fg()) }
                     }
                     Box(Modifier.weight(1f)) { steps() }
-                    VerticalRule(Modifier.fillMaxHeight())
-                    codeCard(Modifier.width(d.u(390)))
+                    codeCard(Modifier.width(d.u(392)))
                 }
             }
         }
     }
 }
 
-@Composable
-private fun AppMark(sizeDp: Float) {
-    val background = fg(); val mark = MaterialTheme.colorScheme.background
-    Canvas(Modifier.size(sizeDp.dp).clip(RoundedCornerShape((sizeDp * 0.22f).dp)).background(background)) {
-        val w = size.width
-        drawPath(Path().apply {
-            moveTo(w * .14f, w * .72f); lineTo(w * .4f, w * .3f); lineTo(w * .56f, w * .56f)
-            lineTo(w * .66f, w * .42f); lineTo(w * .86f, w * .72f); close()
-        }, mark)
-    }
-}
-
+/** Numbered steps as in a setup guide: a small filled number, a bold line, then a quieter one. */
 @Composable
 private fun LinkStep(number: Int, title: String, body: String) {
     val d = LocalCarDimens.current
     Row {
-        Box(Modifier.size(d.u(32)).clip(CircleShape).background(fg()), contentAlignment = Alignment.Center) {
-            T("$number", d.t(17), color = MaterialTheme.colorScheme.background, bold = true)
+        Box(Modifier.size(d.u(40)).clip(CircleShape).background(fg()), contentAlignment = Alignment.Center) {
+            T("$number", d.t(CarTextSize.BODY), color = MaterialTheme.colorScheme.background, bold = true)
         }
-        Spacer(Modifier.width(d.u(14)))
-        Column {
-            T(title, d.t(20), bold = true)
+        Spacer(Modifier.width(d.u(16)))
+        Column(Modifier.padding(top = d.u(4))) {
+            T(title, d.t(CarTextSize.BODY), bold = true)
             Spacer(Modifier.height(d.u(4)))
-            T(body, d.t(16), color = muted())
+            T(body, d.t(18), color = muted())
         }
     }
 }
@@ -468,9 +420,9 @@ fun ContinueOnPhoneScreen(record: RecordV?, onBackToGoal: () -> Unit, preview: B
             Box(modifier) {
                 PlacePhoto(record?.placeName ?: "", Modifier.fillMaxWidth(0.82f).fillMaxHeight(0.86f).align(Alignment.CenterStart))
                 PhoneFrame(Modifier.align(Alignment.BottomEnd).fillMaxHeight().fillMaxWidth(0.5f)) {
-                    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(d.u(5))) {
+                    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(d.u(4))) {
                         PlacePhoto(record?.placeName ?: "", Modifier.fillMaxWidth().weight(1f))
-                        T(record?.placeName ?: "", d.t(11), bold = true, maxLines = 1)
+                        T(record?.placeName ?: "", d.t(12), bold = true, maxLines = 1)
                         listOf(1f, 0.8f, 0.9f).forEach { width ->
                             Box(Modifier.fillMaxWidth(width).height(d.u(7)).clip(CircleShape).background(soft()))
                         }
@@ -480,53 +432,53 @@ fun ContinueOnPhoneScreen(record: RecordV?, onBackToGoal: () -> Unit, preview: B
         }
         val status = @Composable {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Heading("기록이 휴대폰에 도착했어요", 32, align = TextAlign.Center)
-                Spacer(Modifier.height(d.u(4)))
-                T(if (preview) "이제 휴대폰에서 추억으로 완성해 보세요" else "이제 휴대폰에서 더 특별한 추억으로 완성해보세요.", d.t(17), color = muted(), align = TextAlign.Center)
-                Spacer(Modifier.height(d.u(12)))
-                AnimatedCheck(d.u(62))
-                Spacer(Modifier.height(d.u(6)))
-                T("동기화 완료", d.t(19), Modifier.testTag("sync-done"), bold = true)
+                Heading("기록이 휴대폰에 도착했어요", CarTextSize.TITLE.baseSp, align = TextAlign.Center)
+                Spacer(Modifier.height(d.u(8)))
+                T(if (preview) "이제 휴대폰에서 추억으로 완성해 보세요" else "이제 휴대폰에서 더 특별한 추억으로 완성해보세요.", d.t(18), color = muted(), align = TextAlign.Center)
+                Spacer(Modifier.height(d.u(24)))
+                AnimatedCheck(d.u(64))
+                Spacer(Modifier.height(d.u(8)))
+                T("동기화 완료", d.t(CarTextSize.BODY), Modifier.testTag("sync-done"), bold = true)
                 if (record != null) {
-                    Spacer(Modifier.height(d.u(10)))
-                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(d.u(10))).background(soft()).padding(vertical = d.u(12)).height(IntrinsicSize.Min)) {
-                        listOf(record.placeName, "${distanceText(record.distanceKm)} km", elapsedText(record.elapsedSeconds)).forEachIndexed { i, value ->
-                            if (i > 0) VerticalRule(Modifier.fillMaxHeight())
-                            T(value, d.t(17), Modifier.weight(1f), bold = true, align = TextAlign.Center, maxLines = 1)
+                    Spacer(Modifier.height(d.u(16)))
+                    // One tile, three equal columns: the same place · distance · time the cards end with.
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(d.u(TILE_RADIUS))).background(soft()).padding(vertical = d.u(16), horizontal = d.u(8))) {
+                        listOf(record.placeName, "${distanceText(record.distanceKm)} km", elapsedText(record.elapsedSeconds)).forEach { value ->
+                            T(value, d.t(18), Modifier.weight(1f), bold = true, align = TextAlign.Center, maxLines = 1, tabular = true)
                         }
                     }
                     Spacer(Modifier.height(d.u(8)))
-                    T("${distanceLabel(record.distanceSource)} · 기록 경과 시간", d.t(14), color = muted())
+                    T("${distanceLabel(record.distanceSource)} · 기록 경과 시간", d.t(CarTextSize.CAPTION), color = muted())
                 }
                 if (preview) {
-                    Spacer(Modifier.height(d.u(8)))
-                    T("예시 화면이에요. 실제로 전송되지 않았어요", d.t(15), Modifier.testTag("preview-note"), bold = true, align = TextAlign.Center)
+                    Spacer(Modifier.height(d.u(16)))
+                    T("예시 화면이에요. 실제로 전송되지 않았어요", d.t(CarTextSize.CAPTION), Modifier.testTag("preview-note"), bold = true, align = TextAlign.Center)
                 }
             }
         }
         val next = @Composable {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    PhoneFrame(Modifier.width(d.u(56)).height(d.u(92))) {
+                    PhoneFrame(Modifier.width(d.u(56)).height(d.u(96))) {
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CarIcon(CarGlyph.PHOTO, d.u(24), fg()) }
                     }
-                    Spacer(Modifier.width(d.u(18)))
-                    T("사진 선택과 카드 편집은\n휴대폰에서 이어가세요.", d.t(18))
+                    Spacer(Modifier.width(d.u(16)))
+                    T("사진 선택과 카드 편집은\n휴대폰에서 이어가세요.", d.t(18), color = muted())
                 }
-                Spacer(Modifier.height(d.u(24)))
+                Spacer(Modifier.height(d.u(32)))
                 PrimaryButton("돌아가기", "back-to-goal", Modifier.fillMaxWidth(), onClick = onBackToGoal)
             }
         }
         if (d.stacked) {
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(d.u(20))) {
-                visual(Modifier.fillMaxWidth().height(d.u(220))); status(); next()
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(d.u(24))) {
+                visual(Modifier.fillMaxWidth().height(d.u(224))); status(); next()
             }
         } else {
-            Row(Modifier.fillMaxSize().padding(bottom = d.u(10)), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(d.u(22))) {
+            // Three columns held apart by space alone, no rule between them.
+            Row(Modifier.fillMaxSize().padding(bottom = d.u(8)), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(d.u(32))) {
                 // A fixed shape: in a tall window, filling the height stretches the phone and blurs the small photo.
                 Box(Modifier.weight(0.31f), contentAlignment = Alignment.Center) { visual(Modifier.fillMaxWidth().aspectRatio(0.95f)) }
                 Box(Modifier.weight(0.40f)) { status() }
-                VerticalRule(Modifier.fillMaxHeight(0.7f))
                 Box(Modifier.weight(0.27f)) { next() }
             }
         }
@@ -556,26 +508,22 @@ fun RecordSavedScreen(
     val figures: @Composable (Modifier) -> Unit = { modifier ->
         NightColors {
             Column(modifier.testTag("card-figures")) {
-                Heading(title, 26, Modifier.testTag("record-title"))
+                // Strava's activity detail: a title, the figures as value-over-label cells, then the stretches as a table.
+                Heading(title, 28, Modifier.testTag("record-title"))
                 if (record != null) {
-                    Spacer(Modifier.height(d.u(14)))
+                    Spacer(Modifier.height(d.u(24)))
                     RecordStats(record, headline = false)
                     if (stamp != null) {
-                        Spacer(Modifier.height(d.u(14)))
+                        Spacer(Modifier.height(d.u(24)))
                         // The stamp is pressed once, on the card's face; here it is simply listed.
                         StampLine(stamp, press = false)
-                        // A mockup of the partner model: debug builds only, and it changes nothing.
-                        if (BuildConfig.DEBUG) {
-                            Spacer(Modifier.height(d.u(8)))
-                            BenefitPreview(stamp.place)
-                        }
                     }
                     if (splits.size >= 2) {
-                        Spacer(Modifier.height(d.u(18)))
+                        Spacer(Modifier.height(d.u(32)))
                         SplitList(splits)
                     }
                 }
-                Spacer(Modifier.height(d.u(20)))
+                Spacer(Modifier.height(d.u(32)))
                 if (onHistory != null) {
                     SecondaryButton("내 기록 보기", "open-history-after", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onHistory)
                     Spacer(Modifier.height(d.u(8)))
@@ -590,7 +538,7 @@ fun RecordSavedScreen(
                 }
                 if (onDelete != null) {
                     // Last and smaller, apart from what to do next: it is the one action that cannot be undone.
-                    Spacer(Modifier.height(d.u(16)))
+                    Spacer(Modifier.height(d.u(24)))
                     SecondaryButton(if (confirmDelete) "한 번 더 누르면 삭제" else "기록 삭제", "delete-record", size = ButtonSize.SMALL, danger = confirmDelete) {
                         if (confirmDelete) onDelete() else confirmDelete = true
                     }
@@ -598,7 +546,7 @@ fun RecordSavedScreen(
             }
         }
     }
-    val shape = RoundedCornerShape(d.u(14))
+    val shape = RoundedCornerShape(d.u(CARD_RADIUS))
     val cardFrame = Modifier.clip(shape).background(DriveCardBackground).border(1.dp, line(), shape).testTag("record-saved")
     // A sideways swipe on the card opens or closes the figures, as the button does.
     val swipe = Modifier.pointerInput(record?.id) {
@@ -612,23 +560,23 @@ fun RecordSavedScreen(
     // Right after saving the card says so; opened from 내 기록 it is simply the drive.
     val eyebrow = if (onHistory != null) "방금 저장했어요" else "나의 드라이브"
     val actions: @Composable (Modifier) -> Unit = { modifier ->
-        Row(modifier, horizontalArrangement = Arrangement.spacedBy(d.u(12))) {
+        Row(modifier, horizontalArrangement = Arrangement.spacedBy(d.u(16))) {
             if (!d.stacked) PrimaryButton(if (open) "카드만 보기" else "기록 보기", "record-details", Modifier.weight(1f), size = ButtonSize.MEDIUM) { open = !open }
             SecondaryButton(if (onHistory != null || returnsHome) "홈으로" else "돌아가기", "back-from-record", Modifier.weight(1f), size = ButtonSize.MEDIUM, onClick = onBack)
         }
     }
     Frame(if (open) ({ open = false }) else onBack, simulated = record?.simulated == true) {
-        if (d.stacked) Column(Modifier.fillMaxSize().padding(bottom = d.u(10))) {
+        if (d.stacked) Column(Modifier.fillMaxSize().padding(bottom = d.u(8))) {
             // A narrow window has no width to spare: the figures follow the face downwards instead.
             Column(Modifier.fillMaxWidth().weight(1f).then(cardFrame).verticalScroll(rememberScrollState())) {
                 RecordPoster(routeMaps, record, Modifier.fillMaxWidth().height(d.u(560)), fillHeight = true, replay = replay, onReplay = onReplay, framed = false, eyebrow = eyebrow, pressStamp = stamp?.isNew == true)
-                CardTearLine(d.u(20), Modifier.padding(bottom = d.u(14)))
-                figures(Modifier.fillMaxWidth().padding(horizontal = d.u(20)).padding(bottom = d.u(20)))
+                CardTearLine(d.u(CARD_PAD), Modifier.padding(bottom = d.u(16)))
+                figures(Modifier.fillMaxWidth().padding(horizontal = d.u(CARD_PAD)).padding(bottom = d.u(CARD_PAD)))
             }
-            Spacer(Modifier.height(d.u(14)))
+            Spacer(Modifier.height(d.u(16)))
             actions(Modifier.fillMaxWidth())
-        } else BoxWithConstraints(Modifier.fillMaxSize().padding(bottom = d.u(10)), contentAlignment = Alignment.TopCenter) {
-            val actionsHeight = ButtonSize.MEDIUM.height + d.u(14)
+        } else BoxWithConstraints(Modifier.fillMaxSize().padding(bottom = d.u(8)), contentAlignment = Alignment.TopCenter) {
+            val actionsHeight = ButtonSize.MEDIUM.height + d.u(16)
             val face = minOf((maxHeight - actionsHeight) * 0.82f, maxWidth * 0.5f)
             val cardWidth = lerp(face, maxWidth, opened)
             val figuresWidth = maxWidth - face - 1.dp
@@ -649,16 +597,16 @@ fun RecordSavedScreen(
                         ) { CarIcon(CarGlyph.CHEVRON_RIGHT, 40.dp, DriveCardMuted) }
                     }
                     // Always composed, at no width while closed, so what it remembers (the stamp already pressed) stays.
-                    if (opened > 0f) CardTearLineVertical(Modifier.fillMaxHeight().padding(vertical = d.u(20)).graphicsLayer { alpha = opened })
+                    if (opened > 0f) CardTearLineVertical(Modifier.fillMaxHeight().padding(vertical = d.u(CARD_PAD)).graphicsLayer { alpha = opened })
                     Box(Modifier.weight(1f, fill = true).fillMaxHeight().clipToBounds()) {
                         // Full width from the start and uncovered as the card widens, so no line reflows mid-way.
                         figures(
                             Modifier.wrapContentWidth(Alignment.Start, unbounded = true).width(figuresWidth).fillMaxHeight()
-                                .verticalScroll(rememberScrollState()).padding(d.u(28)).graphicsLayer { alpha = opened },
+                                .verticalScroll(rememberScrollState()).padding(d.u(32)).graphicsLayer { alpha = opened },
                         )
                     }
                 }
-                Spacer(Modifier.height(d.u(14)))
+                Spacer(Modifier.height(d.u(16)))
                 // The buttons follow the card's own width, closed or open.
                 actions(Modifier.fillMaxWidth())
             }
@@ -697,12 +645,13 @@ private fun RecordPoster(
     tearNotch: Float = 1f,
 ) {
     val d = LocalCarDimens.current
-    val shape = RoundedCornerShape(d.u(14))
+    val shape = RoundedCornerShape(d.u(CARD_RADIUS))
     val outer = if (framed) modifier.clip(shape).background(DriveCardBackground).border(1.dp, line(), shape) else modifier
     // The same order as the cards and the phone card: title, route, the distance, then a footer line.
-    Column(outer.padding(d.u(20)).testTag("record-poster")) {
+    // As on a Nike Run Club share card, the distance is the one big number and everything under it is one quiet tone.
+    Column(outer.padding(d.u(CARD_PAD)).testTag("record-poster")) {
         CardHeading(record, eyebrow, 30, pressStamp = pressStamp)
-        Spacer(Modifier.height(d.u(14)))
+        Spacer(Modifier.height(d.u(16)))
         // The map's own shape. A north–south drive's tall map takes the height the pane has, centred.
         val aspect = routeImageAspect(record)
         val tall = aspect < 1f && fillHeight
@@ -711,14 +660,14 @@ private fun RecordPoster(
             else Modifier.align(Alignment.CenterHorizontally).aspectRatio(aspect),
         ) {
             RouteVisual(routeMaps, record, record?.placeName, Modifier.matchParentSize(), drawRoute = true, replay = replay)
-            if (onReplay != null) ReplayButton(onReplay, Modifier.align(Alignment.TopEnd).padding(d.u(10)))
+            if (onReplay != null) ReplayButton(onReplay, Modifier.align(Alignment.TopEnd).padding(d.u(8)))
         }
-        if (tall) Spacer(Modifier.height(d.u(14))) else if (fillHeight) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(d.u(14)))
+        if (tall) Spacer(Modifier.height(d.u(16))) else if (fillHeight) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(d.u(16)))
         if (record != null) {
-            CardTearLine(d.u(20), Modifier.padding(bottom = d.u(4)), endNotch = tearNotch)
+            CardTearLine(d.u(CARD_PAD), Modifier.padding(bottom = d.u(8)), endNotch = tearNotch)
             PosterDistance(record, 58, DriveCardMuted)
             T(distanceLabel(record.distanceSource) + if (record.simulated) " · 시뮬레이션" else "", d.t(16), color = DriveCardMuted, maxLines = 2)
-            Spacer(Modifier.height(d.u(6)))
+            Spacer(Modifier.height(d.u(8)))
             PosterFooter(record)
             MapCredit(routeMaps, record)
         }
@@ -731,7 +680,7 @@ private fun ReplayButton(onClick: () -> Unit, modifier: Modifier) {
     val d = LocalCarDimens.current
     Row(
         modifier.heightIn(min = 64.dp).clip(RoundedCornerShape(d.u(12))).background(DriveCardBackground.copy(alpha = 0.78f))
-            .pressClick(onClick = onClick).padding(horizontal = d.u(14)).testTag("replay-route"),
+            .pressClick(onClick = onClick).padding(horizontal = d.u(16)).testTag("replay-route"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         CarIcon(CarGlyph.REFRESH, d.u(22), DriveCardText)
@@ -766,15 +715,16 @@ private fun SplitList(splits: List<KmSplit>) {
     val d = LocalCarDimens.current
     Column(Modifier.fillMaxWidth().testTag("splits")) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            T("구간 기록", d.t(18), Modifier.weight(1f), bold = true)
+            T("구간 기록", d.t(CarTextSize.BODY), Modifier.weight(1f), bold = true)
             T("운전 시간", d.t(16), color = muted())
         }
-        Spacer(Modifier.height(d.u(10)))
+        Spacer(Modifier.height(d.u(8)))
+        // A table, so a hairline under each row keeps the two columns aligned; the times read in equal-width digits.
         splits.forEachIndexed { index, split ->
             Box(Modifier.fillMaxWidth().height(1.dp).background(line()))
-            Row(Modifier.revealOnce(index + 2).fillMaxWidth().padding(vertical = d.u(10)), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.revealOnce(index + 2).fillMaxWidth().padding(vertical = d.u(12)), verticalAlignment = Alignment.CenterVertically) {
                 T(splitRange(split), d.t(18), Modifier.weight(1f), color = muted(), maxLines = 2, tabular = true)
-                Spacer(Modifier.width(d.u(12)))
+                Spacer(Modifier.width(d.u(16)))
                 Column(horizontalAlignment = Alignment.End) {
                     T(splitTime(split.seconds), d.t(18), bold = true, maxLines = 1, tabular = true)
                     if (split.restSeconds >= 60) T("휴게 ${elapsedText(split.restSeconds)}", d.t(16), color = muted(), maxLines = 1)
@@ -807,28 +757,26 @@ private fun RecordStats(record: RecordV, headline: Boolean = true) {
             T(distanceLabel(record.distanceSource), d.t(16), color = muted())
             Spacer(Modifier.height(d.u(16)))
         }
-        Row(Modifier.height(IntrinsicSize.Min)) {
+        // Value-over-label cells on one baseline, apart by space rather than a rule (Apple Fitness' summary grid).
+        Row(horizontalArrangement = Arrangement.spacedBy(d.u(40))) {
             StatCell(elapsedText(record.elapsedSeconds), "기록 시간")
-            Spacer(Modifier.width(d.u(24)))
-            VerticalRule(Modifier.fillMaxHeight())
-            Spacer(Modifier.width(d.u(24)))
             StatCell(clockRange(clockTime(record.startedAtMillis), clockTime(record.endedAtMillis)), "출발–도착 시각")
         }
         // Its own row: beside the times it is cut short on a half-width panel.
         efficiencyCell(record)?.let { (value, label) ->
-            Spacer(Modifier.height(d.u(12)))
+            Spacer(Modifier.height(d.u(16)))
             Box(Modifier.testTag("record-efficiency")) { StatCell(value, label) }
         }
         val rest = record.restSeconds()
         if (rest >= 60) {
-            Spacer(Modifier.height(d.u(10)))
+            Spacer(Modifier.height(d.u(16)))
             T("휴게 ${record.rests.orEmpty().size}회 · ${elapsedText(rest)} 포함", d.t(16), Modifier.testTag("record-rest"), color = muted(), maxLines = 2)
         }
         // The navigation app's own figures, as it reported them. Beside the drive, not against it.
         val naviMeters = record.naviDistanceMeters
         val naviSeconds = record.naviDurationSeconds
         if (naviMeters != null && naviSeconds != null && naviMeters > 0) {
-            Spacer(Modifier.height(d.u(6)))
+            Spacer(Modifier.height(d.u(8)))
             T(routeSummaryText(RouteSummary(naviMeters, naviSeconds)), d.t(16), Modifier.testTag("record-navi-route"), color = muted(), maxLines = 2)
         }
     }
@@ -852,7 +800,8 @@ fun efficiencyCell(record: RecordV): Pair<String, String>? {
 private fun StatCell(value: String, label: String) {
     val d = LocalCarDimens.current
     Column {
-        T(value, d.t(26), bold = true, maxLines = 1, tabular = true)
+        T(value, d.t(28), bold = true, maxLines = 1, tabular = true)
+        Spacer(Modifier.height(d.u(4)))
         T(label, d.t(16), color = muted(), maxLines = 2)
     }
 }
@@ -864,30 +813,32 @@ fun OfflineSavedScreen(record: RecordV?, destination: MapPoint?, linked: Boolean
     val d = LocalCarDimens.current
     Frame(onBackToGoal, simulated = record?.simulated == true) {
         Panes(0.5f, left = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Heading("기록은 안전하게 보관했어요", 32, Modifier.fillMaxWidth())
-                Spacer(Modifier.height(d.u(10)))
-                CarIcon(CarGlyph.CLOUD_OFF, d.u(70), fg())
-                Spacer(Modifier.height(d.u(6)))
-                T(if (linked) "연결이 끊겨 차량에 임시 저장했어요" else "휴대폰을 연결하지 않아 차량에 저장했어요", d.t(19), Modifier.testTag("offline-saved"), bold = true, align = TextAlign.Center)
-                Spacer(Modifier.height(d.u(12)))
+            // Left-aligned and text-led like the other summaries: a small status glyph, the headline, the reason, then the drive.
+            Column {
+                CarIcon(CarGlyph.CLOUD_OFF, d.u(48), muted())
+                Spacer(Modifier.height(d.u(16)))
+                Heading("기록은 안전하게 보관했어요", CarTextSize.TITLE.baseSp, Modifier.fillMaxWidth())
+                Spacer(Modifier.height(d.u(8)))
+                T(if (linked) "연결이 끊겨 차량에 임시 저장했어요" else "휴대폰을 연결하지 않아 차량에 저장했어요", d.t(CarTextSize.BODY), Modifier.testTag("offline-saved"), bold = true)
+                Spacer(Modifier.height(d.u(24)))
                 if (record != null) {
                     Row(
-                        Modifier.fillMaxWidth().clip(RoundedCornerShape(d.u(10))).background(soft()).padding(horizontal = d.u(22), vertical = d.u(12)),
+                        Modifier.fillMaxWidth().clip(RoundedCornerShape(d.u(TILE_RADIUS))).background(soft()).padding(horizontal = d.u(24), vertical = d.u(16)),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        CarIcon(CarGlyph.PIN, d.u(26), fg())
-                        Spacer(Modifier.width(d.u(18)))
+                        CarIcon(CarGlyph.PIN, d.u(24), fg())
+                        Spacer(Modifier.width(d.u(16)))
                         Column {
-                            T("${record.placeName} · ${elapsedText(record.elapsedSeconds)}", d.t(19), bold = true, maxLines = 1)
+                            T("${record.placeName} · ${elapsedText(record.elapsedSeconds)}", d.t(CarTextSize.BODY), bold = true, maxLines = 1)
+                            Spacer(Modifier.height(d.u(4)))
                             T(if (syncing) "다시 전송 중" else "동기화 대기", d.t(16), color = muted())
                         }
                     }
-                    Spacer(Modifier.height(d.u(10)))
+                    Spacer(Modifier.height(d.u(16)))
                 }
-                T(if (linked) "네트워크가 연결되면 다시 전송해요" else "연결하면 이어서 전송해요", d.t(16), color = muted(), align = TextAlign.Center)
-                Spacer(Modifier.height(d.u(12)))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(d.u(12))) {
+                T(if (linked) "네트워크가 연결되면 다시 전송해요" else "연결하면 이어서 전송해요", d.t(16), color = muted())
+                Spacer(Modifier.height(d.u(32)))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(d.u(16))) {
                     PrimaryButton(if (linked) "다시 시도" else "휴대폰 연결", "retry-sync", Modifier.weight(1f), loading = syncing, icon = if (linked) CarGlyph.REFRESH else null, onClick = onRetry)
                     SecondaryButton("돌아가기", "offline-back", Modifier.weight(1f), onClick = onBackToGoal)
                 }
@@ -907,28 +858,27 @@ fun RecoveryScreen(routeMaps: RouteMapCache, record: RecordV, destination: MapPo
     Frame(null, simulated = record.simulated) {
         Panes(0.5f, left = {
             Column {
-                Heading("저장된 기록을 찾았어요", 32)
-                Spacer(Modifier.height(d.u(12)))
+                // The badge sits above the headline as a status chip, outlined like the simulation badge (not pressable).
                 Row(
-                    Modifier.border(1.dp, muted(), RoundedCornerShape(d.u(12))).padding(horizontal = d.u(14), vertical = d.u(8)),
+                    Modifier.border(1.dp, muted(), RoundedCornerShape(d.u(TILE_RADIUS))).padding(horizontal = d.u(12), vertical = d.u(8)),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    CarIcon(CarGlyph.DOCUMENT, d.u(24), fg())
+                    CarIcon(CarGlyph.DOCUMENT, d.u(20), fg())
                     Spacer(Modifier.width(d.u(8)))
-                    T("불완전한 기록", d.t(18), Modifier.testTag("partial-badge"), bold = true)
+                    T("불완전한 기록", d.t(16), Modifier.testTag("partial-badge"), bold = true)
                 }
-                Spacer(Modifier.height(d.u(12)))
-                T("앱이 종료되기 전까지의 기록이에요", d.t(19))
-                Spacer(Modifier.height(d.u(22)))
-                Row(Modifier.height(IntrinsicSize.Min)) {
+                Spacer(Modifier.height(d.u(16)))
+                Heading("저장된 기록을 찾았어요", CarTextSize.HEADING.baseSp)
+                Spacer(Modifier.height(d.u(8)))
+                T("앱이 종료되기 전까지의 기록이에요", d.t(CarTextSize.BODY), color = muted())
+                Spacer(Modifier.height(d.u(32)))
+                Row(horizontalArrangement = Arrangement.spacedBy(d.u(48))) {
                     Stat(distanceText(record.distanceKm), if (record.distanceKm != null) "km" else "", "확인된 구간의 추정 거리")
-                    Spacer(Modifier.width(d.u(32)))
-                    VerticalRule(Modifier.fillMaxHeight())
-                    Spacer(Modifier.width(d.u(32)))
                     Stat(elapsedText(record.elapsedSeconds), "", "기록 시간")
                 }
-                Spacer(Modifier.height(d.u(24)))
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(d.u(12))) {
+                Spacer(Modifier.height(d.u(32)))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(d.u(16))) {
+                    // Keeping and deleting are both the driver's call, so they stay equal in width; only keeping is filled.
                     PrimaryButton("부분 기록 보관", "keep-partial", Modifier.weight(1f), onClick = onKeep)
                     SecondaryButton(if (confirmDelete) "한 번 더 누르면 삭제" else "기록 삭제", "delete-partial", Modifier.weight(1f), danger = confirmDelete) {
                         if (confirmDelete) onDelete() else confirmDelete = true

@@ -50,6 +50,13 @@ public class JourneyController {
         return service.state(service.accountFor(auth));
     }
 
+    @GetMapping("/stamps")
+    public ResponseEntity<java.util.List<StampCollection.Visit>> stamps(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(service.stamps(service.accountFor(auth)));
+    }
+
     @PutMapping("/goals/{goalId}")
     public GoalView putGoal(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
                             @PathVariable String goalId, @Valid @RequestBody GoalPutRequest request) {
