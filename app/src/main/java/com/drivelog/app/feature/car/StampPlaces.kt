@@ -115,9 +115,11 @@ fun StampLine(result: StampResult, press: Boolean = result.isNew) {
 private fun RegionChip(region: StampRegion, collected: Int, modifier: Modifier, onClick: () -> Unit) {
     val d = LocalCarDimens.current
     val shape = RoundedCornerShape(d.u(CarRadius.TILE))
-    // One surface treatment, the soft tint: a fill and an outline together read as heavier than a list tile needs.
+    // Match the stamp tiles: visited regions have a soft fill, others have an outline.
     Column(
-        modifier.heightIn(min = 64.dp).clip(shape).background(soft()).pressClick(Role.Button, onClick = onClick)
+        modifier.heightIn(min = 64.dp).clip(shape)
+            .then(if (collected > 0) Modifier.background(soft()) else Modifier.border(1.dp, line(), shape))
+            .pressClick(Role.Button, onClick = onClick)
             .padding(d.u(CarSpace.M)).testTag("region-${region.id}"),
         verticalArrangement = Arrangement.Center,
     ) {
@@ -125,7 +127,7 @@ private fun RegionChip(region: StampRegion, collected: Int, modifier: Modifier, 
             T(region.name, d.t(22), Modifier.weight(1f), bold = true, maxLines = 1)
             CarIcon(CarGlyph.CHEVRON_RIGHT, d.u(24), muted())
         }
-        T("${collected}곳 방문 · ${region.places.size}곳", d.t(CarTextSize.CAPTION), Modifier.padding(top = d.u(CarSpace.XS)), color = if (collected > 0) fg() else muted(), maxLines = 2)
+        T(if (collected > 0) "${collected}곳 방문 · 전체 ${region.places.size}곳" else "아직 방문 전 · ${region.places.size}곳", d.t(CarTextSize.CAPTION), Modifier.padding(top = d.u(CarSpace.XS)), color = if (collected > 0) fg() else muted(), bold = collected > 0, maxLines = 2)
         // Two lines kept for every region: long names (광주's) wrapped and made that one tile taller than its row.
         T(region.places.take(2).joinToString(" · ") { it.name }, d.t(CarTextSize.CAPTION), Modifier.padding(top = d.u(CarSpace.S)), color = muted(), maxLines = 2, minLines = 2)
     }
@@ -136,6 +138,7 @@ private fun RegionChip(region: StampRegion, collected: Int, modifier: Modifier, 
 fun StampBoard(records: List<RecordV>) {
     val d = LocalCarDimens.current
     val stamps = remember(records) { collectedStamps(records) }
+    val visitedRegions = StampRegions.count { each -> each.places.any { it.id in stamps } }
     var regionId by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<String?>(null) }
     val region = StampRegions.firstOrNull { it.id == regionId }
     androidx.activity.compose.BackHandler(enabled = region != null) { regionId = null }
@@ -148,6 +151,7 @@ fun StampBoard(records: List<RecordV>) {
                 item(key = "national-introduction", span = { GridItemSpan(maxLineSpan) }) {
                     Column(Modifier.padding(vertical = d.u(CarSpace.S))) {
                         T("전국에 남기는 드라이브", d.t(CarTextSize.TITLE), display = true)
+                        T(if (stamps.isEmpty()) "첫 방문이 스탬프로 남아요" else "${visitedRegions}개 지역에서 ${stamps.size}곳 방문", d.t(CarTextSize.BODY), Modifier.padding(top = d.u(CarSpace.S)).testTag("national-stamp-count"), bold = true)
                         T("${StampRegions.size}개 지역 · ${StampPlaces.size}곳의 관광명소", d.t(18), Modifier.padding(top = d.u(CarSpace.S)), color = muted())
                         T("지역을 골라 다녀온 곳과 다음 여행지를 살펴보세요", d.t(CarTextSize.CAPTION), Modifier.padding(top = d.u(CarSpace.XS)), color = muted())
                     }

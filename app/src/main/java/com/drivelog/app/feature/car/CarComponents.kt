@@ -68,9 +68,11 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -218,7 +220,13 @@ private fun CarButton(
     Row(
         modifier.heightIn(min = size.height).clip(shape).background(fill)
             .then(if (!filled && inactive) Modifier.border(4.dp, ink.copy(alpha = 0.1f), shape) else Modifier)
-            .pressClick(enabled = !inactive, source = press, indication = null, onClick = onClick).padding(horizontal = size.padding).testTag(tag),
+            .pressClick(enabled = !inactive, source = press, indication = null, onClick = onClick)
+            .semantics {
+                if (loading) {
+                    contentDescription = text
+                    stateDescription = "처리 중"
+                }
+            }.padding(horizontal = size.padding).testTag(tag),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center,
     ) {
         // The guide's Loading state swaps the label for the loader; a new label (a toggle, an armed delete) swaps in place.
@@ -232,7 +240,7 @@ private fun CarButton(
             },
             contentAlignment = Alignment.Center,
         ) { label ->
-            if (label == null) Box(contentAlignment = Alignment.Center) { LoadingIndicator(LoadingStyle.LINEAR, size.icon, ink) }
+            if (label == null) Box(Modifier.clearAndSetSemantics {}, contentAlignment = Alignment.Center) { LoadingIndicator(LoadingStyle.LINEAR, size.icon, ink) }
             else Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
                 if (icon != null) {
                     CarIcon(icon, size.icon, content)
