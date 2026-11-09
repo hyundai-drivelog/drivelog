@@ -4,6 +4,10 @@
 
 이 절이 아래 이전 인계의 미설치·Docker 미확인 설명보다 우선한다. 차량·서버는 `feature/drive-card-redesign`, 모바일은 `feature/car-link` 브랜치에서 작업한다. 두 저장소의 코드·문서 변경을 각각 커밋하고 main 대상 PR로 제출한다. PR은 병합하지 않는다.
 
+- 차량·서버 PR: https://github.com/hyundai-drivelog/drivelog/pull/11 (구현 커밋 `7de764e`).
+- Android PR: https://github.com/hyundai-drivelog-mobile/drivelog-mobile/pull/6 (구현 커밋 `93b98e0`).
+- 두 PR을 생성·푸시했으며 이번 문서 갱신도 같은 브랜치에 추가 커밋한다. 다음 세션은 PR 상태·리뷰·CI를 새로 조회한다. Git 작성자는 현재 PC에 미설정이어서 GitHub 로그인 계정 HongJongMin의 noreply 주소를 각 커밋 명령에만 적용했다. 전역 설정은 변경하지 않았다.
+
 - PostgreSQL Compose 컨테이너 `drivelog-local-postgres-1`(17.11, healthy)과 local 프로파일 서버(8080)를 실행했다. `/actuator/health`와 `/api/v1/health`가 UP이었다. 기존 Docker 컨테이너·볼륨이 없는 것을 확인한 뒤 새 DB를 만들었으며, 자격 증명은 Git 제외 `server/.env`에만 있다. 초기화하거나 비밀번호를 재생성하지 않는다.
 - AVD `DRIVELOG_Pleos`, `emulator-5554`, Android 사용자 10에서 차량·모바일 앱을 6자리 코드로 연결했다. 차량은 `-PphoneLinkEnabled=true` 디버그 빌드다. 모바일 앱은 데이터 유지 업데이트했다. 실제 휴대폰은 연결되지 않았고, 동일 에뮬레이터 내 두 앱 간 검증이다.
 - 사용자 요청으로 광안리 → 해운대 약 5.6km·4분을 에뮬레이터 위치·기어로 재현해 저장했다. 목적지 이름은 `베니키아호텔 해운대`, 도착 좌표로 인정된 스탬프는 `해운대 해수욕장`이다. 차량 1/56·서버 동기화 완료·모바일 최근 기록 및 첫 방문 도장을 확인했다. 실제 차량 주행으로 설명하지 않는다. 요청한 기록과 스탬프는 보존하고 기어는 Park로 돌렸다.
