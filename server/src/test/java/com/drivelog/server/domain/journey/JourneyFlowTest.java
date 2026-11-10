@@ -98,6 +98,31 @@ class JourneyFlowTest {
     }
 
     @Test
+    void stampsFollowRealVisitsAcrossDevicesAndDeletion() throws Exception {
+        body(get("/api/v1/stamps"), 401);
+        String payload = """
+            {"placeName":"경복궁","startedAtMillis":1000,"endedAtMillis":61000,"elapsedSeconds":60,
+             "distanceKm":1.5,"distanceSource":"GPS_ESTIMATED","status":"COMPLETE","simulated":false,
+             "route":[[37.56,126.97,1000],[37.5786111,126.9772222,61000]]}
+            """;
+        String first = java.util.UUID.randomUUID().toString();
+        body(withJson(as(car, put("/api/v1/records/" + first)), payload), 200);
+        // Retrying an upload must not duplicate a stamp.
+        body(withJson(as(car, put("/api/v1/records/" + first)), payload), 200);
+        JsonNode visits = body(as(phone, get("/api/v1/stamps")), 200);
+        assertThat(visits.size()).isEqualTo(1);
+        assertThat(visits.get(0).path("place").path("id").asText()).isEqualTo("gyeongbokgung");
+        assertThat(visits.get(0).path("recordId").asText()).isEqualTo(first);
+        assertThat(body(as(link()[0], get("/api/v1/stamps")), 200).size()).isZero();
+        // Null distance and simulation must never earn a stamp.
+        for (String invalid : new String[]{payload.replace("1.5", "null"), payload.replace("false", "true")}) {
+            body(withJson(as(car, put("/api/v1/records/" + java.util.UUID.randomUUID())), invalid), 200);
+        }
+        body(as(car, delete("/api/v1/records/" + first)), 204);
+        assertThat(body(as(phone, get("/api/v1/stamps")), 200).size()).isZero();
+    }
+
+    @Test
     void goalCreatedOnPhoneAppearsOnCar() throws Exception {
         JsonNode state = body(as(car, get("/api/v1/journey")), 200);
         assertThat(state.get("activeGoal").get("name").asText()).isEqualTo("올해 가보고 싶은 부산 바다");

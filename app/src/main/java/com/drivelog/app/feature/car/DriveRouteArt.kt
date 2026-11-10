@@ -122,7 +122,7 @@ fun trimLines(lines: List<List<Offset>>, fraction: Float): List<List<Offset>> {
 @Composable
 fun DriveRouteArt(
     points: List<MapPoint>, destination: MapPoint?, destinationLabel: String?, modifier: Modifier = Modifier, drawRoute: Boolean = false,
-    map: MapFrame? = null, replay: Int = 0,
+    map: MapFrame? = null, replay: Int = 0, markScale: Float = 1f,
 ) {
     val d = LocalCarDimens.current
     val measurer = rememberTextMeasurer()
@@ -166,11 +166,11 @@ fun DriveRouteArt(
             val traced = trace.value
             // A fine line, scaled to the frame so a small card is not crossed by a bar: about 0.6% of its shorter
             // side, kept between 2.2 and 3.4 units so it never vanishes nor turns heavy on a large one.
-            val width = (minOf(size.width, size.height) * 0.006f).coerceIn(2.2f * d.scale * density, 3.4f * d.scale * density)
+            val width = (minOf(size.width, size.height) * 0.006f).coerceIn(2.2f * d.scale * density * markScale, 3.4f * d.scale * density * markScale)
             val project: (MapPoint) -> Offset = if (map != null) {
                 val (scale, offset) = cropOf(map, size.width, size.height)
                 ({ point -> map.project(point) * scale + offset })
-            } else fitToFrame(all, size.width, size.height, 46f * d.scale * density)
+            } else fitToFrame(all, size.width, size.height, 46f * d.scale * density * markScale)
             val lines = trimLines(route.pieces.map { piece -> roundedRoute(piece.map(project)) }, traced)
             lines.zipWithNext().forEach { (before, after) ->
                 drawLine(DriveCardMuted, before.last(), after.first(), width * 0.7f, StrokeCap.Round, dashedEffect(width * 1.4f))
@@ -192,7 +192,7 @@ fun DriveRouteArt(
             val landing = ((traced - PIN_LANDS_AT) / (1f - PIN_LANDS_AT)).coerceIn(0f, 1f)
             if (pin != null && landing > 0f) {
                 val tip = project(pin)
-                drawPin(tip, 30f * d.scale * density * landing, DriveCardText, DriveCardBackground)
+                drawPin(tip, 30f * d.scale * density * markScale * landing, DriveCardText, DriveCardBackground)
                 if (destinationLabel != null) {
                     val layout = measurer.measure(destinationLabel, labelStyle, maxLines = 1)
                     val gap = 16f * d.scale * density

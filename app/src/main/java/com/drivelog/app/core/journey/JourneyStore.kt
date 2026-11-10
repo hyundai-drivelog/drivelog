@@ -136,7 +136,13 @@ class JourneyStore(
 
     fun setToken(token: String) {
         vault.write(token)
-        update { it.copy(token = token) }
+        update { state ->
+            // Include drives saved before linking (or before enabling the phone-link build).
+            val queued = state.outbox.filter { it.type == OutboxOp.RECORD }.map { it.recordId }.toSet()
+            val history = if (state.token == null && queueForServer) state.journey.records
+                .filterNot { it.id in queued }.map { OutboxOp(OutboxOp.RECORD, it.id, it) } else emptyList()
+            state.copy(token = token, outbox = state.outbox + history)
+        }
         scope.launch(Dispatchers.IO) { sync() }
     }
 

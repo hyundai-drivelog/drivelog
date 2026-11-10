@@ -94,17 +94,17 @@ private fun stampDate(millis: Long) = SimpleDateFormat("yyyy.MM.dd", Locale.KORE
 fun StampLine(result: StampResult, press: Boolean = result.isNew) {
     val d = LocalCarDimens.current
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(d.u(10))).background(soft())
-            .padding(horizontal = d.u(14), vertical = d.u(10)).testTag("stamp-line"),
+        Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(d.u(CarRadius.TILE))).background(soft())
+            .padding(horizontal = d.u(CarSpace.M), vertical = d.u(CarSpace.S)).testTag("stamp-line"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // A stamp just earned is pressed down; one already held is simply there.
         StampArt(result.place, true, d.u(64), Modifier.stampPress(result.place.id, enabled = press))
-        Spacer(Modifier.width(d.u(12)))
+        Spacer(Modifier.width(d.u(CarSpace.M)))
         Column(Modifier.weight(1f)) {
-            T(if (result.isNew) "새 스탬프" else "다시 찾은 곳", d.t(16), color = muted(), maxLines = 1)
-            T(result.place.name, d.t(20), bold = true, maxLines = 2)
-            T(result.place.motto, d.t(16), color = muted(), maxLines = 2)
+            T(if (result.isNew) "새 스탬프" else "다시 찾은 곳", d.t(CarTextSize.CAPTION), color = muted(), bold = result.isNew, maxLines = 1)
+            T(result.place.name, d.t(CarTextSize.BODY), bold = true, maxLines = 2)
+            T(result.place.motto, d.t(CarTextSize.CAPTION), color = muted(), maxLines = 2)
         }
     }
 }
@@ -113,10 +113,13 @@ fun StampLine(result: StampResult, press: Boolean = result.isNew) {
 @Composable
 private fun RegionTile(region: StampRegion, stamps: Map<String, Stamp>, modifier: Modifier, onClick: () -> Unit) {
     val d = LocalCarDimens.current
-    val shape = RoundedCornerShape(d.u(14))
+    val shape = RoundedCornerShape(d.u(CarRadius.TILE))
     val collected = region.places.count { it.id in stamps }
+    // Match the stamp tiles: visited regions have a soft fill, others have an outline.
     Row(
-        modifier.heightIn(min = 88.dp).clip(shape).background(soft()).pressClick(Role.Button, onClick = onClick)
+        modifier.heightIn(min = 88.dp).clip(shape)
+            .then(if (collected > 0) Modifier.background(soft()) else Modifier.border(1.dp, line(), shape))
+            .pressClick(Role.Button, onClick = onClick)
             .padding(horizontal = d.u(20), vertical = d.u(16)).testTag("region-${region.id}"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -145,7 +148,7 @@ fun StampBoard(records: List<RecordV>) {
             BoardHeader("전국 스탬프", "${StampRegions.size}개 지역 · ${StampPlaces.size}곳 · ${stamps.size}곳 방문")
             LazyVerticalGrid(
                 GridCells.Adaptive(maxOf(d.u(220), 144.dp)), Modifier.fillMaxSize().testTag("stamp-regions"),
-                horizontalArrangement = Arrangement.spacedBy(d.u(12)), verticalArrangement = Arrangement.spacedBy(d.u(12)),
+                horizontalArrangement = Arrangement.spacedBy(d.u(CarSpace.M)), verticalArrangement = Arrangement.spacedBy(d.u(CarSpace.M)),
             ) {
                 items(StampRegions, key = { it.id }) { each ->
                     RegionTile(each, stamps, Modifier.fillMaxWidth()) { regionId = each.id }
@@ -184,11 +187,12 @@ private fun RegionStamps(region: StampRegion, stamps: Map<String, Stamp>) {
     val d = LocalCarDimens.current
     LazyVerticalGrid(
         GridCells.Adaptive(maxOf(d.u(220), 144.dp)), Modifier.fillMaxSize(),
-        horizontalArrangement = Arrangement.spacedBy(d.u(12)), verticalArrangement = Arrangement.spacedBy(d.u(12)),
+        horizontalArrangement = Arrangement.spacedBy(d.u(CarSpace.M)), verticalArrangement = Arrangement.spacedBy(d.u(CarSpace.M)),
     ) {
         itemsIndexed(region.places, key = { _, it -> it.id }) { index, place ->
             val stamp = stamps[place.id]
-            val shape = RoundedCornerShape(d.u(14))
+            val shape = RoundedCornerShape(d.u(CarRadius.TILE))
+            // Earned: the soft tile. Not yet: an outline only, so the page divides into two clear states.
             Column(
                 Modifier.revealOnce(index).fillMaxWidth().clip(shape)
                     .then(if (stamp != null) Modifier.background(soft()) else Modifier.border(1.dp, line(), shape))
@@ -205,43 +209,6 @@ private fun RegionStamps(region: StampRegion, stamps: Map<String, Stamp>) {
                 )
                 Spacer(Modifier.height(d.u(8)))
                 T(place.motto, d.t(15), Modifier.fillMaxWidth().heightIn(min = d.u(40)), color = muted(), align = TextAlign.Center, maxLines = 2)
-            }
-        }
-    }
-}
-
-/**
- * Debug builds only, like every mockup: what a partner's arrival benefit would look like, shown beside a stamp. No
- * partner exists, nothing is sent and no record changes; the card says it is an example in two places.
- */
-@Composable
-fun BenefitPreview(place: StampPlace) {
-    val d = LocalCarDimens.current
-    var open by remember(place.id) { mutableStateOf(false) }
-    Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(d.u(10))).border(2.dp, line(), RoundedCornerShape(d.u(10)))
-            .padding(horizontal = d.u(14), vertical = d.u(12)).testTag("benefit-preview"),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            T("도착 혜택", d.t(14), Modifier.weight(1f), color = muted(), bold = true, maxLines = 1)
-            T("예시 화면", d.t(13), Modifier.clip(RoundedCornerShape(d.u(6))).border(1.dp, line(), RoundedCornerShape(d.u(6))).padding(horizontal = d.u(8), vertical = d.u(2)), color = muted(), maxLines = 1)
-        }
-        Spacer(Modifier.height(d.u(4)))
-        T("${shortName(place.name)} 근처 제휴 카페 · 음료 10% 할인", d.t(18), bold = true, maxLines = 1)
-        T("실제 제휴가 없는 예시예요. 도착이 확인된 운전자만 받는 혜택을 보여 줘요", d.t(14), color = muted(), maxLines = 2)
-        Spacer(Modifier.height(d.u(8)))
-        SecondaryButton(if (open) "접기" else "혜택 보기", "benefit-open", Modifier.fillMaxWidth(), size = ButtonSize.SMALL) { open = !open }
-        androidx.compose.animation.AnimatedVisibility(
-            open,
-            enter = androidx.compose.animation.expandVertically(motionTween()) + androidx.compose.animation.fadeIn(motionTween(MOTION_ENTER_MS)),
-            exit = androidx.compose.animation.shrinkVertically(motionTween()) + androidx.compose.animation.fadeOut(motionTween()),
-        ) {
-            Column(
-                Modifier.padding(top = d.u(10)).fillMaxWidth().clip(RoundedCornerShape(d.u(10))).background(soft()).padding(d.u(14)),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                T("매장에서 이 화면을 보여 주세요", d.t(16), bold = true, align = TextAlign.Center)
-                T("예시 코드 · 실제로 쓸 수 없어요", d.t(14), color = muted(), align = TextAlign.Center)
             }
         }
     }

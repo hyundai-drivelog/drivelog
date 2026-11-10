@@ -136,7 +136,7 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
             Screen.OFFLINE -> OfflineSavedScreen(shown.finished, shown.finished?.destinationPoint(), store.token != null, model.syncing, model::retrySync, model::home)
             Screen.WELCOME -> WelcomeScreen(model::finishWelcome)
             Screen.HOME -> HomeScreen(
-                store.journey.records, model.routeMaps, model.simulation,
+                store.journey.records, model.routeMaps,
                 model::openDestination, model::openRecord, model::openHistory, model::openStamps,
                 // A mockup of a community: a submitted build must not offer it.
                 if (BuildConfig.DEBUG) model::openCommunity else null,

@@ -22,6 +22,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.padding
@@ -336,7 +346,7 @@ fun MapCornerCredit(modifier: Modifier = Modifier) {
  * [replay] draws the route again from the start each time it changes.
  */
 @Composable
-fun RouteVisual(cache: RouteMapCache, record: RecordV?, label: String?, modifier: Modifier = Modifier, drawRoute: Boolean = false, replay: Int = 0) {
+fun RouteVisual(cache: RouteMapCache, record: RecordV?, label: String?, modifier: Modifier = Modifier, drawRoute: Boolean = false, replay: Int = 0, markScale: Float = 1f) {
     val ready by cache.ready.collectAsState()
     val hasImage = record != null && cache.has(record.id)
     val frame by produceState<MapFrame?>(null, record?.id, hasImage, ready) {
@@ -344,6 +354,59 @@ fun RouteVisual(cache: RouteMapCache, record: RecordV?, label: String?, modifier
     }
     val points = remember(record?.id) { record?.route?.toMapPoints().orEmpty() }
     Crossfade(frame, modifier, tween(320), label = "route image") { loaded ->
-        DriveRouteArt(points, record?.destinationPoint(), label, Modifier.fillMaxSize(), drawRoute || replay > 0, loaded, replay)
+        DriveRouteArt(points, record?.destinationPoint(), label, Modifier.fillMaxSize(), drawRoute || replay > 0, loaded, replay, markScale)
+    }
+}
+
+private const val THUMB_MARKS = 0.55f
+private const val THUMB_LIVE_TIMEOUT_MS = 15_000L
+
+/**
+ * A list thumbnail the way activity apps show one (Strava's feed, Nike Run Club's history, komoot's tours): the
+ * drive's own stored map, cropped to a tile, with its white route and marks scaled down. It reuses the image the
+ * drive card already keeps, so a list fetches nothing; without one it falls back to the card's map-free art.
+ * A drive with no route is a pin on the card's dark ground.
+ */
+@Composable
+fun RecordThumbnail(cache: RouteMapCache, record: RecordV, modifier: Modifier = Modifier) {
+    val d = LocalCarDimens.current
+    Box(modifier.clip(RoundedCornerShape(d.u(12))).background(DriveCardBackground).clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
+        if (record.route.size >= 2) RouteVisual(cache, record, null, Modifier.fillMaxSize(), markScale = THUMB_MARKS)
+        else CarIcon(CarGlyph.PIN, d.u(30), DriveCardMuted)
+    }
+}
+
+/**
+ * The same tile for a course, which has no stored image: a dark map of its area is taken while the screen is open
+ * (parked only, like every screen but recording), and the art stands in until it arrives or if it never does. The
+ * route is drawn here over the map and never sent. A screen that lists courses passes [maps] so filtering or
+ * scrolling back does not fetch a map again; each entry is keyed by [id] and the tile's size, since a map taken for
+ * another size (split window, text scale) would not line up with the route. [stamp] marks a course that ends at one.
+ */
+@Composable
+fun CourseThumbnail(
+    cache: RouteMapCache, points: List<MapPoint>, modifier: Modifier = Modifier,
+    id: String = "", maps: MutableMap<String, MapFrame>? = null, stamp: StampPlace? = null,
+) {
+    val d = LocalCarDimens.current
+    val store = maps ?: remember { mutableStateMapOf() }
+    var box by remember { mutableStateOf(IntSize.Zero) }
+    val key = "$id@${box.width}x${box.height}"
+    val frame = store[key]
+    LaunchedEffect(key, points) {
+        if (frame != null || points.size < 2 || box == IntSize.Zero) return@LaunchedEffect
+        withTimeoutOrNull(THUMB_LIVE_TIMEOUT_MS) { cache.liveFrame(points, box.width, box.height, dark = true) }
+            ?.let { store[key] = it }
+    }
+    Box(modifier.clip(RoundedCornerShape(d.u(12))).background(DriveCardBackground).onSizeChanged { box = it }.clearAndSetSemantics {}) {
+        Crossfade(frame, Modifier.fillMaxSize(), tween(320), label = "course image") { loaded ->
+            DriveRouteArt(points, null, null, Modifier.fillMaxSize(), map = loaded, markScale = THUMB_MARKS)
+        }
+        if (stamp != null) {
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(d.u(6)).size(d.u(40)).clip(CircleShape).background(DriveCardBackground.copy(alpha = 0.85f)),
+                contentAlignment = Alignment.Center,
+            ) { StampArt(stamp, collected = true, size = d.u(34), ink = DriveCardText) }
+        }
     }
 }

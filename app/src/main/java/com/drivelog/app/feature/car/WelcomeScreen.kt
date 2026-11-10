@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -84,26 +85,26 @@ fun WelcomeScreen(onDone: () -> Unit) {
             val text: @Composable () -> Unit = {
                 Column {
                     T(page.title, d.t(48), display = true, maxLines = 3)
-                    Spacer(Modifier.height(d.u(18)))
-                    T(page.body, d.t(21), color = muted(), maxLines = 4)
+                    Spacer(Modifier.height(d.u(CarSpace.M)))
+                    T(page.body, d.t(CarTextSize.BODY), Modifier.widthIn(max = d.u(520)), color = muted(), maxLines = 4)
                 }
             }
             if (d.stacked) {
-                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(d.u(24))) {
+                Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(d.u(CarSpace.L))) {
                     page.visual(Modifier.fillMaxWidth().height(d.u(300)))
                     text()
                 }
             } else {
-                Row(Modifier.fillMaxSize().padding(vertical = d.u(10)), horizontalArrangement = Arrangement.spacedBy(d.u(48)), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxSize().padding(vertical = d.u(CarSpace.S)), horizontalArrangement = Arrangement.spacedBy(d.u(CarSpace.XXL)), verticalAlignment = Alignment.CenterVertically) {
                     page.visual(Modifier.weight(0.52f).fillMaxHeight())
                     Box(Modifier.weight(0.48f)) { text() }
                 }
             }
         }
-        Spacer(Modifier.height(d.u(14)))
+        Spacer(Modifier.height(d.u(CarSpace.M)))
         if (d.stacked) {
             PageDots(pages.size, pager.currentPage)
-            Spacer(Modifier.height(d.u(14)))
+            Spacer(Modifier.height(d.u(CarSpace.M)))
         }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             if (!d.stacked) PageDots(pages.size, pager.currentPage)
@@ -112,14 +113,14 @@ fun WelcomeScreen(onDone: () -> Unit) {
                 SecondaryButton("이전", "welcome-back", size = ButtonSize.MEDIUM) {
                     scope.launch { if (motion) pager.animateScrollToPage(pager.currentPage - 1) else pager.scrollToPage(pager.currentPage - 1) }
                 }
-                Spacer(Modifier.width(d.u(12)))
+                Spacer(Modifier.width(d.u(CarSpace.M)))
             }
             PrimaryButton(if (last) "시작하기" else "다음", "welcome-next", if (d.stacked) Modifier.weight(1f) else Modifier.width(d.u(320)), chevron = !last, size = ButtonSize.MEDIUM) {
                 if (last) onDone()
                 else scope.launch { if (motion) pager.animateScrollToPage(pager.currentPage + 1) else pager.scrollToPage(pager.currentPage + 1) }
             }
         }
-        Spacer(Modifier.height(d.u(10)))
+        Spacer(Modifier.height(d.u(CarSpace.S)))
     }
 }
 
@@ -141,22 +142,18 @@ private fun PageDots(count: Int, current: Int) {
 @Composable
 private fun PhotoVisual(modifier: Modifier) {
     val d = LocalCarDimens.current
-    Box(modifier.clip(RoundedCornerShape(d.u(14))).background(DriveCardBackground)) {
+    Box(modifier.clip(RoundedCornerShape(d.u(CarRadius.CARD))).background(DriveCardBackground)) {
         // The mood photo that names nowhere, as on the home screen before a first drive.
         PlacePhoto("", Modifier.fillMaxSize())
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
-        Row(Modifier.align(Alignment.BottomStart).padding(d.u(28)), verticalAlignment = Alignment.CenterVertically) {
-            BrandGlyph(d.u(52), DriveCardText)
-            Spacer(Modifier.width(d.u(12)))
-            BrandWordmark(d.t(40), DriveCardText)
-        }
+        BrandWordmark(d.t(40), DriveCardText, Modifier.align(Alignment.BottomStart).padding(d.u(28)))
     }
 }
 
 @Composable
 private fun GlyphVisual(glyph: CarGlyph, modifier: Modifier) {
     val d = LocalCarDimens.current
-    Box(modifier.clip(RoundedCornerShape(d.u(14))).background(soft()), contentAlignment = Alignment.Center) {
+    Box(modifier.clip(RoundedCornerShape(d.u(CarRadius.CARD))).background(soft()), contentAlignment = Alignment.Center) {
         Box(Modifier.size(d.u(180)).clip(CircleShape).background(DriveCardBackground), contentAlignment = Alignment.Center) {
             CarIcon(glyph, d.u(88), DriveCardText)
         }
@@ -168,11 +165,11 @@ private fun GlyphVisual(glyph: CarGlyph, modifier: Modifier) {
 private fun DrivingVisual(modifier: Modifier) {
     val d = LocalCarDimens.current
     Column(
-        modifier.clip(RoundedCornerShape(d.u(14))).background(DriveCardBackground).padding(d.u(36)),
+        modifier.clip(RoundedCornerShape(d.u(CarRadius.CARD))).background(DriveCardBackground).padding(d.u(CarSpace.XL)),
         verticalArrangement = Arrangement.Center,
     ) {
-        T("예시", d.t(15), color = DriveCardMuted, bold = true)
-        Spacer(Modifier.height(d.u(18)))
+        T("예시", d.t(CarTextSize.CAPTION), color = DriveCardMuted, bold = true)
+        Spacer(Modifier.height(d.u(CarSpace.M)))
         listOf("송정 해수욕장" to "장소", "24분" to "기록 시간", "12.4 km" to "거리").forEach { (value, label) ->
             T(value, d.t(52), color = DriveCardText, display = true, maxLines = 1)
             T(label, d.t(17), Modifier.padding(bottom = d.u(16)), color = DriveCardMuted)
@@ -185,7 +182,7 @@ private fun DrivingVisual(modifier: Modifier) {
 private fun CardVisual(modifier: Modifier) {
     val d = LocalCarDimens.current
     // The order every card keeps: title, route, distance, then place · time · date and the wordmark.
-    Column(modifier.clip(RoundedCornerShape(24.dp)).background(DriveCardBackground).border(1.dp, line(), RoundedCornerShape(24.dp)).padding(d.u(24))) {
+    Column(modifier.clip(RoundedCornerShape(d.u(CarRadius.CARD))).background(DriveCardBackground).border(1.dp, line(), RoundedCornerShape(d.u(CarRadius.CARD))).padding(d.u(24))) {
         T("예시 카드", d.t(16), color = DriveCardMuted, bold = true)
         T("송정에 남긴 하루", d.t(28), color = DriveCardText, display = true, maxLines = 1)
         Box(Modifier.fillMaxWidth().weight(1f).padding(vertical = d.u(18))) {

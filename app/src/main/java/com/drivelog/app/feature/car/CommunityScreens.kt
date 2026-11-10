@@ -2,7 +2,6 @@ package com.drivelog.app.feature.car
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
@@ -19,6 +18,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -32,50 +32,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import kotlin.math.hypot
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.unit.IntSize
 import com.drivelog.app.core.recording.haversineKm
-import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
 // The community as a mockup. See CommunityCourses.kt: every screen carries the simulation badge and says so.
 
-@Composable
-private fun Chip(label: String, active: Boolean, tag: String, onClick: () -> Unit) {
-    val d = LocalCarDimens.current
-    val colors = MaterialTheme.colorScheme
-    val spec = tween<Color>(if (LocalMotionEnabled.current) 180 else 0)
-    val fill by animateColorAsState(if (active) colors.primary else soft(), spec, label = "chip fill")
-    val text by animateColorAsState(if (active) colors.onPrimary else fg(), spec, label = "chip text")
-    Row(
-        Modifier.heightIn(min = 64.dp).clip(RoundedCornerShape(d.u(10))).background(fill)
-            .pressClick(onClick = onClick).semantics { selected = active }.padding(horizontal = d.u(16)).testTag(tag),
-        verticalAlignment = Alignment.CenterVertically,
-    ) { T(label, d.t(17), color = text, bold = active, maxLines = 1) }
-}
-
+/** One labelled row of filter chips, scrolling sideways like komoot's and AllTrails' filter bars. */
 @Composable
 private fun CourseFilter(label: String, options: List<String>, selected: String?, tag: String, onSelect: (String?) -> Unit) {
     val d = LocalCarDimens.current
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        T(label, d.t(16), Modifier.width(d.u(84)), color = muted(), maxLines = 1)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(d.u(8))) {
-            Chip("전체", selected == null, "$tag-all") { onSelect(null) }
-            options.forEach { option -> Chip(option, selected == option, "$tag-chip") { onSelect(option) } }
+        T(label, d.t(CarTextSize.CAPTION), Modifier.width(d.u(96)), color = muted(), maxLines = 1)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(d.u(CarSpace.S))) {
+            ChoiceChip("전체", selected == null, "$tag-all") { onSelect(null) }
+            options.forEach { option -> ChoiceChip(option, selected == option, "$tag-chip") { onSelect(option) } }
         }
     }
 }
@@ -135,69 +108,6 @@ private fun stampAt(point: MapPoint): StampPlace? =
     StampPlaces.map { it to haversineKm(point.latitude, point.longitude, it.latitude, it.longitude) }
         .filter { it.second <= STAMP_RADIUS_KM }.minByOrNull { it.second }?.first
 
-/**
- * The course over a real map of where it runs, in the drive cards' dark style: a white line from a hollow start to a
- * solid end. The map is fetched only for this parked screen and kept in memory ([maps]); the route itself is drawn
- * here and never sent. Until the map arrives, or without a network, a dot grid stands in, plainly not a map.
- */
-@Composable
-private fun CourseThumbnail(
-    routeMaps: RouteMapCache, course: CommunityCourse, maps: MutableMap<String, MapFrame>, modifier: Modifier,
-) {
-    val d = LocalCarDimens.current
-    var box by remember { mutableStateOf(IntSize.Zero) }
-    // Keyed by size too: a map rendered for another size (split window, text scale) would not line up with the route.
-    val key = "${course.id}@${box.width}x${box.height}"
-    val frame = maps[key]
-    LaunchedEffect(key) {
-        if (frame != null || box == IntSize.Zero || course.route.size < 2) return@LaunchedEffect
-        withTimeoutOrNull(15_000L) { routeMaps.liveFrame(course.route + course.destination, box.width, box.height, dark = true) }
-            ?.let { maps[key] = it }
-    }
-    val stamp = remember(course.id) { stampAt(course.destination) }
-    Box(modifier.clip(RoundedCornerShape(d.u(12))).background(DriveCardBackground).onSizeChanged { box = it }) {
-        Canvas(Modifier.matchParentSize()) {
-            val width = 2.4f * d.scale * density
-            if (frame == null) {
-                val spacing = 14f * d.scale * density
-                val reach = hypot(size.width, size.height) / 2f
-                var y = spacing / 2
-                while (y < size.height) {
-                    var x = spacing / 2
-                    while (x < size.width) {
-                        val fade = 1f - (Offset(x, y) - center).getDistance() / reach
-                        if (fade > 0.1f) drawCircle(Color.White.copy(alpha = 0.26f * fade), 1.4f * density, Offset(x, y))
-                        x += spacing
-                    }
-                    y += spacing
-                }
-                return@Canvas
-            }
-            val sx = size.width / frame.image.width
-            val sy = size.height / frame.image.height
-            drawImage(frame.image, dstSize = IntSize(size.width.toInt(), size.height.toInt()))
-            // A soft shade towards the bottom, so the white line and the stamp read on any map.
-            drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = 0.35f))))
-            val line = course.route.map { frame.project(it).let { p -> Offset(p.x * sx, p.y * sy) } }
-            val path = Path().apply { line.forEachIndexed { i, at -> if (i == 0) moveTo(at.x, at.y) else lineTo(at.x, at.y) } }
-            drawPath(path, Color.Black.copy(alpha = 0.4f), style = Stroke(width * 2.6f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-            drawPath(path, DriveCardText, style = Stroke(width, cap = StrokeCap.Round, join = StrokeJoin.Round))
-            drawCircle(DriveCardBackground, width * 2.1f, line.first())
-            drawCircle(DriveCardText, width * 2.1f, line.first(), style = Stroke(width * 0.9f))
-            drawCircle(DriveCardText, width * 1.9f, line.last())
-        }
-        if (frame == null) {
-            RouteGlyph(course.route, Modifier.matchParentSize().padding(horizontal = d.u(18), vertical = d.u(14)), color = DriveCardText, stroke = d.u(2.4f))
-        }
-        if (stamp != null) {
-            Box(
-                Modifier.align(Alignment.TopEnd).padding(d.u(6)).size(d.u(40)).clip(CircleShape).background(DriveCardBackground.copy(alpha = 0.85f)),
-                contentAlignment = Alignment.Center,
-            ) { StampArt(stamp, collected = true, size = d.u(34), ink = DriveCardText) }
-        }
-    }
-}
-
 /** One fixed-width column of the course table: a small label over its value. */
 @Composable
 private fun CourseStat(label: String, value: String, unit: String = "") {
@@ -219,7 +129,10 @@ private fun CourseRow(routeMaps: RouteMapCache, maps: MutableMap<String, MapFram
             .pressClick(onClick = onClick).padding(horizontal = d.u(16), vertical = d.u(14)).testTag("course-row"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CourseThumbnail(routeMaps, course, maps, Modifier.width(d.u(168)).height(d.u(112)))
+        CourseThumbnail(
+            routeMaps, course.route, Modifier.width(d.u(168)).height(d.u(112)),
+            id = course.id, maps = maps, stamp = remember(course.id) { stampAt(course.destination) },
+        )
         Spacer(Modifier.width(d.u(18)))
         Column(Modifier.weight(1f)) {
             Row(horizontalArrangement = Arrangement.spacedBy(d.u(6)), verticalAlignment = Alignment.CenterVertically) {
@@ -285,18 +198,17 @@ fun CourseDetailScreen(routeMaps: RouteMapCache, course: CommunityCourse, onNavi
                 T(if (course.mine) "예시 화면이에요. 실제로 올라가지 않았어요" else "예시 코스예요. 경로는 대략적인 선이에요", d.t(16), Modifier.testTag("course-note"), color = muted())
                 Spacer(Modifier.height(d.u(18)))
                 PrimaryButton("이 목적지로 안내", "course-navigate", Modifier.fillMaxWidth(), onClick = onNavigate)
-                Spacer(Modifier.height(d.u(6)))
                 // SDK routes go to one destination, so promising this exact line would be untrue.
-                T("안내는 목적지까지만 해요. 이 경로 그대로 안내하지는 않아요", d.t(15), color = muted())
+                T("안내는 목적지까지만 해요. 이 경로 그대로 안내하지는 않아요", d.t(CarTextSize.CAPTION), Modifier.padding(top = d.u(CarSpace.S)), color = muted())
                 if (course.mine) {
-                    Spacer(Modifier.height(d.u(10)))
-                    SecondaryButton(if (confirmRemove) "한 번 더 누르면 내려요" else "내 추천 내리기", "course-remove", Modifier.fillMaxWidth()) {
+                    Spacer(Modifier.height(d.u(CarSpace.M)))
+                    SecondaryButton(if (confirmRemove) "한 번 더 누르면 내려요" else "내 추천 내리기", "course-remove", Modifier.fillMaxWidth(), danger = confirmRemove) {
                         if (confirmRemove) onRemove() else confirmRemove = true
                     }
                 }
             }
         }, right = {
-            LiveRouteMap(routeMaps, course.route, course.destination, course.destinationName, paneFill(300).padding(bottom = d.u(8)))
+            LiveRouteMap(routeMaps, course.route, course.destination, course.destinationName, paneFill(300).padding(bottom = d.u(CarSpace.S)))
         })
     }
 }
@@ -308,11 +220,12 @@ fun CourseShareScreen(routeMaps: RouteMapCache, draft: CourseDraft?, onPublish: 
     Frame(onBack, simulated = true) {
         if (draft == null) {
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Heading("이 기록은 추천할 수 없어요", 32, Modifier.testTag("course-too-short"))
-                Spacer(Modifier.height(d.u(8)))
-                T("앞뒤 500m를 빼면 남는 구간이 없거나 목적지 정보가 없어요", d.t(18), color = muted())
-                Spacer(Modifier.height(d.u(20)))
-                SecondaryButton("돌아가기", "course-share-back", onClick = onBack)
+                Column(Modifier.widthIn(max = d.u(640)), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Heading("이 기록은 추천할 수 없어요", CarTextSize.TITLE.baseSp, Modifier.testTag("course-too-short"), align = TextAlign.Center)
+                    T("앞뒤 500m를 빼면 남는 구간이 없거나 목적지 정보가 없어요", d.t(18), Modifier.padding(top = d.u(CarSpace.S)), color = muted(), align = TextAlign.Center)
+                    Spacer(Modifier.height(d.u(CarSpace.L)))
+                    SecondaryButton("돌아가기", "course-share-back", size = ButtonSize.MEDIUM, onClick = onBack)
+                }
             }
             return@Frame
         }
@@ -326,16 +239,15 @@ fun CourseShareScreen(routeMaps: RouteMapCache, draft: CourseDraft?, onPublish: 
                 Spacer(Modifier.height(d.u(14)))
                 Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(d.u(8))) {
                     CourseTags.forEach { tag ->
-                        Chip(tag, tag in tags, "course-tag") { tags = if (tag in tags) tags - tag else tags + tag }
+                        ChoiceChip(tag, tag in tags, "course-tag") { tags = if (tag in tags) tags - tag else tags + tag }
                     }
                 }
-                Spacer(Modifier.height(d.u(16)))
+                Spacer(Modifier.height(d.u(CarSpace.L)))
                 PrimaryButton("코스 추천하기", "course-publish", Modifier.fillMaxWidth()) { onPublish(tags) }
-                Spacer(Modifier.height(d.u(6)))
-                T("예시 화면이에요. 실제로 올라가지 않고 앱을 끄면 사라져요", d.t(15), Modifier.testTag("course-note"), color = muted())
+                T("예시 화면이에요. 실제로 올라가지 않고 앱을 끄면 사라져요", d.t(CarTextSize.CAPTION), Modifier.padding(top = d.u(CarSpace.S)).testTag("course-note"), color = muted())
             }
         }, right = {
-            LiveRouteMap(routeMaps, draft.route, draft.destination, draft.destinationName, paneFill(300).padding(bottom = d.u(8)))
+            LiveRouteMap(routeMaps, draft.route, draft.destination, draft.destinationName, paneFill(300).padding(bottom = d.u(CarSpace.S)))
         })
     }
 }

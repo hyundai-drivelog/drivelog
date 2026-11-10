@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.Dp
 import com.drivelog.app.core.journey.RecordV
 
 /*
- * One card style for the car, the phone card (web/card) and the phone app (server static/m/card.js), set after
+ * One card style for the car, the former phone card page and the phone app (server static/m/card.js), set after
  * benchmarking share cards: one big number, the route on open space, white in three strengths, the brand small in a
  * corner. What is ours is the stamp: a drive that ended at a stamp place carries a postage stamp in the top right.
  */
