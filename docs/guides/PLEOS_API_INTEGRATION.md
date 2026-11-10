@@ -145,7 +145,7 @@ onBackPressedDispatcher.addCallback(this) {
 - 사용자가 받은 소개 자료에는 있지만 **현재 SDK 사용 가이드 목록(5종)에 없고** 공개 Nexus에도 없다 (`ai.pleos.sync:syncSDK`, `Adas` 모두 404).
 - 다만 Pleos 이미지에는 `ai.pleos.playground.service.sync`, `service.adas` 서비스가 설치되어 있다. 클라이언트 SDK를 받는 경로는 `partnership@pleos.ai`에 문의가 필요하다.
 - PRD에 ADAS가 필요한 기능은 없다.
-- 동기화는 자체 서버 + `JourneyStore` outbox로 구현했다. 모바일 웹은 어차피 Android SDK를 쓸 수 없다.
+- 동기화는 자체 서버 + `JourneyStore` outbox와 별도 Android 앱으로 구현했다. 연결별 저장·대기열과 명시적 전송 동의를 사용한다. 차량은 전체 기록 `GET /api/v1/journey/vehicle`, 모바일은 최근 200건 `GET /api/v1/journey`를 사용한다. 구서버의 전용 API 404에서는 로컬을 유지하고 실패를 표시한다.
 - 아티팩트를 받으면 차량 쪽은 `JourneyStore`만 교체하면 된다.
 
 ## 12. 에뮬레이터 검증

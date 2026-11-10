@@ -128,7 +128,8 @@ fun RouteMap(
             if (all.isEmpty()) return@Canvas
             val pad = 44f * d.scale * density
             val project = real?.project ?: projector(all, size.width, size.height, pad)
-            val routeWidth = (if (real != null) 6f else 4.5f) * d.scale * density
+            // A fine line, as a map overlay should be: the roads under it stay readable and the route still leads.
+            val routeWidth = (if (real != null) 3.6f else 2.8f) * d.scale * density
             val style = Stroke(routeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round)
             val dashed = Stroke(routeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round, pathEffect = dashedEffect(routeWidth))
             val solid = Path()
@@ -145,13 +146,14 @@ fun RouteMap(
                     } else solid.lineTo(at.x, at.y)
                 }
             }
-            // On a real night map the line glows, as on the drive cards. Stacked strokes, as a blur needs a software canvas.
+            // On a real night map: a faint wide halo, then a dark casing over it, then the thin white line, so the
+            // line stays sharp over bright roads. The halo goes first, or it would wash the casing grey.
             if (real != null && surface.luminance() < 0.5f) {
-                drawPath(solid, ink.copy(alpha = 0.10f), style = Stroke(routeWidth * 4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-                drawPath(solid, ink.copy(alpha = 0.18f), style = Stroke(routeWidth * 2.4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                drawPath(solid, ink.copy(alpha = 0.12f), style = Stroke(routeWidth * 3.4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+                drawPath(solid, Color.Black.copy(alpha = 0.45f), style = Stroke(routeWidth * 2.6f, cap = StrokeCap.Round, join = StrokeJoin.Round))
             }
             // A surface-coloured edge keeps the line legible where it crosses roads of the backdrop.
-            else drawPath(solid, surface.copy(alpha = 0.75f), style = Stroke(routeWidth * 1.9f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            else drawPath(solid, surface.copy(alpha = 0.8f), style = Stroke(routeWidth * 2.4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
             drawPath(solid, ink, style = style)
             drawPath(gaps, ink, style = dashed)
             val last = points.lastOrNull()
@@ -167,8 +169,8 @@ fun RouteMap(
             }
             points.firstOrNull()?.let { first ->
                 val at = project(first)
-                drawCircle(ink, routeWidth * 2f, at)
-                drawCircle(surface, routeWidth * 0.9f, at)
+                drawCircle(surface, routeWidth * 2.2f, at)
+                drawCircle(ink, routeWidth * 2.2f, at, style = Stroke(routeWidth * 0.9f))
                 if (startLabel != null) {
                     val layout = measurer.measure(startLabel, labelStyle)
                     label(layout, Offset((at.x - layout.size.width / 2).coerceIn(8f, (size.width - layout.size.width - 8f).coerceAtLeast(8f)), (at.y - layout.size.height - routeWidth * 3f).coerceAtLeast(8f)))
@@ -178,7 +180,7 @@ fun RouteMap(
                 val tip = project(destination)
                 val dropped = pinDrop.value
                 val opacity = dropped.coerceIn(0f, 1f)
-                val pinHeight = 40f * d.scale * density
+                val pinHeight = 34f * d.scale * density
                 drawPin(tip.copy(y = tip.y - (1f - dropped) * pinHeight), pinHeight, ink.copy(alpha = opacity), surface.copy(alpha = opacity))
                 if (destinationLabel != null) {
                     val layout = measurer.measure(destinationLabel, labelStyle)
@@ -190,13 +192,14 @@ fun RouteMap(
                 }
             } else if (last != null) {
                 val at = project(last)
-                drawCircle(ink, routeWidth * 2f, at)
+                drawCircle(ink, routeWidth * 1.9f, at)
             }
         }
         if (backdrop == MapBackdrop.Loading) LoadingIndicator(LoadingStyle.TENSION, modifier = Modifier.align(Alignment.Center).testTag("map-loading"))
-        // Art looks like geography but is not, so it says so. A real map credits its data instead.
-        if (backdrop != MapBackdrop.Loading) T(
-            if (backdrop is MapBackdrop.Real) ATTRIBUTION else "지도 배경은 예시예요", d.t(14),
+        // A real map credits its data in its corner, small. Art looks like geography but is not, so it says so.
+        if (backdrop is MapBackdrop.Real) MapCornerCredit(Modifier.align(Alignment.BottomEnd))
+        else if (backdrop != MapBackdrop.Loading) T(
+            "지도 배경은 예시예요", d.t(14),
             Modifier.align(Alignment.BottomStart).padding(d.u(10)).clip(RoundedCornerShape(d.u(6))).background(surface)
                 .padding(horizontal = d.u(8), vertical = d.u(3)).testTag("map-note"),
             color = colors.onSurfaceVariant,
@@ -223,7 +226,8 @@ fun RouteGlyph(points: List<MapPoint>, modifier: Modifier = Modifier, color: Col
     }
     val traced = rememberOnceProgress(line, tween(1100, easing = FastOutSlowInEasing), enabled = trace)
     Canvas(modifier.clearAndSetSemantics {}) {
-        val width = stroke?.toPx() ?: (minOf(size.width, size.height) * 0.055f)
+        // Thin enough to read as a drawn line rather than a bar, even at icon size.
+        val width = stroke?.toPx() ?: (minOf(size.width, size.height) * 0.04f)
         val ring = Stroke(width)
         if (line.size < 2) {
             drawCircle(color, width * 2f, center, style = ring)

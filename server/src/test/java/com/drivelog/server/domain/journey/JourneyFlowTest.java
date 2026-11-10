@@ -197,6 +197,7 @@ class JourneyFlowTest {
         body(as(stranger, delete("/api/v1/records/private-record")), 404);
         body(as(stranger, delete("/api/v1/goals/" + goal.get("id").asText())), 404);
         assertThat(body(as(stranger, get("/api/v1/journey")), 200).get("records")).isEmpty();
+        assertThat(body(as(stranger, get("/api/v1/journey/vehicle")), 200).get("records")).isEmpty();
         // Knowing a record id does not let another account overwrite it.
         body(withJson(as(stranger, put("/api/v1/records/private-record")), record("private-record", 0)), 409);
     }
@@ -204,7 +205,24 @@ class JourneyFlowTest {
     @Test
     void requestsWithoutTokenAreRejected() throws Exception {
         body(get("/api/v1/journey"), 401);
+        body(get("/api/v1/journey/vehicle"), 401);
+        body(as("not-a-token", get("/api/v1/journey/vehicle")), 401);
         body(as("not-a-token", get("/api/v1/journey")), 401);
+    }
+
+    @Test
+    void vehicleSnapshotPreservesOldHistoryBeyondMobileWindowAndReflectsDeletes() throws Exception {
+        for (int i = 0; i < 205; i++) putRecord("history-" + i, 0);
+        assertThat(body(as(car, get("/api/v1/journey")), 200).get("records")).hasSize(200);
+        JsonNode complete = body(as(car, get("/api/v1/journey/vehicle")), 200).get("records");
+        assertThat(complete).hasSize(205);
+        boolean includesOldest = false;
+        for (JsonNode record : complete) if ("history-0".equals(record.get("id").asText())) includesOldest = true;
+        assertThat(includesOldest).isTrue();
+        body(as(phone, delete("/api/v1/records/history-0")), 204);
+        assertThat(body(as(car, get("/api/v1/journey/vehicle")), 200).get("records")).hasSize(204);
+        mvc.perform(as(car, get("/api/v1/journey/vehicle"))).andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.header().string("Cache-Control", "no-store"));
     }
 
     @Test

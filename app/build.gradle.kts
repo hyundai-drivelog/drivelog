@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.security.MessageDigest
 
 plugins {
     alias(libs.plugins.android.application)
@@ -19,6 +20,12 @@ val phoneLinkEnabled = providers.gradleProperty("phoneLinkEnabled")
 val releaseApiBaseUrl = providers.gradleProperty("releaseApiBaseUrl").orElse("").get()
 // Where a phone card page is published (the old web/card/ was removed on 2026-11-10). Without it the car offers no QR.
 val cardWebUrl = providers.gradleProperty("cardWebUrl").orElse("").get()
+val privacyPolicyUrl = providers.gradleProperty("privacyPolicyUrl").orElse("").get()
+val privacyContact = providers.gradleProperty("privacyContact").orElse("").get()
+require(privacyPolicyUrl.isBlank() || (privacyPolicyUrl.startsWith("https://") && privacyPolicyUrl.none { it == '"' || it == '\\' || it.isISOControl() })) {
+    "privacyPolicyUrl must be a public HTTPS URL"
+}
+require(privacyContact.none { it == '"' || it == '\\' || it.isISOControl() }) { "privacyContact contains invalid characters" }
 require(cardWebUrl.isBlank() || (cardWebUrl.startsWith("https://") && cardWebUrl.endsWith("/") && !cardWebUrl.contains('"') && !cardWebUrl.contains('#'))) {
     "cardWebUrl must be an HTTPS URL ending in /"
 }
@@ -45,6 +52,8 @@ android {
         buildConfigField("boolean", "PLEOS_SDK_INCLUDED", pleosSdkEnabled.toString())
         buildConfigField("boolean", "PHONE_LINK_ENABLED", phoneLinkEnabled.toString())
         buildConfigField("String", "CARD_WEB_URL", "\"$cardWebUrl\"")
+        buildConfigField("String", "PRIVACY_POLICY_URL", "\"$privacyPolicyUrl\"")
+        buildConfigField("String", "PRIVACY_CONTACT", "\"$privacyContact\"")
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // The map library is native. Only vehicle hardware and the emulator image are packaged.
         ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
@@ -62,6 +71,7 @@ android {
             buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/\"")
         }
         release {
+            isDebuggable = false
             signingConfig = signingConfigs.findByName("release")
             buildConfigField("String", "API_BASE_URL", "\"$releaseApiBaseUrl\"")
             isMinifyEnabled = false
@@ -79,6 +89,15 @@ android {
 }
 
 // Contest format: apk/팀명_앱이름_release.apk
+val validateReleasePrivacy by tasks.registering {
+    doLast {
+        if (phoneLinkEnabled && (releaseApiBaseUrl.isBlank() || privacyPolicyUrl.isBlank() || privacyContact.isBlank())) {
+            throw GradleException("연결 release에는 releaseApiBaseUrl, privacyPolicyUrl, privacyContact 설정이 필요합니다")
+        }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach { dependsOn(validateReleasePrivacy) }
+
 tasks.register("packageSubmissionApk") {
     dependsOn("assembleRelease")
     val signed = layout.buildDirectory.file("outputs/apk/release/app-release.apk")
@@ -88,8 +107,15 @@ tasks.register("packageSubmissionApk") {
         val team = submissionTeam.orNull?.trim().orEmpty()
         if (team.isEmpty()) throw GradleException("팀명이 필요합니다: -PsubmissionTeam=<팀명>")
         if (!hasSigning) throw GradleException("서명 설정이 없습니다: keystore.properties.example을 참고하세요")
+        if (phoneLinkEnabled || cardWebUrl.isNotBlank()) throw GradleException("제출 APK는 차량 기본 모드만 지원합니다. phoneLinkEnabled/cardWebUrl 없이 빌드하세요")
+        if (!team.matches(Regex("[\\p{L}\\p{N}_-]+"))) throw GradleException("팀명에는 문자, 숫자, 밑줄, 하이픈만 사용할 수 있습니다")
+        if (!submissionApp.get().matches(Regex("[\\p{L}\\p{N}_-]+"))) throw GradleException("앱 이름에 경로 문자를 사용할 수 없습니다")
+        outputDir.asFile.mkdirs()
         val target = outputDir.file("${team}_${submissionApp.get()}_release.apk").asFile
         signed.get().asFile.copyTo(target, overwrite = true)
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(target.readBytes()).joinToString("") { "%02x".format(it) }
+        target.resolveSibling(target.name + ".sha256").writeText("$digest  ${target.name}\n")
         println("제출용 APK: $target")
     }
 }

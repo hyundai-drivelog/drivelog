@@ -18,6 +18,9 @@ import com.drivelog.app.DrivelogApp
 import com.drivelog.app.core.journey.LinkCodeV
 import com.drivelog.app.core.journey.PlaceV
 import com.drivelog.app.core.journey.RecordV
+import com.drivelog.app.core.journey.TripV
+import com.drivelog.app.core.journey.TRIP_TITLE_LIMIT
+import java.util.UUID
 import com.drivelog.app.core.platform.CarGear
 import com.drivelog.app.core.platform.NaviPlace
 import com.drivelog.app.core.platform.RouteEnd
@@ -33,7 +36,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** RECORDING and LOCKED follow from vehicle state (see routeFor); nothing navigates to them. */
-enum class Screen { WELCOME, HOME, DESTINATION, PLACE, HISTORY, RECORD, STOP, SYNCING, LINK, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE, COMMUNITY, COURSE_DETAIL, COURSE_SHARE, CARD_QR }
+enum class Screen { WELCOME, HOME, DESTINATION, PLACE, HISTORY, RECORD, TRIP, TRIP_EDITOR, TRIP_PICKER, STOP, SYNCING, LINK, LINK_CONSENT, PRIVACY, DATA_CONSENT, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE, COMMUNITY, COURSE_DETAIL, COURSE_SHARE, CARD_QR }
 
 private const val PREFS = "drivelog"
 private const val PREF_WELCOMED = "welcomed"
@@ -114,6 +117,16 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var linkError by mutableStateOf(false)
         private set
+    var includeLinkHistory by mutableStateOf(false)
+        private set
+    private var linkConsented = false
+    private var linkRequest = 0L
+    fun toggleLinkHistory() { includeLinkHistory = !includeLinkHistory }
+    fun agreeToLink() {
+        if (!parked || screen != Screen.LINK_CONSENT) return
+        linkConsented = true
+        startLink()
+    }
     var syncing by mutableStateOf(false)
         private set
     var locationRefused by mutableStateOf(false)
@@ -274,7 +287,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Parked and not recording only. A failure simply leaves the map-free card until the next attempt. */
     private fun fillRouteMaps() {
-        if (!parked || recorder.state.value != null || mapJob?.isActive == true) return
+        if (!dataConsented || !parked || recorder.state.value != null || mapJob?.isActive == true) return
         mapJob = viewModelScope.launch { routeMaps.fill(store.state.value.journey.records) }
     }
 
@@ -298,6 +311,25 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private val prefs get() = getApplication<Application>().getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private val dataConsented get() = prefs.getInt("data-consent-version", 0) == 1
+    private var afterDataConsent = Screen.DESTINATION
+
+    private fun dataConsentFor(target: Screen): Boolean {
+        if (dataConsented) return true
+        afterDataConsent = target
+        go(Screen.DATA_CONSENT)
+        return false
+    }
+
+    fun ensureDataConsent(): Boolean = parked && dataConsentFor(Screen.PLACE)
+
+    fun agreeToDataUse() {
+        if (!parked || screen != Screen.DATA_CONSENT) return
+        prefs.edit().putInt("data-consent-version", 1).apply()
+        refreshLocation()
+        fillRouteMaps()
+        go(afterDataConsent)
+    }
 
     /** The introduction, from the home screen's `앱 소개`. */
     fun openWelcome() = go(Screen.WELCOME)
@@ -319,11 +351,13 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     fun openDestination() {
         finishedRecord = null
         selectedPlace = null
+        if (!dataConsentFor(Screen.DESTINATION)) return
         go(Screen.DESTINATION)
     }
 
     /** False means this is the top screen, and the activity hides itself rather than finishing. */
     fun goBack(): Boolean {
+        if (tripBusy) return true
         if (recorder.state.value != null) {
             if (screen == Screen.STOP) { keepRecording(); return true }
             return false
@@ -331,12 +365,17 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         when (screen) {
             Screen.HOME, Screen.RECOVERY, Screen.SYNCING -> return false
             Screen.WELCOME -> finishWelcome()
-            Screen.LINK -> leaveLink()
+            Screen.LINK, Screen.LINK_CONSENT -> leaveLink()
+            Screen.PRIVACY -> home()
+            Screen.DATA_CONSENT -> home()
             Screen.PHONE_PREVIEW_LINK, Screen.PHONE_PREVIEW_DONE -> leavePhonePreview()
             Screen.CARD_QR -> leaveCardQr()
             Screen.COURSE_DETAIL -> go(Screen.COMMUNITY)
             Screen.COURSE_SHARE -> go(returnAfterCourseShare)
-            Screen.RECORD -> if (returnAfterRecord == Screen.HISTORY) go(Screen.HISTORY) else home()
+            Screen.RECORD -> if (returnAfterRecord == Screen.HOME) home() else go(returnAfterRecord)
+            Screen.TRIP -> backFromTrip()
+            Screen.TRIP_EDITOR -> cancelTripEditor()
+            Screen.TRIP_PICKER -> cancelTripPicker()
             Screen.PLACE -> openDestination()
             else -> home()
         }
@@ -347,7 +386,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     /** One position for the map, only when permission is already held. It never prompts on the home screen. */
     private fun refreshLocation() {
-        if (simulation || !locationSupported || recorder.state.value != null) return
+        if (!dataConsented || simulation || !locationSupported || recorder.state.value != null) return
         val context = getApplication<Application>()
         if (platform.locationPermissions().any { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }) return
         platform.startLocation(
@@ -392,6 +431,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         if (!parked || recorder.state.value != null) return
         selectedPlace = place
         searchQuery = place.name
+        if (!dataConsentFor(Screen.PLACE)) return
         store.addRecentPlace(place.toPlace())
         go(Screen.PLACE)
     }
@@ -438,6 +478,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     /** The driver pressed "길 안내 및 기록 시작", so this is the one explicit route request. */
     fun startRecording() {
         if (!parked) return
+        if (!dataConsentFor(Screen.PLACE)) return
         val place = selectedPlace ?: return
         recheckLocationSupport()
         if (!recordingAvailable) { message = "이 차량에서는 위치를 수집할 수 없어 기록할 수 없어요."; return }
@@ -526,7 +567,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         if (!BuildConfig.PHONE_LINK_ENABLED) { go(Screen.DONE); return }
         if (store.state.value.token == null) {
             returnAfterLink = Screen.DONE
-            startLink()
+            requestLinkConsent()
             return
         }
         syncing = true
@@ -574,13 +615,13 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     // --- 내 기록 ----------------------------------------------------------------------------------
 
-    /** The tab 내 기록 opens on: 0 drives, 1 cards, 2 stamps. */
+    /** Trips first, with independent drives/cards/stamps still available. */
     var historyTab by mutableIntStateOf(0)
         private set
 
     fun openHistory() = openHistoryTab(0)
 
-    fun openStamps() = openHistoryTab(2)
+    fun openStamps() = openHistoryTab(3)
 
     private fun openHistoryTab(tab: Int) {
         historyTab = tab
@@ -595,7 +636,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     fun openRecord(record: RecordV) {
         openedRecordId = record.id
-        returnAfterRecord = if (screen == Screen.HISTORY) Screen.HISTORY else Screen.HOME
+        returnAfterRecord = when (screen) { Screen.TRIP -> Screen.TRIP; Screen.HISTORY -> Screen.HISTORY; else -> Screen.HOME }
         go(Screen.RECORD)
     }
 
@@ -605,18 +646,190 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             routeMaps.delete(it)
         }
         openedRecordId = null
-        if (returnAfterRecord == Screen.HISTORY) go(Screen.HISTORY) else home()
+        if (returnAfterRecord == Screen.HOME) home() else go(returnAfterRecord)
         say("기록을 지웠어요")
+    }
+
+    // --- User-curated trips: local metadata, never a new synthetic drive ----------------------------
+
+    var openedTripId by mutableStateOf<String?>(null)
+        private set
+    var editingTripId by mutableStateOf<String?>(null)
+        private set
+    var tripDraftTitle by mutableStateOf("")
+        private set
+    var tripDraftRecordIds by mutableStateOf(emptyList<String>())
+        private set
+    var tripDraftCoverId by mutableStateOf<String?>(null)
+        private set
+    var tripBusy by mutableStateOf(false)
+        private set
+    var tripError by mutableStateOf<String?>(null)
+        private set
+    private var tripDraftId = ""
+    private var returnAfterTrip = TripReturnTarget(Screen.HISTORY)
+    private var returnAfterTripEditor = Screen.HISTORY
+    private var returnAfterTripPicker = Screen.RECORD
+    private var tripPickerRecordId: String? = null
+    private fun canEditTrip() = parked && recorder.state.value == null && !tripBusy
+
+    fun openTrip(trip: TripV) {
+        if (!canEditTrip()) return
+        rememberTripReturn(if (screen == Screen.HOME) Screen.HOME else Screen.HISTORY)
+        openedTripId = trip.id
+        tripError = null
+        go(Screen.TRIP)
+    }
+
+    private fun rememberTripReturn(target: Screen) {
+        returnAfterTrip = TripReturnTarget(target, openedRecordId, returnAfterRecord)
+    }
+
+    private fun resumeAfterTrip() {
+        val target = resolveTripReturn(returnAfterTrip, store.state.value.journey.records.map { it.id }.toSet())
+        if (target.screen == Screen.RECORD) {
+            openedRecordId = target.recordId
+            returnAfterRecord = target.recordParent
+        }
+        if (target.screen == Screen.HOME) home() else go(target.screen)
+    }
+
+    fun backFromTrip() { if (!tripBusy) resumeAfterTrip() }
+
+    fun createTrip(record: RecordV? = null) {
+        if (!canEditTrip()) return
+        returnAfterTripEditor = screen
+        if (screen != Screen.TRIP_EDITOR && screen != Screen.TRIP) rememberTripReturn(
+            if (screen == Screen.TRIP_PICKER) returnAfterTripPicker else screen)
+        editingTripId = null
+        tripDraftId = UUID.randomUUID().toString()
+        tripDraftTitle = if (record != null) "${shortName(record.placeName)} 여행".take(TRIP_TITLE_LIMIT)
+            else java.text.SimpleDateFormat("M월 d일의 여행", java.util.Locale.KOREA).format(java.util.Date())
+        tripDraftRecordIds = listOfNotNull(record?.id)
+        tripDraftCoverId = record?.id
+        tripError = null
+        go(Screen.TRIP_EDITOR)
+    }
+
+    fun editTrip() {
+        if (!canEditTrip()) return
+        val trip = store.state.value.trips.firstOrNull { it.id == openedTripId } ?: return
+        returnAfterTripEditor = Screen.TRIP
+        editingTripId = trip.id
+        tripDraftId = trip.id
+        tripDraftTitle = trip.title
+        tripDraftRecordIds = trip.recordIds
+        tripDraftCoverId = trip.coverRecordId
+        tripError = null
+        go(Screen.TRIP_EDITOR)
+    }
+
+    fun setTripTitle(title: String) { if (!tripBusy) { tripDraftTitle = title.take(TRIP_TITLE_LIMIT); tripError = null } }
+    fun toggleTripRecord(id: String) {
+        if (!canEditTrip()) return
+        if (store.state.value.trips.any { it.id != editingTripId && id in it.recordIds }) return
+        tripDraftRecordIds = if (id in tripDraftRecordIds) tripDraftRecordIds - id else tripDraftRecordIds + id
+        if (tripDraftCoverId !in tripDraftRecordIds) tripDraftCoverId = tripDraftRecordIds.firstOrNull()
+        tripError = null
+    }
+    fun chooseTripCover(id: String) { if (canEditTrip() && id in tripDraftRecordIds) tripDraftCoverId = id }
+
+    fun saveTrip() {
+        if (!canEditTrip()) return
+        tripBusy = true
+        tripError = null
+        val connection = store.state.value.token
+        viewModelScope.launch {
+            try {
+                val saved = store.saveTripDurably(tripDraftId, tripDraftTitle, tripDraftRecordIds, tripDraftCoverId)
+                if (store.state.value.token != connection) return@launch
+                if (saved == null) { tripError = "주행 선택과 저장 공간을 확인한 뒤 다시 저장해 주세요"; return@launch }
+                openedTripId = saved.id
+                go(Screen.TRIP)
+                say("여행을 저장했어요")
+            } finally { tripBusy = false }
+        }
+    }
+
+    fun cancelTripEditor() { if (!tripBusy) { tripError = null; go(returnAfterTripEditor) } }
+
+    fun addRecordToTrip(record: RecordV) {
+        if (!canEditTrip()) return
+        store.state.value.trips.firstOrNull { record.id in it.recordIds }?.let { trip ->
+            if (screen != Screen.RECORD || returnAfterRecord != Screen.TRIP) rememberTripReturn(screen)
+            openedTripId = trip.id
+            tripError = null
+            go(Screen.TRIP)
+            return
+        }
+        returnAfterTripPicker = screen
+        tripPickerRecordId = record.id
+        tripError = null
+        go(Screen.TRIP_PICKER)
+    }
+
+    fun createTripFromPicker() = createTrip(store.state.value.journey.records.firstOrNull { it.id == tripPickerRecordId })
+    fun cancelTripPicker() { if (!tripBusy) go(returnAfterTripPicker) }
+    fun addToExistingTrip(trip: TripV) {
+        if (!canEditTrip()) return
+        val recordId = tripPickerRecordId ?: return
+        tripBusy = true
+        tripError = null
+        viewModelScope.launch {
+            try {
+                val saved = store.saveTripDurably(trip.id, trip.title, trip.recordIds + recordId, trip.coverRecordId)
+                if (saved == null) { tripError = "이 주행을 담지 못했어요. 저장 공간과 다른 여행을 확인해 주세요"; return@launch }
+                openedTripId = saved.id
+                rememberTripReturn(returnAfterTripPicker)
+                go(Screen.TRIP)
+                say("여행에 주행을 담았어요")
+            } finally { tripBusy = false }
+        }
+    }
+
+    fun deleteTrip() {
+        if (!canEditTrip()) return
+        val id = openedTripId ?: return
+        tripBusy = true
+        viewModelScope.launch {
+            try {
+                if (!store.deleteTripDurably(id)) { tripError = "변경을 저장하지 못했어요. 저장 공간을 확인해 주세요"; return@launch }
+                openedTripId = null
+                resumeAfterTrip()
+                say("여행 묶음을 해제했어요. 주행 기록은 그대로예요")
+            } finally { tripBusy = false }
+        }
     }
 
     // --- Phone link -------------------------------------------------------------------------------
 
     fun openLink() {
+        if (!parked || recorder.state.value != null) return
         returnAfterLink = Screen.HOME
-        startLink()
+        requestLinkConsent()
     }
 
-    fun unlink() = store.unlink()
+    private fun requestLinkConsent() {
+        linkJob?.cancel()
+        linkRequest += 1
+        linkCode = null
+        includeLinkHistory = false
+        linkConsented = false
+        go(Screen.LINK_CONSENT)
+    }
+
+    fun unlink() {
+        if (!parked || recorder.state.value != null) return
+        linkJob?.cancel()
+        linkRequest += 1
+        linkConsented = false
+        store.unlink()
+        routeMaps.clearTiles()
+        home()
+        say("연결을 해제했어요. 서버 기록 삭제는 별도예요")
+    }
+
+    fun openPrivacy() { if (parked) go(Screen.PRIVACY) }
 
     // --- Phone screens as a preview: no server, no token, and the record stays as it is --------------
 
@@ -668,8 +881,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     var postedCourses by mutableStateOf(emptyList<CommunityCourse>())
         private set
     val communityCourses get() = postedCourses + SampleCourses
-    var courseOriginFilter by mutableStateOf<String?>(null)
-    var courseDestinationFilter by mutableStateOf<String?>(null)
+    var courseRegionFilter by mutableStateOf<String?>(null)
+    var courseThemeFilter by mutableStateOf<String?>(null)
     var openedCourse by mutableStateOf<CommunityCourse?>(null)
         private set
     var courseDraft by mutableStateOf<CourseDraft?>(null)
@@ -678,8 +891,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     private var courseDraftRecordId: String? = null
 
     fun openCommunity() {
-        courseOriginFilter = null
-        courseDestinationFilter = null
+        courseRegionFilter = null
+        courseThemeFilter = null
         go(Screen.COMMUNITY)
     }
 
@@ -709,21 +922,31 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startLink() {
+        if (!parked || !BuildConfig.PHONE_LINK_ENABLED || !linkConsented) return
         linkJob?.cancel()
+        val request = ++linkRequest
         linkCode = null
         linkError = false
         go(Screen.LINK)
         linkJob = viewModelScope.launch {
             val code = runCatching { store.api.createLinkCode() }.getOrNull()
+            if (!linkConsented || request != linkRequest) return@launch
             if (code == null) { linkError = true; return@launch }
             linkCode = code
             while (isActive) {
                 delay(2_000)
                 val poll = runCatching { store.api.pollLink(code.pollToken) }.getOrNull() ?: continue
+                if (!linkConsented || request != linkRequest) return@launch
                 if (poll.linked && poll.accessToken != null) {
-                    store.setToken(poll.accessToken)
+                    val importedHistory = includeLinkHistory
+                    store.setToken(poll.accessToken, includeLocalRecords = includeLinkHistory)
+                    linkConsented = false
                     linkCode = null
-                    if (returnAfterLink == Screen.DONE) continueAfterRecord() else home()
+                    if (returnAfterLink == Screen.DONE && importedHistory) continueAfterRecord()
+                    else {
+                        home()
+                        say(if (importedHistory) "연결했어요. 선택한 기존 기록을 전송해요" else "연결했어요. 다음 기록부터 전송해요")
+                    }
                     return@launch
                 }
                 if (poll.expired) return@launch // The screen shows 00:00 and offers a new code.
@@ -733,6 +956,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
 
     fun leaveLink() {
         linkJob?.cancel()
+        linkRequest += 1
+        linkConsented = false
         linkCode = null
         if (returnAfterLink == Screen.DONE) go(Screen.OFFLINE) else home()
     }

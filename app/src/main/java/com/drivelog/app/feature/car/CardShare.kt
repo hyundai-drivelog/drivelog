@@ -82,6 +82,9 @@ fun cardShareUrl(baseUrl: String, record: RecordV): String {
             "e=" + record.elapsedSeconds,
             if (record.distanceSource == DistanceSource.VEHICLE) "d=v" else "d=g",
             if (record.simulated) "m=1" else null,
+            // Efficiency only for a measured real drive, as in the car: the page shows it beside the distance.
+            efficiencyText(record)?.let { "ef=" + String.format(java.util.Locale.US, "%.1f", record.efficiency) },
+            efficiencyText(record)?.let { "eu=" + encode(record.efficiencyUnit.orEmpty()) },
             stamp?.let { "st=" + encode(it.name) },
             stamp?.let { "sr=" + it.tilt.toInt() },
             // Tells the page the start was cut, so it says so; links made before this carry the whole route.

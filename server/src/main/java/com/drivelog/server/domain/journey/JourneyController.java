@@ -57,6 +57,13 @@ public class JourneyController {
                 .body(service.stamps(service.accountFor(auth)));
     }
 
+    @GetMapping("/journey/vehicle")
+    public ResponseEntity<JourneyState> vehicleState(
+            @RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth) {
+        return ResponseEntity.ok().cacheControl(CacheControl.noStore())
+                .body(service.vehicleState(service.accountFor(auth)));
+    }
+
     @PutMapping("/goals/{goalId}")
     public GoalView putGoal(@RequestHeader(value = HttpHeaders.AUTHORIZATION, required = false) String auth,
                             @PathVariable String goalId, @Valid @RequestBody GoalPutRequest request) {

@@ -8,6 +8,8 @@ import com.drivelog.app.core.vehicle.EnergyLevel
 import com.drivelog.app.core.vehicle.EnergyTrack
 import com.drivelog.app.core.vehicle.resolveEfficiency
 import com.drivelog.app.feature.car.efficiencyCell
+import com.drivelog.app.feature.car.efficiencyText
+import com.drivelog.app.feature.car.averageEfficiency
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -80,6 +82,22 @@ class EfficiencyTest {
     @Test fun cellReadsValueOverUsage() {
         assertEquals("6.8 km/kWh" to "전비 · 0.50 kWh 사용", efficiencyCell(record(6.8, "km/kWh", 0.5)))
         assertEquals("14.2 km/L" to "연비 · 1.00 L 사용", efficiencyCell(record(14.2, "km/L", 1.0)))
+    }
+
+    @Test fun cardTextNamesTheMeasureAndSkipsSimulatedDrives() {
+        assertEquals("전비 6.8 km/kWh", efficiencyText(record(6.8, "km/kWh", 0.5)))
+        assertEquals("연비 14.2 km/L", efficiencyText(record(14.2, "km/L", 1.0)))
+        assertNull(efficiencyText(record(6.8, "km/kWh", 0.5, simulated = true)))
+        assertNull(efficiencyText(record(null, null, null)))
+    }
+
+    @Test fun averageWeighsByDistanceAndIgnoresSimulatedDrives() {
+        val long = record(8.0, "km/kWh", 2.0).copy(distanceKm = 16.0)
+        val short = record(4.0, "km/kWh", 0.5).copy(distanceKm = 2.0)
+        val fake = record(15.0, "km/kWh", 1.0, simulated = true).copy(distanceKm = 15.0)
+        // (16 + 2) / (2.0 + 0.5) = 7.2, not the 6.0 an average of averages would give.
+        assertEquals("7.2" to "km/kWh", averageEfficiency(listOf(long, short, fake)))
+        assertNull(averageEfficiency(listOf(fake)))
     }
 
     @Test fun noCellWithoutAMeasurementOrForASimulatedDrive() {

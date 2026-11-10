@@ -23,6 +23,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.layout.onSizeChanged
@@ -32,6 +36,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -65,8 +70,11 @@ import org.maplibre.android.snapshotter.MapSnapshot
 import org.maplibre.android.snapshotter.MapSnapshotter
 
 private const val STYLE_URL = "https://tiles.openfreemap.org/styles/dark"
-/** Required by the data's licences (ODbL for OpenStreetMap, and OpenMapTiles and OpenFreeMap's terms); never removed. */
-const val ATTRIBUTION = "지도 OpenFreeMap · © OpenMapTiles · © OpenStreetMap 기여자"
+/**
+ * Required by the data's licences (ODbL for OpenStreetMap, OpenMapTiles' terms); never removed, only kept small.
+ * Shown in the map's own corner, as map services do (user decision, 2026-11-09), so cards need no caption line.
+ */
+const val ATTRIBUTION = "OpenFreeMap · © OpenMapTiles · © OpenStreetMap"
 private const val IMAGE_WIDTH = 1200
 private const val IMAGE_HEIGHT = 800
 private const val RENDER_TIMEOUT_MS = 30_000L
@@ -321,16 +329,16 @@ class RouteMapCache(context: Context) {
     private companion object { const val TAG = "DriveLogMap" }
 }
 
-/**
- * The map's credit as a caption at the foot of a card, so the map itself stays clear. Shown only when this card has
- * a real map; a card without one credits nobody.
- */
+/** The map's credit in its bottom corner: small and faint, on a dark map only. A drawing with no map credits nobody. */
 @Composable
-fun MapCredit(cache: RouteMapCache, record: RecordV?, modifier: Modifier = Modifier) {
-    val ready by cache.ready.collectAsState()
-    if (record == null || !(record.id in ready || cache.has(record.id))) return
+fun MapCornerCredit(modifier: Modifier = Modifier) {
     val d = LocalCarDimens.current
-    T(ATTRIBUTION, d.t(12), modifier.padding(top = d.u(6)).testTag("map-credit"), color = DriveCardMuted.copy(alpha = 0.7f), maxLines = 2) // A credit cut short is no credit, so narrow cards wrap it.
+    T(
+        ATTRIBUTION, d.t(12),
+        modifier.padding(d.u(6)).clip(RoundedCornerShape(d.u(4))).background(Color.Black.copy(alpha = 0.45f))
+            .padding(horizontal = d.u(6), vertical = d.u(1)).testTag("map-credit"),
+        color = Color.White, maxLines = 3,
+    )
 }
 
 /**
@@ -338,15 +346,15 @@ fun MapCredit(cache: RouteMapCache, record: RecordV?, modifier: Modifier = Modif
  * [replay] draws the route again from the start each time it changes.
  */
 @Composable
-fun RouteVisual(cache: RouteMapCache, record: RecordV?, label: String?, modifier: Modifier = Modifier, drawRoute: Boolean = false, replay: Int = 0, markScale: Float = 1f) {
+fun RouteVisual(cache: RouteMapCache, record: RecordV?, label: String?, modifier: Modifier = Modifier, drawRoute: Boolean = false, replay: Int = 0, markScale: Float = 1f, showCredit: Boolean = true) {
     val ready by cache.ready.collectAsState()
     val hasImage = record != null && cache.has(record.id)
     val frame by produceState<MapFrame?>(null, record?.id, hasImage, ready) {
         value = if (record == null || !hasImage) null else withContext(Dispatchers.IO) { cache.loadFrame(record.id) }
     }
     val points = remember(record?.id) { record?.route?.toMapPoints().orEmpty() }
-    Crossfade(frame, modifier, tween(320), label = "route image") { loaded ->
-        DriveRouteArt(points, record?.destinationPoint(), label, Modifier.fillMaxSize(), drawRoute || replay > 0, loaded, replay, markScale)
+    Crossfade(frame, modifier, tween(if (LocalMotionEnabled.current) 320 else 0), label = "route image") { loaded ->
+        DriveRouteArt(points, record?.destinationPoint(), label, Modifier.fillMaxSize(), drawRoute || replay > 0, loaded, replay, markScale, showCredit)
     }
 }
 
@@ -363,26 +371,42 @@ private const val THUMB_LIVE_TIMEOUT_MS = 15_000L
 fun RecordThumbnail(cache: RouteMapCache, record: RecordV, modifier: Modifier = Modifier) {
     val d = LocalCarDimens.current
     Box(modifier.clip(RoundedCornerShape(d.u(12))).background(DriveCardBackground).clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
-        if (record.route.size >= 2) RouteVisual(cache, record, null, Modifier.fillMaxSize(), markScale = THUMB_MARKS)
+        if (record.route.size >= 2) RouteVisual(cache, record, null, Modifier.fillMaxSize(), markScale = THUMB_MARKS, showCredit = false)
         else CarIcon(CarGlyph.PIN, d.u(30), DriveCardMuted)
     }
 }
 
 /**
- * The same tile for a course, which has no stored image: a dark map of its area is taken once while the screen is
- * open (parked only, like every screen but recording), and the art stands in until it arrives or if it never does.
+ * The same tile for a course, which has no stored image: a dark map of its area is taken while the screen is open
+ * (parked only, like every screen but recording), and the art stands in until it arrives or if it never does. The
+ * route is drawn here over the map and never sent. A screen that lists courses passes [maps] so filtering or
+ * scrolling back does not fetch a map again; each entry is keyed by [id] and the tile's size, since a map taken for
+ * another size (split window, text scale) would not line up with the route. [stamp] marks a course that ends at one.
  */
 @Composable
-fun CourseThumbnail(cache: RouteMapCache, points: List<MapPoint>, modifier: Modifier = Modifier) {
+fun CourseThumbnail(
+    cache: RouteMapCache, points: List<MapPoint>, modifier: Modifier = Modifier,
+    id: String = "", maps: MutableMap<String, MapFrame>? = null, stamp: StampPlace? = null,
+) {
     val d = LocalCarDimens.current
-    var size by remember { mutableStateOf(IntSize.Zero) }
-    val frame by produceState<MapFrame?>(null, size, points) {
-        if (points.size < 2 || size == IntSize.Zero) return@produceState
-        value = withTimeoutOrNull(THUMB_LIVE_TIMEOUT_MS) { cache.liveFrame(points, size.width, size.height, dark = true) }
+    val store = maps ?: remember { mutableStateMapOf() }
+    var box by remember { mutableStateOf(IntSize.Zero) }
+    val key = "$id@${box.width}x${box.height}"
+    val frame = store[key]
+    LaunchedEffect(key, points) {
+        if (frame != null || points.size < 2 || box == IntSize.Zero) return@LaunchedEffect
+        withTimeoutOrNull(THUMB_LIVE_TIMEOUT_MS) { cache.liveFrame(points, box.width, box.height, dark = true) }
+            ?.let { store[key] = it }
     }
-    Box(modifier.clip(RoundedCornerShape(d.u(12))).background(DriveCardBackground).onSizeChanged { size = it }.clearAndSetSemantics {}) {
-        Crossfade(frame, Modifier.fillMaxSize(), tween(320), label = "course image") { loaded ->
-            DriveRouteArt(points, null, null, Modifier.fillMaxSize(), map = loaded, markScale = THUMB_MARKS)
+    Box(modifier.clip(RoundedCornerShape(d.u(12))).background(DriveCardBackground).onSizeChanged { box = it }.clearAndSetSemantics {}) {
+        Crossfade(frame, Modifier.fillMaxSize(), tween(if (LocalMotionEnabled.current) 320 else 0), label = "course image") { loaded ->
+            DriveRouteArt(points, null, null, Modifier.fillMaxSize(), map = loaded, markScale = THUMB_MARKS, showCredit = false)
+        }
+        if (stamp != null) {
+            Box(
+                Modifier.align(Alignment.TopEnd).padding(d.u(6)).size(d.u(40)).clip(CircleShape).background(DriveCardBackground.copy(alpha = 0.85f)),
+                contentAlignment = Alignment.Center,
+            ) { StampArt(stamp, collected = true, size = d.u(34), ink = DriveCardText) }
         }
     }
 }

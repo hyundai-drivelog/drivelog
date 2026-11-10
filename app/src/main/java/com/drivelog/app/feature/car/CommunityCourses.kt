@@ -82,9 +82,22 @@ fun CourseDraft.toCourse(id: String, tags: List<String>) = CommunityCourse(
     id, "${shortName(destinationName)}까지 가는 길", originArea, destinationName, destinationAddress, destination, route, tags, minutes, 0, mine = true,
 )
 
+/** The city or province of an origin area: "부산 수영구" is listed under 부산. An unknown origin is 기타. */
+fun courseRegion(originArea: String): String =
+    originArea.substringBefore(' ').takeIf { city -> KnownAreas.any { it.name.startsWith("$city ") } } ?: "기타"
+
+val CommunityCourse.region get() = courseRegion(originArea)
+
+/** Every course reads in the same three buckets, never as a raw minute count beside a title. */
+fun courseDurationLabel(minutes: Long) = when {
+    minutes <= 30 -> "30분 이내"
+    minutes <= 60 -> "1시간 이내"
+    else -> "1시간 이상"
+}
+
 /** The driver's own come first, so a new recommendation is seen right away. */
-fun filterCourses(courses: List<CommunityCourse>, origin: String?, destination: String?) = courses
-    .filter { (origin == null || it.originArea == origin) && (destination == null || it.destinationName == destination) }
+fun filterCourses(courses: List<CommunityCourse>, region: String?, theme: String?) = courses
+    .filter { (region == null || it.region == region) && (theme == null || theme in it.tags) }
     .sortedWith(compareByDescending<CommunityCourse> { it.mine }.thenByDescending { it.recommendations })
 
 private fun line(vararg points: Pair<Double, Double>) = points.map { MapPoint(it.first, it.second) }

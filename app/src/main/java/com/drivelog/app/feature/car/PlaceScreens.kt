@@ -416,7 +416,8 @@ fun PlaceConfirmScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<RecordV>, onRecord: (RecordV) -> Unit, onBack: () -> Unit, initialTab: Int = 0) {
+fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<RecordV>, onRecord: (RecordV) -> Unit, onBack: () -> Unit, initialTab: Int = 0,
+    trips: List<com.drivelog.app.core.journey.TripV> = emptyList(), onTrip: (com.drivelog.app.core.journey.TripV) -> Unit = {}, onCreateTrip: () -> Unit = {}) {
     val d = LocalCarDimens.current
     var tab by rememberSaveable(initialTab) { mutableIntStateOf(initialTab) }
     var shortOpen by rememberSaveable { mutableStateOf(false) }
@@ -425,17 +426,18 @@ fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<R
     Column(Modifier.fillMaxSize().padding(horizontal = d.u(22), vertical = d.u(8))) {
         TopBar(onBack, null, if (sorted.any { it.simulated }) ({ SimulationBadge() }) else null, title = "내 기록")
         Column(Modifier.fillMaxWidth().weight(1f)) {
-            Tabs(listOf("이전 드라이브", "드라이브 카드", "스탬프"), tab) { tab = it }
+            Tabs(listOf("여행", "주행", "카드", "스탬프"), tab) { tab = it }
             Spacer(Modifier.height(d.u(16)))
             Crossfade(tab, Modifier.fillMaxSize(), tween(if (LocalMotionEnabled.current) 220 else 0), label = "history tab") { shownTab ->
             when {
                 // Every place shows from the start, so a first-time driver sees what there is to collect.
-                shownTab == 2 -> StampBoard(sorted)
+                shownTab == 3 -> StampBoard(sorted)
+                shownTab == 0 -> TripArchive(trips, sorted, onTrip, onCreateTrip, { tab = 1 })
                 sorted.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     T("아직 기록한 드라이브가 없어요. 장소를 고르고 기록을 시작해 보세요", d.t(20), Modifier.padding(horizontal = d.u(48)).testTag("history-empty"), color = muted(), align = TextAlign.Center)
                 }
                 // Lazy, as every row converts and draws a whole route and the list only ever grows.
-                shownTab == 0 -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(d.u(8))) {
+                shownTab == 1 -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(d.u(8))) {
                     item(key = "summary") {
                         Column {
                             HistorySummary(sorted)
@@ -490,6 +492,16 @@ private fun HistorySummary(records: List<RecordV>) {
         VerticalRule(Modifier.fillMaxHeight())
         Spacer(Modifier.width(d.u(24)))
         Stat(elapsedText(shownSeconds.roundToLong()), "", "기록 시간", Modifier.weight(1f), size = size)
+        // Only once a real drive has been measured; simulated drives never carry one.
+        // A narrow window has no room for a fourth figure; the month line below still carries the average.
+        val average = remember(records) { averageEfficiency(records) }
+        if (average != null && !d.stacked) {
+            VerticalRule(Modifier.fillMaxHeight())
+            Spacer(Modifier.width(d.u(24)))
+            Box(Modifier.weight(1f).testTag("history-efficiency")) {
+                Stat(average.first, average.second, "평균 ${efficiencyName(average.second)} · 실측 기록", size = size)
+            }
+        }
     }
 }
 
@@ -502,7 +514,8 @@ private fun MonthLine(records: List<RecordV>) {
     val shownCount = rememberCountUp(month.size.toDouble())
     val shownKm = rememberCountUp(month.sumOf { it.distanceKm ?: 0.0 })
     val text = if (month.isEmpty()) "이번 달은 아직 드라이브가 없어요"
-    else "이번 달 ${shownCount.roundToInt()}회 · ${distanceText(shownKm)} km"
+    else "이번 달 ${shownCount.roundToInt()}회 · ${distanceText(shownKm)} km" +
+        averageEfficiency(month)?.let { (value, unit) -> " · 평균 ${efficiencyName(unit)} $value $unit" }.orEmpty()
     // A hairline closes the summary, so the dated list below reads as its own section.
     Column(Modifier.fillMaxWidth()) {
         T(text, d.t(16), Modifier.padding(bottom = d.u(16)).testTag("history-month"), color = muted(), maxLines = 1)
@@ -552,7 +565,10 @@ private fun DriveRow(routeMaps: RouteMapCache, record: RecordV, index: Int, onCl
         Column(Modifier.weight(1f)) {
             T(record.placeName, d.t(CarTextSize.BODY), bold = true, maxLines = 1)
             Spacer(Modifier.height(d.u(4)))
-            T(recordClock(record.startedAtMillis) + " · " + elapsedText(record.elapsedSeconds) + labels(record), d.t(16), color = muted(), maxLines = 1)
+            T(
+                listOfNotNull(recordClock(record.startedAtMillis), elapsedText(record.elapsedSeconds), efficiencyText(record)).joinToString(" · ") + labels(record),
+                d.t(16), color = muted(), maxLines = 1,
+            )
         }
         Spacer(Modifier.width(d.u(16)))
         // The figure leads the right edge, its unit smaller and quiet, as the activity apps set a row's distance.
@@ -610,7 +626,7 @@ private fun DrivePoster(store: JourneyStore, routeMaps: RouteMapCache, record: R
 }
 
 /** Says what the number is, and that a simulated drive is one, right beside it. */
-private fun posterLabel(record: RecordV) = distanceLabel(record.distanceSource) + labels(record)
+private fun posterLabel(record: RecordV) = (listOf(distanceLabel(record.distanceSource)) + listOfNotNull(efficiencyText(record))).joinToString(" · ") + labels(record)
 
 @Composable
 internal fun PosterDistance(record: RecordV, size: Int, unitColor: Color = DriveCardText) {
@@ -675,7 +691,6 @@ private fun BlackPoster(routeMaps: RouteMapCache, record: RecordV) {
         T(posterLabel(record), d.t(14), color = DriveCardMuted, maxLines = 1)
         Spacer(Modifier.height(d.u(4)))
         PosterFooter(record)
-        MapCredit(routeMaps, record)
     }
 }
 

@@ -16,6 +16,7 @@ interface JourneyApi {
     @POST("api/v1/link/codes") suspend fun createLinkCode(): LinkCodeV
     @GET("api/v1/link/codes/{poll}") suspend fun pollLink(@Path("poll") poll: String): LinkPollV
     @GET("api/v1/journey") suspend fun journey(): JourneyV
+    @GET("api/v1/journey/vehicle") suspend fun vehicleJourney(): JourneyV
     @PUT("api/v1/goals/{id}") suspend fun putGoal(@Path("id") id: String, @Body goal: GoalV): GoalV
     @PUT("api/v1/goals/{goal}/places/{place}") suspend fun putPlace(@Path("goal") goal: String, @Path("place") place: String, @Body body: PlaceV): GoalV
     @POST("api/v1/goals/{id}/archive") suspend fun archiveGoal(@Path("id") id: String): GoalV

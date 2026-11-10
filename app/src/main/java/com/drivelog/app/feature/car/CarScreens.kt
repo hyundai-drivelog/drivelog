@@ -507,6 +507,7 @@ fun RecordSavedScreen(
     onPhonePreview: (() -> Unit)? = null, onRecommend: (() -> Unit)? = null, stamp: StampResult? = null,
     /** Opened from the home card, so leaving goes home rather than to 내 기록. */
     returnsHome: Boolean = false,
+    onTrip: (() -> Unit)? = null, tripLabel: String = "여행에 담기",
 ) {
     val d = LocalCarDimens.current
     var confirmDelete by rememberConfirmState(record?.id)
@@ -537,6 +538,10 @@ fun RecordSavedScreen(
                     }
                 }
                 Spacer(Modifier.height(d.u(32)))
+                if (onTrip != null) {
+                    SecondaryButton(tripLabel, "record-add-to-trip", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onTrip)
+                    Spacer(Modifier.height(d.u(8)))
+                }
                 if (onHistory != null) {
                     SecondaryButton("내 기록 보기", "open-history-after", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onHistory)
                     Spacer(Modifier.height(d.u(8)))
@@ -679,10 +684,12 @@ private fun RecordPoster(
         if (record != null) {
             CardTearLine(d.u(CARD_PAD), Modifier.padding(bottom = d.u(8)), endNotch = tearNotch)
             PosterDistance(record, 58, DriveCardMuted)
-            T(distanceLabel(record.distanceSource) + if (record.simulated) " · 시뮬레이션" else "", d.t(16), color = DriveCardMuted, maxLines = 2)
+            T(
+                listOfNotNull(distanceLabel(record.distanceSource), efficiencyText(record), "시뮬레이션".takeIf { record.simulated }).joinToString(" · "),
+                d.t(16), Modifier.testTag("record-card-label"), color = DriveCardMuted, maxLines = 2,
+            )
             Spacer(Modifier.height(d.u(8)))
             PosterFooter(record)
-            MapCredit(routeMaps, record)
         }
     }
 }
@@ -799,11 +806,36 @@ private fun RecordStats(record: RecordV, headline: Boolean = true) {
  * "6.8 km/kWh" over "전비 · 0.50 kWh 사용". Measured from the vehicle's energy left at start and end, so a
  * simulated drive never has one.
  */
+fun efficiencyName(unit: String) = if (unit == "km/kWh") "전비" else "연비"
+
+/** "전비 6.8 km/kWh" for a card's label line. Null without a measurement, and always for a simulated drive. */
+fun efficiencyText(record: RecordV): String? {
+    val value = record.efficiency ?: return null
+    val unit = record.efficiencyUnit ?: return null
+    if (record.simulated) return null
+    return "${efficiencyName(unit)} ${String.format(Locale.US, "%.1f", value)} $unit"
+}
+
+/**
+ * Distance over energy across every measured real drive, never an average of averages: a long drive counts for
+ * more than a short one. Uses the unit most drives were measured in, so km/kWh and km/L never mix.
+ * Returns the number and its unit, or null when no real drive has been measured.
+ */
+fun averageEfficiency(records: List<RecordV>): Pair<String, String>? {
+    val measured = records.filter {
+        !it.simulated && it.efficiency != null && it.efficiencyUnit != null && (it.energyUsed ?: 0.0) > 0.0 && it.distanceKm != null
+    }
+    val unit = measured.groupingBy { it.efficiencyUnit!! }.eachCount().maxByOrNull { it.value }?.key ?: return null
+    val same = measured.filter { it.efficiencyUnit == unit }
+    val value = same.sumOf { it.distanceKm!! } / same.sumOf { it.energyUsed!! }
+    return String.format(Locale.US, "%.1f", value) to unit
+}
+
 fun efficiencyCell(record: RecordV): Pair<String, String>? {
     val value = record.efficiency ?: return null
     val unit = record.efficiencyUnit ?: return null
     if (record.simulated) return null
-    val name = if (unit == "km/kWh") "전비" else "연비"
+    val name = efficiencyName(unit)
     val usedUnit = if (unit == "km/kWh") "kWh" else "L"
     val used = record.energyUsed?.let { " · ${String.format(Locale.US, "%.2f", it)} $usedUnit 사용" }.orEmpty()
     return "${String.format(Locale.US, "%.1f", value)} $unit" to "$name$used"

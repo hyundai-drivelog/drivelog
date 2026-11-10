@@ -17,7 +17,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import retrofit2.HttpException
 
 data class StoreState(
     val journey: JourneyV = JourneyV(),
@@ -25,6 +24,10 @@ data class StoreState(
     val lastSyncFailed: Boolean = false,
     val recentPlaces: List<PlaceV> = emptyList(),
     val savedPlaces: List<PlaceV> = emptyList(),
+    /** Trip metadata stays in this connection's local file; server journey snapshots do not replace it. */
+    val trips: List<TripV> = emptyList(),
+    /** Old installations must explicitly consent before automatic server sync resumes. */
+    val serverConsentVersion: Int = 0,
     // Held in memory only; persisted separately through TokenVault.
     @Transient val token: String? = null,
 )
@@ -42,28 +45,43 @@ fun List<PlaceV>.withSavedToggled(place: PlaceV): List<PlaceV> =
 
 /**
  * Offline-first store: goals, records and queued writes survive process death in one atomically replaced
- * file, written off the main thread, and the car works fully before a phone is ever linked. The Pleos Sync SDK is not available and the
- * mobile web cannot use an Android SDK, so sync goes through the service server; this class is the only
- * place that would change to adopt it.
+ * file per connection, written off the main thread. Unlinked history is kept separately and is never
+ * uploaded without an explicit import choice. Raw tokens live only in TokenVault, not these files.
  */
-class JourneyStore(
-    context: Context, baseUrl: String, private val scope: CoroutineScope,
-    /** False in a build with no phone link: nothing could ever send the queue, so each record would copy into it forever. */
-    private val queueForServer: Boolean = true,
+class JourneyStore internal constructor(
+    filesDir: File,
+    private val scope: CoroutineScope,
+    private val queueForServer: Boolean,
+    private val readToken: () -> String?,
+    private val writeToken: (String?) -> Unit,
+    private val clientFor: (String?) -> JourneyApi,
 ) {
-    private val file = File(context.filesDir, "journey-store.json")
-    private val vault = TokenVault(context)
+    constructor(context: Context, baseUrl: String, scope: CoroutineScope, queueForServer: Boolean = true) : this(
+        context.filesDir, scope, queueForServer,
+        { TokenVault(context).read() }, { TokenVault(context).write(it) },
+        { token -> createJourneyApi(baseUrl) { token } },
+    )
+
+    private val guestFile = File(filesDir, "journey-store.json")
+    private val profilesDir = File(filesDir, "journey-profiles")
+    private var file = guestFile
     private val gson = Gson()
     private val syncLock = Mutex()
+    private val snapshots = mutableMapOf<String, StoreState>()
+    @Volatile private var session = 0L
     private val mutableState = MutableStateFlow(load())
     val state: StateFlow<StoreState> = mutableState
-    val api: JourneyApi = createJourneyApi(baseUrl) { mutableState.value.token }
+    @Volatile var api: JourneyApi = clientFor(mutableState.value.token)
+        private set
+
+    private fun profileFile(token: String) = File(File(profilesDir, journeyProfileId(token)), "store.json")
 
     /** Raised by every change, and the newest change reached disk at [written]. */
     private var version = 0L
     private val written = MutableStateFlow(WriteResult(0L, ok = true))
-    /** Only the newest state matters: each write replaces the whole file, so older pending ones are skipped. */
-    private val writes = Channel<Pair<Long, StoreState>>(Channel.CONFLATED)
+    /** Keep writes for every profile: conflation across a connection switch could lose the old profile. */
+    private data class PendingWrite(val version: Long, val file: File, val state: StoreState)
+    private val writes = Channel<PendingWrite>(Channel.UNLIMITED)
     private val mutableWriteFailed = MutableStateFlow(false)
     /** The last write did not reach disk, usually for want of space. Records stay in memory until one succeeds. */
     val writeFailed: StateFlow<Boolean> = mutableWriteFailed
@@ -73,11 +91,14 @@ class JourneyStore(
     init {
         // One writer off the main thread. Serialising every record and point used to block the screen on each change.
         scope.launch(Dispatchers.IO) {
-            for ((at, next) in writes) {
+            for ((at, destination, next) in writes) {
                 val ok = try {
-                    val temp = File(file.parentFile, file.name + ".tmp")
+                    destination.parentFile?.mkdirs()
+                    val temp = File(destination.parentFile, destination.name + ".tmp")
                     temp.writeText(gson.toJson(next))
-                    if (!temp.renameTo(file)) { file.delete(); if (!temp.renameTo(file)) throw IOException("rename failed") }
+                    // Atomic replacement keeps the previous snapshot if the write fails.
+                    java.nio.file.Files.move(temp.toPath(), destination.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
                     true
                 } catch (error: IOException) {
                     Log.e(TAG, "store write failed: ${error.javaClass.simpleName}")
@@ -92,26 +113,38 @@ class JourneyStore(
     /** Polling for remote changes stops in the background; queued writes still go out. */
     @Volatile var foreground = false
 
-    private fun load(): StoreState {
-        val saved = runCatching {
-            if (file.exists()) gson.fromJson(file.readText(), StoreState::class.java) else StoreState()
+    private fun read(source: File): StoreState = snapshots[source.absolutePath] ?: runCatching {
+            if (source.exists()) gson.fromJson(source.readText(), StoreState::class.java) else StoreState()
         }.getOrElse {
             Log.w(TAG, "store unreadable: ${it.javaClass.simpleName}")
             StoreState()
         }
-        // Earlier builds queued every record even without a link. Dropping that queue leaves the records themselves.
-        return saved.copy(token = vault.read(), outbox = if (queueForServer) saved.outbox else emptyList())
+
+    private fun load(): StoreState {
+        val token = readToken()?.takeIf { queueForServer }
+        val linked = token?.let { profileFile(it) }
+        if (linked != null && linked.exists()) {
+            val saved = read(linked)
+            if (saved.serverConsentVersion == SERVER_CONSENT_VERSION) {
+                file = linked
+                return saved.copy(token = token)
+            }
+        }
+        // Legacy linked data remains in the original local file; it cannot silently resume uploading.
+        return read(guestFile).copy(token = null, outbox = emptyList(), serverConsentVersion = 0)
     }
 
-    private fun List<OutboxOp>.plusQueued(op: OutboxOp) = if (queueForServer) this + op else this
+    private fun StoreState.plusQueued(op: OutboxOp) =
+        if (queueForServer && token != null && serverConsentVersion == SERVER_CONSENT_VERSION) outbox + op else outbox
 
     /** Changes memory at once and queues the file write. Returns the version to wait on with [awaitWritten]. */
     @Synchronized
     private fun update(change: (StoreState) -> StoreState): Long {
         val next = change(mutableState.value)
         mutableState.value = next
+        snapshots[file.absolutePath] = next
         version += 1
-        writes.trySend(version to next)
+        writes.trySend(PendingWrite(version, file, next))
         return version
     }
 
@@ -134,22 +167,28 @@ class JourneyStore(
         }
     }
 
-    fun setToken(token: String) {
-        vault.write(token)
-        update { state ->
-            // Include drives saved before linking (or before enabling the phone-link build).
-            val queued = state.outbox.filter { it.type == OutboxOp.RECORD }.map { it.recordId }.toSet()
-            val history = if (state.token == null && queueForServer) state.journey.records
-                .filterNot { it.id in queued }.map { OutboxOp(OutboxOp.RECORD, it.id, it) } else emptyList()
-            state.copy(token = token, outbox = state.outbox + history)
-        }
+    @Synchronized
+    fun setToken(token: String, includeLocalRecords: Boolean = false) {
+        check(queueForServer) { "Phone linking is disabled in this build" }
+        val local = mutableState.value
+        session += 1
+        file = profileFile(token)
+        val profile = linkHistory(read(file), local, includeLocalRecords)
+            .copy(token = token, serverConsentVersion = SERVER_CONSENT_VERSION, lastSyncFailed = false)
+        api = clientFor(token)
+        writeToken(token)
+        update { profile }
         scope.launch(Dispatchers.IO) { sync() }
     }
 
-    /** Disconnects this car. Local data stays, so a different phone or driver can link afterwards. */
+    /** Keep the old profile on disk, but never expose its records or queue to another connection. */
+    @Synchronized
     fun unlink() {
-        vault.write(null)
-        update { it.copy(token = null, lastSyncFailed = false) }
+        session += 1
+        writeToken(null)
+        file = guestFile
+        api = clientFor(null)
+        update { read(guestFile).copy(token = null, outbox = emptyList(), lastSyncFailed = false, serverConsentVersion = 0) }
     }
 
     fun addRecentPlace(place: PlaceV) = update { it.copy(recentPlaces = it.recentPlaces.withRecent(place)) }
@@ -159,48 +198,70 @@ class JourneyStore(
     fun addRecord(record: RecordV) = update { state ->
         state.copy(
             journey = state.journey.copy(records = listOf(record) + state.journey.records.filterNot { it.id == record.id }),
-            outbox = state.outbox.plusQueued(OutboxOp(OutboxOp.RECORD, record.id, record)),
+            outbox = state.plusQueued(OutboxOp(OutboxOp.RECORD, record.id, record)),
         )
     }
 
     fun deleteRecord(id: String) = update { state ->
+        val remaining = state.journey.records.filterNot { it.id == id }
         state.copy(
-            journey = state.journey.copy(records = state.journey.records.filterNot { it.id == id }),
-            outbox = state.outbox.filterNot { it.recordId == id }.plusQueued(OutboxOp(OutboxOp.DELETE_RECORD, id)),
+            journey = state.journey.copy(records = remaining),
+            trips = retainTripRecords(state.trips, remaining),
+            outbox = state.copy(outbox = state.outbox.filterNot { it.recordId == id })
+                .plusQueued(OutboxOp(OutboxOp.DELETE_RECORD, id)),
         )
     }
 
+    suspend fun saveTripDurably(id: String, title: String, recordIds: List<String>, coverRecordId: String?): TripV? {
+        var trip: TripV? = null
+        val at = update { state ->
+            trip = prepareTrip(id, title, recordIds, coverRecordId, System.currentTimeMillis(), state.trips, state.journey.records)
+            trip?.let { saved -> state.copy(trips = listOf(saved) + state.trips.filterNot { it.id == id }) } ?: state
+        }
+        return trip?.takeIf { awaitWritten(at) }
+    }
+
+    suspend fun deleteTripDurably(id: String): Boolean = awaitWritten(update { state ->
+        state.copy(trips = state.trips.filterNot { it.id == id })
+    })
+
     /** True only when the server holds everything and the local snapshot is current. */
     suspend fun sync(): Boolean = syncLock.withLock {
-        val token = mutableState.value.token ?: return false
+        val connection = synchronized(this) { Triple(mutableState.value.token, session, api) }
+        val token = connection.first ?: return false
+        val activeSession = connection.second
+        val client = connection.third // This client's interceptor captures a fixed token.
+        fun active() = session == activeSession && mutableState.value.token == token
         try {
             for (op in mutableState.value.outbox) {
-                try {
-                    when (op.type) {
-                        OutboxOp.GOAL -> checkNotNull(op.goal).let { api.putGoal(it.id, it) }
-                        OutboxOp.PLACE -> api.putPlace(checkNotNull(op.goal).id, checkNotNull(op.place).id, op.place)
-                        OutboxOp.RECORD -> api.putRecord(op.recordId, checkNotNull(op.record))
-                        OutboxOp.VISIT -> api.confirmVisit(op.recordId)
-                        OutboxOp.ARCHIVE -> api.archiveGoal(checkNotNull(op.goal).id)
-                        OutboxOp.DELETE_RECORD -> api.deleteRecord(op.recordId)
-                    }
-                } catch (error: HttpException) {
-                    // A definite rejection (e.g. the goal was deleted on the phone) will never succeed on
-                    // retry and must not block later writes. Auth and server failures do stay queued.
-                    val code = error.code()
-                    if (code == 401 || code == 408 || code == 429 || code >= 500) throw error
-                    Log.w(TAG, "dropping rejected ${op.type}: HTTP $code")
+                if (!active()) return false
+                // Deleting/replacing an item during a request must not remove the next queued operation.
+                if (mutableState.value.outbox.none { it === op }) continue
+                when (op.type) {
+                    OutboxOp.GOAL -> checkNotNull(op.goal).let { client.putGoal(it.id, it) }
+                    OutboxOp.PLACE -> client.putPlace(checkNotNull(op.goal).id, checkNotNull(op.place).id, op.place)
+                    OutboxOp.RECORD -> client.putRecord(op.recordId, checkNotNull(op.record))
+                    OutboxOp.VISIT -> client.confirmVisit(op.recordId)
+                    OutboxOp.ARCHIVE -> client.archiveGoal(checkNotNull(op.goal).id)
+                    OutboxOp.DELETE_RECORD -> client.deleteRecord(op.recordId)
                 }
-                update { state -> state.copy(outbox = state.outbox.drop(1)) }
+                update { state -> if (active()) state.copy(outbox = state.outbox.filterNot { it === op }) else state }
             }
-            val remote = api.journey()
-            update { it.copy(journey = remote, lastSyncFailed = false) }
-            true
+            if (!active()) return false
+            // Unlike the mobile feed, this endpoint is a complete authoritative snapshot.
+            // An older server returns 404: keep local data and report failure, never fall back to 200 items.
+            val remote = client.vehicleJourney()
+            update { state ->
+                if (active()) {
+                    val journey = reconcileJourney(remote, state.outbox)
+                    state.copy(journey = journey, trips = retainTripRecords(state.trips, journey.records), lastSyncFailed = false)
+                } else state
+            }
+            active() && mutableState.value.outbox.isEmpty()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
-            if (error is HttpException && error.code() == 401 && mutableState.value.token == token) unlink()
-            update { it.copy(lastSyncFailed = true) }
+            update { if (active()) it.copy(lastSyncFailed = true) else it }
             false
         }
     }
@@ -208,5 +269,6 @@ class JourneyStore(
     private companion object {
         const val TAG = "DriveLogStore"
         const val SYNC_INTERVAL_MS = 15_000L
+        const val SERVER_CONSENT_VERSION = 1
     }
 }

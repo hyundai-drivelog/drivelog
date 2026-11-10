@@ -27,6 +27,8 @@ import com.drivelog.app.feature.car.splitAtGaps
 import com.drivelog.app.feature.car.barelyMoved
 import com.drivelog.app.feature.car.SampleCourses
 import com.drivelog.app.feature.car.filterCourses
+import com.drivelog.app.feature.car.courseRegion
+import com.drivelog.app.feature.car.courseDurationLabel
 import com.drivelog.app.feature.car.mercatorProjector
 import com.drivelog.app.feature.car.nearestArea
 import com.drivelog.app.feature.car.routeKm
@@ -217,13 +219,26 @@ class JourneyRulesTest {
         assertEquals("출발지 주변", nearestArea(MapPoint(36.5, 128.0)))
     }
 
-    @Test fun coursesFilterByOriginAndDestinationWithMineFirst() {
+    @Test fun coursesFilterByRegionAndThemeWithMineFirst() {
         val mine = SampleCourses[0].copy(id = "mine", recommendations = 0, mine = true)
         val all = SampleCourses + mine
         assertEquals("mine", filterCourses(all, null, null).first().id)
-        assertTrue(filterCourses(all, "부산 사하구", null).all { it.originArea == "부산 사하구" })
-        assertTrue(filterCourses(all, null, "양평 두물머리").all { it.destinationName == "양평 두물머리" })
-        assertTrue(filterCourses(all, "서울 강남구", "송정 해수욕장").isEmpty())
+        assertTrue(filterCourses(all, "부산", null).all { it.originArea.startsWith("부산 ") })
+        assertTrue(filterCourses(all, null, "강변").all { "강변" in it.tags })
+        assertTrue(filterCourses(all, "서울", "바다").isEmpty())
+        assertEquals("기타", courseRegion("출발지 주변"))
+        assertEquals("30분 이내", courseDurationLabel(28))
+        assertEquals("1시간 이내", courseDurationLabel(42))
+        assertEquals("1시간 이상", courseDurationLabel(75))
+    }
+
+    @Test fun quickPlacesPutSavedFirstOnceEachAndStopAtThree() {
+        fun place(name: String, lat: Double) = com.drivelog.app.core.platform.NaviPlace(name, "", lat, 129.0)
+        val saved = listOf(place("집", 35.1))
+        val recent = listOf(place("집", 35.1), place("송정", 35.2), place("광안리", 35.3), place("해운대", 35.4))
+        val shown = com.drivelog.app.feature.car.quickPlaces(saved, recent)
+        assertEquals(listOf("집", "송정", "광안리"), shown.map { it.place.name })
+        assertEquals(listOf(true, false, false), shown.map { it.saved })
     }
 
     @Test fun sampleCoursesCanAllBeDrawnAndHaveUniqueIds() {

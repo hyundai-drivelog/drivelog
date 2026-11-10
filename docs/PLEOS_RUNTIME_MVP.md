@@ -65,7 +65,7 @@ SDK 2.3.2 / 이미지 내 서비스 2.3.22. 다운로드·컴파일과 별도로
 | 연료 잔량 | UNSUPPORTED | `ERROR_NOT_SUPPORTED_PROPERTY` |
 | 현재 트립 연비 / 전비 | UNSUPPORTED | `ERROR_NOT_SUPPORTED_PROPERTY` |
 
-UI의 실제 모드 주행거리는 Vehicle 원시값을 추정 변환하지 않고 수집 GPS 점 사이 거리로 표시한다. 평균 연비·전비는 실제 세션 기준과 단위가 검증되기 전까지 null/미지원이다.
+UI의 실제 모드 주행거리는 Vehicle 원시값을 추정 변환하지 않고 수집 GPS 점 사이 거리로 표시한다. Pleos의 트립 연비·전비 접근자는 위처럼 미지원이라 쓰지 않는다. 대신 주행 전비·연비는 AAOS 표준 `EV_BATTERY_LEVEL`(Wh)·`FUEL_LEVEL`(mL)을 출발·도착 때 읽어 `거리 ÷ 사용량`으로 계산한다(`Efficiency.kt`). 1km 미만, 충전 등으로 늘어난 경우, 사용량이 센서 최소 단위의 5배 미만, 비현실적인 값(전비 1~15, 연비 2~50)이면 null이다. 이 에뮬레이터는 `FUEL_LEVEL`을 지원하지 않아 연비(km/L) 경로는 단위 테스트로만 확인했다.
 
 ## D. NaviHelper 실제 호출
 
