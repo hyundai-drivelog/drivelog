@@ -31,6 +31,8 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.drivelog.app.core.journey.RecordV
+import com.drivelog.app.core.journey.TripV
+import com.drivelog.app.core.journey.summarizeTrip
 
 /**
  * DRIVELOG's own front page, kept minimal: a short title, starting a drive, this month's counts, the latest drive
@@ -45,6 +47,8 @@ fun HomeScreen(
     onWelcome: (() -> Unit)? = null,
     /** Saved places first, then recent ones: one tap opens the place's own screen, where guidance is asked for. */
     quickPlaces: List<QuickPlace> = emptyList(), onPlace: (NaviPlace) -> Unit = {},
+    onPrivacy: (() -> Unit)? = null,
+    trips: List<TripV> = emptyList(), onTrip: (TripV) -> Unit = {},
 ) {
     val d = LocalCarDimens.current
     val month = remember(records) { thisMonth(records) }
@@ -52,11 +56,12 @@ fun HomeScreen(
     val latest = remember(records) {
         records.filterNot { barelyMoved(it.distanceKm, it.route.size >= 2) }.maxByOrNull { it.startedAtMillis }
     }
+    val latestTrip = remember(trips, records) { trips.maxByOrNull { summarizeTrip(it, records).lastAtMillis ?: it.createdAtMillis } }
     Column(Modifier.fillMaxSize().padding(horizontal = d.u(22), vertical = d.u(8))) {
         TopBar(null, onHold, {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(d.u(10))) {
                 linkControl?.invoke()
-                if (onWelcome != null) SecondaryButton("앱 소개", "open-welcome", size = ButtonSize.SMALL, icon = CarGlyph.INFO, onClick = onWelcome)
+                if (onWelcome != null) SecondaryButton("앱 소개", "open-welcome", size = ButtonSize.SMALL, onClick = onWelcome)
             }
         })
         Box(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()).padding(bottom = d.u(10)), contentAlignment = Alignment.Center) {
@@ -84,9 +89,20 @@ fun HomeScreen(
                         size = 36,
                     )
                 }
-                if (latest != null) {
+                if (month.any { it.simulated }) {
+                    Spacer(Modifier.height(d.u(8)))
+                    T("이번 달 합계에 시뮬레이션 기록이 포함돼요", d.t(CarTextSize.CAPTION), Modifier.testTag("home-simulation-note"), color = muted())
+                }
+                if (latestTrip != null) {
+                    Spacer(Modifier.height(d.u(CarSpace.L)))
+                    RecentTripRow(latestTrip, records) { onTrip(latestTrip) }
+                } else if (latest != null) {
                     Spacer(Modifier.height(d.u(CarSpace.L)))
                     LatestDriveRow(routeMaps, latest) { onRecord(latest) }
+                }
+                if (onPrivacy != null) {
+                    Spacer(Modifier.height(d.u(12)))
+                    SecondaryButton("개인정보와 데이터 사용", "open-privacy", Modifier.fillMaxWidth(), size = ButtonSize.SMALL, onClick = onPrivacy)
                 }
                 Spacer(Modifier.height(d.u(32)))
                 // One row of secondary actions. The stamp count above already opens the stamps.

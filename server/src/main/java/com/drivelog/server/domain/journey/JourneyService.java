@@ -394,11 +394,20 @@ public class JourneyService {
     // --- Snapshot --------------------------------------------------------------------------------
 
     public JourneyState state(String account) {
+        return snapshot(account, false);
+    }
+
+    /** Vehicle sync replaces its local snapshot, so a limited mobile feed would lose older drives. */
+    public JourneyState vehicleState(String account) {
+        return snapshot(account, true);
+    }
+
+    private JourneyState snapshot(String account, boolean complete) {
         List<GoalView> goals = db.sql("SELECT * FROM drivelog.goals WHERE account_id = ? ORDER BY created_at DESC")
                 .param(account).query((rs, n) -> goalRow(rs)).list();
         GoalView active = goals.stream().filter(goal -> !"ARCHIVED".equals(goal.status())).findFirst().orElse(null);
         List<GoalView> archived = goals.stream().filter(goal -> "ARCHIVED".equals(goal.status())).toList();
-        List<RecordView> records = db.sql("SELECT * FROM drivelog.drive_records WHERE account_id = ? ORDER BY started_at DESC LIMIT 200")
+        List<RecordView> records = db.sql("SELECT * FROM drivelog.drive_records WHERE account_id = ? ORDER BY started_at DESC, id DESC" + (complete ? "" : " LIMIT 200"))
                 .param(account).query((rs, n) -> recordRow(rs)).list();
         return new JourneyState(active, archived, records);
     }

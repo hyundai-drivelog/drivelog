@@ -74,7 +74,7 @@ private const val STYLE_URL = "https://tiles.openfreemap.org/styles/dark"
  * Required by the data's licences (ODbL for OpenStreetMap, OpenMapTiles' terms); never removed, only kept small.
  * Shown in the map's own corner, as map services do (user decision, 2026-11-09), so cards need no caption line.
  */
-const val ATTRIBUTION = "© OpenMapTiles © OpenStreetMap"
+const val ATTRIBUTION = "OpenFreeMap · © OpenMapTiles · © OpenStreetMap"
 private const val IMAGE_WIDTH = 1200
 private const val IMAGE_HEIGHT = 800
 private const val RENDER_TIMEOUT_MS = 30_000L
@@ -334,10 +334,10 @@ class RouteMapCache(context: Context) {
 fun MapCornerCredit(modifier: Modifier = Modifier) {
     val d = LocalCarDimens.current
     T(
-        ATTRIBUTION, d.t(11),
+        ATTRIBUTION, d.t(12),
         modifier.padding(d.u(6)).clip(RoundedCornerShape(d.u(4))).background(Color.Black.copy(alpha = 0.45f))
             .padding(horizontal = d.u(6), vertical = d.u(1)).testTag("map-credit"),
-        color = Color.White.copy(alpha = 0.7f), maxLines = 1,
+        color = Color.White, maxLines = 3,
     )
 }
 
@@ -353,7 +353,7 @@ fun RouteVisual(cache: RouteMapCache, record: RecordV?, label: String?, modifier
         value = if (record == null || !hasImage) null else withContext(Dispatchers.IO) { cache.loadFrame(record.id) }
     }
     val points = remember(record?.id) { record?.route?.toMapPoints().orEmpty() }
-    Crossfade(frame, modifier, tween(320), label = "route image") { loaded ->
+    Crossfade(frame, modifier, tween(if (LocalMotionEnabled.current) 320 else 0), label = "route image") { loaded ->
         DriveRouteArt(points, record?.destinationPoint(), label, Modifier.fillMaxSize(), drawRoute || replay > 0, loaded, replay, markScale)
     }
 }
@@ -399,7 +399,7 @@ fun CourseThumbnail(
             ?.let { store[key] = it }
     }
     Box(modifier.clip(RoundedCornerShape(d.u(12))).background(DriveCardBackground).onSizeChanged { box = it }.clearAndSetSemantics {}) {
-        Crossfade(frame, Modifier.fillMaxSize(), tween(320), label = "course image") { loaded ->
+        Crossfade(frame, Modifier.fillMaxSize(), tween(if (LocalMotionEnabled.current) 320 else 0), label = "course image") { loaded ->
             DriveRouteArt(points, null, null, Modifier.fillMaxSize(), map = loaded, markScale = THUMB_MARKS)
         }
         if (stamp != null) {

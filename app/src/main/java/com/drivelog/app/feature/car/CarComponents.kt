@@ -305,17 +305,8 @@ fun ColumnScope.paneFill(stackedHeight: Int = 300): Modifier {
     return if (d.stacked) Modifier.fillMaxWidth().height(d.u(stackedHeight)) else Modifier.fillMaxWidth().weight(1f)
 }
 
-@DrawableRes
-fun placeImage(name: String): Int = when {
-    name.contains("광안리") -> R.drawable.place_gwangalli
-    name.contains("송정") -> R.drawable.place_songjeong
-    name.contains("다대포") -> R.drawable.place_dadaepo
-    else -> R.drawable.demo_coastal_road
-}
-
 /**
- * A photo beside a place must really be of that place, so anything else keeps the map. The bundled place banners
- * are greyscale at source and clash with the colour photos, so none is shown until they are replaced.
+ * Only driver-provided photos may be used. Unverified bundled photos are not app resources.
  */
 @Suppress("UNUSED_PARAMETER")
 fun placeHasPhoto(name: String) = false
@@ -325,7 +316,7 @@ fun PlacePhoto(name: String, modifier: Modifier = Modifier, bitmap: ImageBitmap?
     val d = LocalCarDimens.current
     val shaped = modifier.clip(RoundedCornerShape(d.u(10))).background(soft())
     if (bitmap != null) Image(bitmap, name, shaped, contentScale = ContentScale.Crop)
-    else Image(painterResource(placeImage(name)), name, shaped, contentScale = ContentScale.Crop)
+    else Box(shaped, contentAlignment = Alignment.Center) { CarIcon(CarGlyph.PIN, d.u(64), muted()) }
 }
 
 /** The whole poster's picture: the driver's own photo, or a bundled one. */

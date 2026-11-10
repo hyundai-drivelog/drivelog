@@ -99,13 +99,23 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                     model.routeMaps, navi.routeSummary.takeIf { guiding }, model::showRouteOverview,
                 )
             }
-            Screen.HISTORY -> HistoryScreen(model.store, model.routeMaps, store.journey.records, model::openRecord, model::home, model.historyTab)
+            Screen.HISTORY -> HistoryScreen(model.store, model.routeMaps, store.journey.records, model::openRecord, model::home, model.historyTab,
+                store.trips, model::openTrip, { model.createTrip() })
+            Screen.TRIP -> TripDetailScreen(store.trips.firstOrNull { it.id == model.openedTripId }, store.journey.records,
+                model::backFromTrip, model::editTrip, model::openRecord, model::deleteTrip, model.tripBusy, model.tripError)
+            Screen.TRIP_EDITOR -> TripEditorScreen(model.tripDraftTitle, model.tripDraftRecordIds, model.tripDraftCoverId, model.editingTripId,
+                store.trips, store.journey.records, model.tripBusy, model.tripError, model::setTripTitle, model::toggleTripRecord,
+                model::chooseTripCover, model::saveTrip, model::cancelTripEditor)
+            Screen.TRIP_PICKER -> TripPickerScreen(store.trips, store.journey.records, model.tripBusy, model.tripError,
+                model::addToExistingTrip, model::createTripFromPicker, model::cancelTripPicker)
             Screen.RECORD -> RecordSavedScreen(
                 model.routeMaps, shown.opened, "드라이브 기록", { model.goBack() }, null, model::deleteOpenedRecord,
                 shown.opened?.let { model.sendToPhone(it) },
                 shown.opened?.let { model.recommend(it) },
                 shown.opened?.let { stampResultFor(it, store.journey.records) },
                 returnsHome = model.returnAfterRecord == Screen.HOME,
+                onTrip = shown.opened?.let { record -> { model.addRecordToTrip(record) } },
+                tripLabel = if (store.trips.any { shown.opened?.id in it.recordIds }) "담긴 여행 보기" else "여행에 담기",
             )
             Screen.COMMUNITY -> CommunityScreen(
                 model.routeMaps, model.communityCourses, model.courseRegionFilter, model.courseThemeFilter,
@@ -132,8 +142,16 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                 shown.finished?.let { model.sendToPhone(it) },
                 shown.finished?.let { model.recommend(it) },
                 shown.finished?.let { stampResultFor(it, store.journey.records) },
+                onTrip = shown.finished?.let { record -> { model.addRecordToTrip(record) } },
+                tripLabel = if (store.trips.any { shown.finished?.id in it.recordIds }) "담긴 여행 보기" else "여행에 담기",
             )
             Screen.OFFLINE -> OfflineSavedScreen(shown.finished, shown.finished?.destinationPoint(), store.token != null, model.syncing, model::retrySync, model::home)
+            Screen.PRIVACY -> PrivacyScreen(model::home)
+            Screen.DATA_CONSENT -> PrivacyScreen(model::home, model::agreeToDataUse)
+            Screen.LINK_CONSENT -> LinkConsentScreen(
+                if (store.token == null) store.journey.records.size else 0,
+                model.includeLinkHistory, model::toggleLinkHistory, model::agreeToLink, model::leaveLink,
+            )
             Screen.WELCOME -> WelcomeScreen(model::finishWelcome)
             Screen.HOME -> HomeScreen(
                 store.journey.records, model.routeMaps,
@@ -146,6 +164,8 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                 model::openWelcome,
                 remember(store.recentPlaces, store.savedPlaces, navi) { quickPlaces(model.savedPlaces(), model.recentPlaces()) },
                 model::selectPlace,
+                model::openPrivacy,
+                store.trips, model::openTrip,
             )
             Screen.DESTINATION -> DestinationScreen(
                 shown.query, speech, canSearch, model.simulation, navi.routeMessage,

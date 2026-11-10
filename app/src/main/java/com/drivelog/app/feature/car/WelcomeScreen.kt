@@ -56,7 +56,7 @@ fun WelcomeScreen(onDone: () -> Unit) {
     val pages = listOf(
         WelcomePage(
             "달린 길이\n카드로 남아요",
-            "목적지를 고르면 Pleos 내비 안내와 기록이 함께 시작되고, 정차하면 경로를 그린 드라이브 카드가 남아요.",
+            "목적지를 확인하고 길 안내 및 기록 시작을 누르세요. 정차 후 기록을 저장하면 경로를 그린 카드가 남아요.",
         ) { modifier -> PhotoVisual(modifier) },
         WelcomePage(
             "목적지 하나만\n고르세요",
@@ -68,7 +68,7 @@ fun WelcomeScreen(onDone: () -> Unit) {
         ) { modifier -> DrivingVisual(modifier) },
         WelcomePage(
             "정차하면\n카드를 받아요",
-            "카드를 누르거나 옆으로 밀면 자세한 기록이 열려요. 경로는 서버에 저장하지 않고 차 안에서 그려요.",
+            "카드를 누르거나 옆으로 밀면 자세한 기록이 열려요. 기본 모드는 차량에 저장하고, 휴대폰 연결은 별도 동의 후 서버로 전송해요. 홈에서 개인정보와 데이터 사용을 확인하세요.",
         ) { modifier -> CardVisual(modifier) },
     )
     val pager = rememberPagerState { pages.size }
@@ -143,9 +143,8 @@ private fun PageDots(count: Int, current: Int) {
 private fun PhotoVisual(modifier: Modifier) {
     val d = LocalCarDimens.current
     Box(modifier.clip(RoundedCornerShape(d.u(CarRadius.CARD))).background(DriveCardBackground)) {
-        // The mood photo that names nowhere, as on the home screen before a first drive.
-        PlacePhoto("", Modifier.fillMaxSize())
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.35f)))
+        RouteGlyph(ExampleRoute, Modifier.fillMaxSize().padding(d.u(28)), DriveCardText, d.u(4), trace = true)
+        T("예시 경로", d.t(CarTextSize.CAPTION), Modifier.align(Alignment.TopStart).padding(d.u(28)), color = DriveCardMuted)
         BrandWordmark(d.t(40), DriveCardText, Modifier.align(Alignment.BottomStart).padding(d.u(28)))
     }
 }

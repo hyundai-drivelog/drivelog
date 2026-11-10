@@ -416,7 +416,8 @@ fun PlaceConfirmScreen(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<RecordV>, onRecord: (RecordV) -> Unit, onBack: () -> Unit, initialTab: Int = 0) {
+fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<RecordV>, onRecord: (RecordV) -> Unit, onBack: () -> Unit, initialTab: Int = 0,
+    trips: List<com.drivelog.app.core.journey.TripV> = emptyList(), onTrip: (com.drivelog.app.core.journey.TripV) -> Unit = {}, onCreateTrip: () -> Unit = {}) {
     val d = LocalCarDimens.current
     var tab by rememberSaveable(initialTab) { mutableIntStateOf(initialTab) }
     var shortOpen by rememberSaveable { mutableStateOf(false) }
@@ -425,17 +426,18 @@ fun HistoryScreen(store: JourneyStore, routeMaps: RouteMapCache, records: List<R
     Column(Modifier.fillMaxSize().padding(horizontal = d.u(22), vertical = d.u(8))) {
         TopBar(onBack, null, if (sorted.any { it.simulated }) ({ SimulationBadge() }) else null, title = "내 기록")
         Column(Modifier.fillMaxWidth().weight(1f)) {
-            Tabs(listOf("이전 드라이브", "드라이브 카드", "스탬프"), tab) { tab = it }
+            Tabs(listOf("여행", "주행", "카드", "스탬프"), tab) { tab = it }
             Spacer(Modifier.height(d.u(16)))
             Crossfade(tab, Modifier.fillMaxSize(), tween(if (LocalMotionEnabled.current) 220 else 0), label = "history tab") { shownTab ->
             when {
                 // Every place shows from the start, so a first-time driver sees what there is to collect.
-                shownTab == 2 -> StampBoard(sorted)
+                shownTab == 3 -> StampBoard(sorted)
+                shownTab == 0 -> TripArchive(trips, sorted, onTrip, onCreateTrip, { tab = 1 })
                 sorted.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     T("아직 기록한 드라이브가 없어요. 장소를 고르고 기록을 시작해 보세요", d.t(20), Modifier.padding(horizontal = d.u(48)).testTag("history-empty"), color = muted(), align = TextAlign.Center)
                 }
                 // Lazy, as every row converts and draws a whole route and the list only ever grows.
-                shownTab == 0 -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(d.u(8))) {
+                shownTab == 1 -> LazyColumn(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(d.u(8))) {
                     item(key = "summary") {
                         Column {
                             HistorySummary(sorted)

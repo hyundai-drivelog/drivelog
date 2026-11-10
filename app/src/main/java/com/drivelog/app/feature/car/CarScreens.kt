@@ -507,6 +507,7 @@ fun RecordSavedScreen(
     onPhonePreview: (() -> Unit)? = null, onRecommend: (() -> Unit)? = null, stamp: StampResult? = null,
     /** Opened from the home card, so leaving goes home rather than to 내 기록. */
     returnsHome: Boolean = false,
+    onTrip: (() -> Unit)? = null, tripLabel: String = "여행에 담기",
 ) {
     val d = LocalCarDimens.current
     var confirmDelete by rememberConfirmState(record?.id)
@@ -537,6 +538,10 @@ fun RecordSavedScreen(
                     }
                 }
                 Spacer(Modifier.height(d.u(32)))
+                if (onTrip != null) {
+                    SecondaryButton(tripLabel, "record-add-to-trip", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onTrip)
+                    Spacer(Modifier.height(d.u(8)))
+                }
                 if (onHistory != null) {
                     SecondaryButton("내 기록 보기", "open-history-after", Modifier.fillMaxWidth(), size = ButtonSize.MEDIUM, onClick = onHistory)
                     Spacer(Modifier.height(d.u(8)))

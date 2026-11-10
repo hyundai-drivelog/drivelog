@@ -35,3 +35,6 @@ keystore.properties
 
 # Local browser profile used for design verification.
 /.qa-design-chrome/
+
+# Private emulator QA backups and captures; never submit app data or tokens.
+/.local-qa/
