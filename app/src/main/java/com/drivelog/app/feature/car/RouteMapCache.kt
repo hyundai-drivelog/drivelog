@@ -346,7 +346,7 @@ fun MapCornerCredit(modifier: Modifier = Modifier) {
  * [replay] draws the route again from the start each time it changes.
  */
 @Composable
-fun RouteVisual(cache: RouteMapCache, record: RecordV?, label: String?, modifier: Modifier = Modifier, drawRoute: Boolean = false, replay: Int = 0, markScale: Float = 1f) {
+fun RouteVisual(cache: RouteMapCache, record: RecordV?, label: String?, modifier: Modifier = Modifier, drawRoute: Boolean = false, replay: Int = 0, markScale: Float = 1f, showCredit: Boolean = true) {
     val ready by cache.ready.collectAsState()
     val hasImage = record != null && cache.has(record.id)
     val frame by produceState<MapFrame?>(null, record?.id, hasImage, ready) {
@@ -354,7 +354,7 @@ fun RouteVisual(cache: RouteMapCache, record: RecordV?, label: String?, modifier
     }
     val points = remember(record?.id) { record?.route?.toMapPoints().orEmpty() }
     Crossfade(frame, modifier, tween(if (LocalMotionEnabled.current) 320 else 0), label = "route image") { loaded ->
-        DriveRouteArt(points, record?.destinationPoint(), label, Modifier.fillMaxSize(), drawRoute || replay > 0, loaded, replay, markScale)
+        DriveRouteArt(points, record?.destinationPoint(), label, Modifier.fillMaxSize(), drawRoute || replay > 0, loaded, replay, markScale, showCredit)
     }
 }
 
@@ -371,7 +371,7 @@ private const val THUMB_LIVE_TIMEOUT_MS = 15_000L
 fun RecordThumbnail(cache: RouteMapCache, record: RecordV, modifier: Modifier = Modifier) {
     val d = LocalCarDimens.current
     Box(modifier.clip(RoundedCornerShape(d.u(12))).background(DriveCardBackground).clearAndSetSemantics {}, contentAlignment = Alignment.Center) {
-        if (record.route.size >= 2) RouteVisual(cache, record, null, Modifier.fillMaxSize(), markScale = THUMB_MARKS)
+        if (record.route.size >= 2) RouteVisual(cache, record, null, Modifier.fillMaxSize(), markScale = THUMB_MARKS, showCredit = false)
         else CarIcon(CarGlyph.PIN, d.u(30), DriveCardMuted)
     }
 }
@@ -400,7 +400,7 @@ fun CourseThumbnail(
     }
     Box(modifier.clip(RoundedCornerShape(d.u(12))).background(DriveCardBackground).onSizeChanged { box = it }.clearAndSetSemantics {}) {
         Crossfade(frame, Modifier.fillMaxSize(), tween(if (LocalMotionEnabled.current) 320 else 0), label = "course image") { loaded ->
-            DriveRouteArt(points, null, null, Modifier.fillMaxSize(), map = loaded, markScale = THUMB_MARKS)
+            DriveRouteArt(points, null, null, Modifier.fillMaxSize(), map = loaded, markScale = THUMB_MARKS, showCredit = false)
         }
         if (stamp != null) {
             Box(

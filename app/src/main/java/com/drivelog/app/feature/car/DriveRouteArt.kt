@@ -123,6 +123,8 @@ fun trimLines(lines: List<List<Offset>>, fraction: Float): List<List<Offset>> {
 fun DriveRouteArt(
     points: List<MapPoint>, destination: MapPoint?, destinationLabel: String?, modifier: Modifier = Modifier, drawRoute: Boolean = false,
     map: MapFrame? = null, replay: Int = 0, markScale: Float = 1f,
+    /** Off on small thumbnails, whose screen carries the map credit as one line instead. */
+    showCredit: Boolean = true,
 ) {
     val d = LocalCarDimens.current
     val measurer = rememberTextMeasurer()
@@ -211,7 +213,7 @@ fun DriveRouteArt(
             }
         }
         // The map's data is credited in its own corner, small, only when a real map is shown.
-        if (map != null) MapCornerCredit(Modifier.align(Alignment.BottomEnd))
+        if (map != null && showCredit) MapCornerCredit(Modifier.align(Alignment.BottomEnd))
     }
 }
 

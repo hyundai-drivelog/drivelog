@@ -154,18 +154,14 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
             )
             Screen.WELCOME -> WelcomeScreen(model::finishWelcome)
             Screen.HOME -> HomeScreen(
-                store.journey.records, model.routeMaps,
-                model::openDestination, model::openRecord, model::openHistory, model::openStamps,
+                store.journey.records,
+                model::openDestination, model::openHistory, model::openStamps,
                 // A mockup of a community: a submitted build must not offer it.
                 if (BuildConfig.DEBUG) model::openCommunity else null,
+                model::openPrivacy,
                 // A developer tool: a submitted build must not open it from a hidden gesture.
                 if (BuildConfig.DEBUG) ({ model.go(Screen.DIAGNOSTICS) }) else null,
                 if (BuildConfig.PHONE_LINK_ENABLED) ({ LinkControl(store.token != null, model::openLink, model::unlink) }) else null,
-                model::openWelcome,
-                remember(store.recentPlaces, store.savedPlaces, navi) { quickPlaces(model.savedPlaces(), model.recentPlaces()) },
-                model::selectPlace,
-                model::openPrivacy,
-                store.trips, model::openTrip,
             )
             Screen.DESTINATION -> DestinationScreen(
                 shown.query, speech, canSearch, model.simulation, navi.routeMessage,
