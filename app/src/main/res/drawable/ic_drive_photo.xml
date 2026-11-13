@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- DRIVELOG original vector. Pleos 48-unit grid, 3.6-unit rounded outline. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="48dp"
+    android:viewportWidth="48" android:viewportHeight="48">
+    <path android:pathData="M6,10 L42,10 L42,38 L6,38 Z M6,30 L17,22 L27,31 L34,25 L42,31 M16,17 L16,17.2"
+        android:fillColor="@android:color/transparent" android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="3.6" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

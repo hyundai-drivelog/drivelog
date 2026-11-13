@@ -132,6 +132,10 @@ if (sdk.isSupported()) {
 - 말하기 전에 `AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK`을 요청하고, `onDone/onError/onStop`에서 반납한다.
 - 선행 묵음은 150~200ms가 기준이다. SDK가 PCM에 접근할 수 없어 가이드의 3순위인 재생 지연(150ms)을 쓴다.
 
+2026-11-11 주행 종료 음성 중복 제보 후: 내비 안내 중과 종료/도착 후 4초는 앱 TTS·효과음을 생략하며, 자동 저장 결과와 내비 종료 문구는 화면으로 안내한다. TTS focus request는 `setWillPauseWhenDucked(true)`와 손실 리스너를 사용한다. 손실 시 SDK `stop()`·예약 콜백 취소·포커스 반납을 수행하며 자동 재개하지 않는다. 내비 상태는 `getRouteStateInfo()`/`onRouteStateInfo`의 `isRouting`으로 앱 복귀 때도 확인한다. 상세 설치·재현 상태는 [음성 중복 수정 검증](../verification/NAVIGATION_AUDIO_2026-11-11.md)을 따른다.
+
+2026-11-11 사용자 요청으로 상태 효과음을 추가했다. `SoundEffects`가 sonification 포커스를 짧게 사용하고 반납하며, 포커스를 잃으면 중단한다. `CarPlatform.playCue`는 효과음 후 필요한 기존 TTS를 호출한다. 효과음 비활성·샘플 미준비·재생 실패에서는 기존 TTS 경로로 진행한다. 효과음 설정은 TTS를 끄지 않는다. 일반 확인음은 정차·앱 전경에서만 요청하며, TTS 진행 중과 음성 인식 중에는 별도 효과음을 생략한다. 상세 검증 한계는 [사운드 설계](../design/SOUND_FEEDBACK_2026-11-11.md)를 따른다.
+
 ## 10. Back 키
 
 ```kotlin
