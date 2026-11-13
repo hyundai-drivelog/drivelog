@@ -6,11 +6,20 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.sp
+import androidx.compose.material3.Text
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import com.drivelog.app.BuildConfig
 
 /** Also bundled into every build: the explanation remains available without a server or browser. */
@@ -27,19 +36,19 @@ internal val privacySections = listOf(
 fun PrivacyScreen(onBack: () -> Unit, onAgree: (() -> Unit)? = null) {
     val d = LocalCarDimens.current
     Frame(onBack) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("privacy-policy"), verticalArrangement = Arrangement.spacedBy(d.u(20))) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).testTag("privacy-policy"), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(d.u(24))) {
+          Column(Modifier.widthIn(max = d.u(840)).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(d.u(24))) {
             Heading("개인정보와 데이터 사용", CarTextSize.HEADING.baseSp)
             T("적용일 2026.11.10 · 차량 기본 모드와 선택적 연결 모드", d.t(CarTextSize.CAPTION), color = muted())
+            PolicyParagraph("차량 기록은 차량에 보관해요. 휴대폰 연결과 서버 전송은 별도로 동의할 때만 시작해요.")
             PrivacyContact()
-            privacySections.forEach { (title, body) ->
-                Column {
-                    T(title, d.t(CarTextSize.TITLE), bold = true)
-                    Spacer(Modifier.height(d.u(8)))
-                    T(body, d.t(CarTextSize.BODY), color = muted(), maxLines = 20)
-                }
+            privacySections.forEachIndexed { index, (title, body) ->
+                PolicySection(index + 1, title, body)
             }
             if (onAgree != null) PrimaryButton("차량 기록과 지도 사용에 동의", "agree-data-use", Modifier.fillMaxWidth(), onClick = onAgree)
             SecondaryButton(if (onAgree == null) "돌아가기" else "동의하지 않고 돌아가기", "close-privacy", Modifier.fillMaxWidth(), onClick = onBack)
+            Spacer(Modifier.height(d.u(24)))
+          }
         }
     }
 }
@@ -48,12 +57,13 @@ fun PrivacyScreen(onBack: () -> Unit, onAgree: (() -> Unit)? = null) {
 fun LinkConsentScreen(localCount: Int, includeHistory: Boolean, onIncludeHistory: () -> Unit, onAgree: () -> Unit, onBack: () -> Unit) {
     val d = LocalCarDimens.current
     Frame(onBack) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(d.u(20))) {
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(d.u(24))) {
+          Column(Modifier.widthIn(max = d.u(840)).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(d.u(24))) {
             Heading("휴대폰 연결 전 확인해 주세요", CarTextSize.HEADING.baseSp)
+            PolicyParagraph("연결은 선택 사항이에요. 동의하면 아래 정보가 DRIVELOG 서버로 전송돼요.")
             PrivacyContact()
-            privacySections.drop(2).take(3).forEach { (title, body) ->
-                T(title, d.t(CarTextSize.TITLE), bold = true)
-                T(body, d.t(CarTextSize.BODY), color = muted(), maxLines = 20)
+            privacySections.drop(2).take(3).forEachIndexed { index, (title, body) ->
+                PolicySection(index + 1, title, body)
             }
             if (localCount > 0) SecondaryButton(
                 "${if (includeHistory) "선택됨 · " else "선택 안 함 · "}차량의 기존 기록 ${localCount}건도 전송",
@@ -61,13 +71,41 @@ fun LinkConsentScreen(localCount: Int, includeHistory: Boolean, onIncludeHistory
             )
             PrimaryButton("위 내용을 확인하고 서버 전송에 동의", "agree-server-sync", Modifier.fillMaxWidth(), onClick = onAgree)
             SecondaryButton("동의하지 않고 돌아가기", "decline-server-sync", Modifier.fillMaxWidth(), onClick = onBack)
+            Spacer(Modifier.height(d.u(24)))
+          }
+        }
+    }
+}
+
+/** Full policy text: never ellipsize or shrink to fit. Short paragraphs remain readable in split windows. */
+@Composable
+private fun PolicyParagraph(body: String, modifier: Modifier = Modifier) {
+    val d = LocalCarDimens.current
+    val fontSize = maxOf(d.t(CarTextSize.BODY).value, 18f).sp
+    Text(keepWordsTogether(body), modifier, color = fg(), fontSize = fontSize, lineHeight = fontSize * 1.6f)
+}
+
+@Composable
+private fun PolicySection(number: Int, title: String, body: String) {
+    val d = LocalCarDimens.current
+    Column(verticalArrangement = Arrangement.spacedBy(d.u(16))) {
+        HorizontalDivider(color = line())
+        T(
+            "${number.toString().padStart(2, '0')}  $title", d.t(CarTextSize.LABEL),
+            Modifier.semantics { heading() }, bold = true,
+        )
+        // Sentence boundaries only; the policy wording and disclosures are preserved verbatim.
+        body.split(Regex("(?<=요\\.)\\s+|(?<=하세요\\.)\\s+")).forEach { paragraph ->
+            Row(horizontalArrangement = Arrangement.spacedBy(d.u(12))) {
+                PolicyParagraph("·")
+                PolicyParagraph(paragraph, Modifier.weight(1f))
+            }
         }
     }
 }
 
 @Composable
 private fun PrivacyContact() {
-    val d = LocalCarDimens.current
-    if (BuildConfig.PRIVACY_CONTACT.isNotBlank()) T("운영자·문의: ${BuildConfig.PRIVACY_CONTACT}", d.t(CarTextSize.BODY), maxLines = 4)
-    if (BuildConfig.PRIVACY_POLICY_URL.isNotBlank()) T("공개 처리방침: ${BuildConfig.PRIVACY_POLICY_URL}", d.t(CarTextSize.CAPTION), maxLines = 4)
+    if (BuildConfig.PRIVACY_CONTACT.isNotBlank()) PolicyParagraph("운영자·문의: ${BuildConfig.PRIVACY_CONTACT}")
+    if (BuildConfig.PRIVACY_POLICY_URL.isNotBlank()) PolicyParagraph("공개 처리방침: ${BuildConfig.PRIVACY_POLICY_URL}")
 }

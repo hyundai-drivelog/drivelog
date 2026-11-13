@@ -146,7 +146,8 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                 tripLabel = if (store.trips.any { shown.finished?.id in it.recordIds }) "담긴 여행 보기" else "여행에 담기",
             )
             Screen.OFFLINE -> OfflineSavedScreen(shown.finished, shown.finished?.destinationPoint(), store.token != null, model.syncing, model::retrySync, model::home)
-            Screen.PRIVACY -> PrivacyScreen(model::home)
+            Screen.SETTINGS -> SettingsScreen(model.soundEffectsEnabled, model::toggleSoundEffects, model::openPrivacy, model::home)
+            Screen.PRIVACY -> PrivacyScreen(model::closePrivacy)
             Screen.DATA_CONSENT -> PrivacyScreen(model::home, model::agreeToDataUse)
             Screen.LINK_CONSENT -> LinkConsentScreen(
                 if (store.token == null) store.journey.records.size else 0,
@@ -158,7 +159,7 @@ fun CarApp(model: CarViewModel, onStartPressed: () -> Unit) {
                 model::openDestination, model::openHistory, model::openStamps,
                 // A mockup of a community: a submitted build must not offer it.
                 if (BuildConfig.DEBUG) model::openCommunity else null,
-                model::openPrivacy,
+                model::openSettings,
                 // A developer tool: a submitted build must not open it from a hidden gesture.
                 if (BuildConfig.DEBUG) ({ model.go(Screen.DIAGNOSTICS) }) else null,
                 if (BuildConfig.PHONE_LINK_ENABLED) ({ LinkControl(store.token != null, model::openLink, model::unlink) }) else null,

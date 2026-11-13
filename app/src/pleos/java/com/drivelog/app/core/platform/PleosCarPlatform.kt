@@ -16,6 +16,7 @@ import ai.pleos.playground.navi.data.RecentDestinationInfo
 import ai.pleos.playground.navi.data.RouteInfo
 import ai.pleos.playground.navi.data.RouteOverviewShowInfo
 import ai.pleos.playground.navi.data.RouteStartInfo
+import ai.pleos.playground.navi.data.RouteStateInfo
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import ai.pleos.playground.stt.SpeechToText
@@ -35,6 +36,7 @@ import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import android.os.RemoteException
+import android.os.SystemClock
 import android.util.Log
 import java.util.Locale
 import kotlin.coroutines.resume
@@ -46,6 +48,20 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 class PleosCarPlatform(context: Context) : CarPlatform {
     private val context = context.applicationContext
+    private val sounds = SoundEffects(this.context)
+    private val navigationAudio = NavigationAudioGate(SystemClock::elapsedRealtime)
+    private var pendingSpeech: Runnable? = null
+    @Volatile private var speechBusy = false
+    override val soundEffectsEnabled get() = sounds.enabled
+    override fun setSoundEffectsEnabled(enabled: Boolean) { sounds.enabled = enabled }
+    override fun playCue(cue: SoundCue, spokenText: String?) = onMain {
+        if (!navigationAudio.allowsAppAudio()) return@onMain
+        if (speechBusy || mutableSpeech.value.listening) {
+            spokenText?.let(::speak)
+            return@onMain
+        }
+        sounds.play(cue) { spokenText?.let(::speak) }
+    }
     private val mutableNavi = MutableStateFlow(NaviState())
     override val navi: StateFlow<NaviState> = mutableNavi
     private val mutableSpeech = MutableStateFlow(SpeechState())
@@ -53,6 +69,9 @@ class PleosCarPlatform(context: Context) : CarPlatform {
     private var stt: SpeechToText? = null
 
     private val handler = Handler(Looper.getMainLooper())
+    private fun onMain(action: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) action() else handler.post { action() }
+    }
     private var vehicle: Vehicle? = null
     private var fused: FusedLocation? = null
     private var helper: NaviHelper? = null
@@ -71,6 +90,10 @@ class PleosCarPlatform(context: Context) : CarPlatform {
         .build()
     private val speechFocus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
         .setAudioAttributes(speechAttributes)
+        .setWillPauseWhenDucked(true)
+        .setOnAudioFocusChangeListener({ change ->
+            if (change != AudioManager.AUDIOFOCUS_GAIN) cancelSpeech()
+        }, handler)
         .build()
     private val listenFocus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
         .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
@@ -89,7 +112,10 @@ class PleosCarPlatform(context: Context) : CarPlatform {
         override fun onBookMarkChanged() { runCatching { helper?.getBookmarkInfo() } }
         override fun onDestinationChanged() { runCatching { helper?.getDestinationInfo() } }
         // Side by side the app never returns to the foreground, and the navigation app was seen sending only these.
-        override fun onRouteStarted(routeStartInfo: RouteStartInfo) {
+        override fun onRouteStarted(routeStartInfo: RouteStartInfo) = onMain {
+            navigationAudio.started()
+            cancelSpeech()
+            sounds.stop()
             Log.i(TAG, "route event: started, distance=${routeStartInfo.distance} duration=${routeStartInfo.duration}")
             replacingRoute = false
             val summary = RouteSummary(routeStartInfo.distance, routeStartInfo.duration).takeIf { it.distanceMeters > 0 }
@@ -104,21 +130,39 @@ class PleosCarPlatform(context: Context) : CarPlatform {
             Log.i(TAG, "route event: routing completed")
             route("내비 안내를 시작했어요")
             runCatching { helper?.getDestinationInfo() }
+            runCatching { helper?.getRouteStateInfo() }
         }
-        override fun onRouteCancelled() {
+        override fun onRouteCancelled() = onMain {
+            if (!replacingRoute) {
+                navigationAudio.ended()
+                cancelSpeech()
+                sounds.stop()
+            }
             Log.i(TAG, "route event: cancelled, replacing=$replacingRoute")
             // Our own new route replacing an old one also cancels it. That is not the driver ending guidance.
             val end = if (replacingRoute) null else RouteEnd.STOPPED
             mutableNavi.update { state -> state.copy(currentDestination = null, routeMessage = null, routeSummary = null, routeEnd = state.routeEnd ?: end) }
         }
         // Not onRouteEnded: the navigation app sends it right after onRouteStarted, while guidance is starting.
-        override fun onDestinationArrived(destinationArrivedInfo: DestinationArrivedInfo) {
+        override fun onDestinationArrived(destinationArrivedInfo: DestinationArrivedInfo) = onMain {
+            // Set this before callbacks can synchronously ask the app to announce arrival or save.
+            navigationAudio.ended()
+            cancelSpeech()
+            sounds.stop()
             Log.i(TAG, "route event: arrived")
             onArrived?.invoke()
             mutableNavi.update { it.copy(routeEnd = RouteEnd.ARRIVED) }
         }
+        override fun onRouteStateInfo(routeStateInfo: RouteStateInfo) = onMain {
+            navigationAudio.updateGuidance(routeStateInfo.isRouting)
+            if (!navigationAudio.allowsAppAudio()) {
+                cancelSpeech()
+                sounds.stop()
+            }
+        }
         override fun onError(errorCode: NaviErrorCode) {
             replacingRoute = false
+            runCatching { helper?.getRouteStateInfo() }
             route(when (errorCode) {
                 NaviErrorCode.CAUSE_LOW_BATTERY -> "배터리가 부족해 경로를 찾을 수 없어요"
                 NaviErrorCode.CAUSE_SEARCH_ROUTE_OVER_DISTANCE -> "탐색 가능한 거리를 넘었어요"
@@ -161,8 +205,10 @@ class PleosCarPlatform(context: Context) : CarPlatform {
     /** A failed engine is released and forgotten, so the next [connect] tries again instead of keeping a dead one. */
     private fun dropTts(engine: TextToSpeech) = handler.post {
         if (tts !== engine) return@post
+        cancelSpeech()
         tts = null
         ttsReady = false
+        speechBusy = false
         runCatching { engine.removeEventListener(speechEvents) }
         runCatching { engine.release() }
     }
@@ -303,6 +349,8 @@ class PleosCarPlatform(context: Context) : CarPlatform {
     }
 
     override fun startListening() {
+        sounds.stop()
+        cancelSpeech()
         val engine = stt?.takeIf { mutableSpeech.value.available } ?: return
         if (audioManager.requestAudioFocus(listenFocus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
             mutableSpeech.update { it.copy(message = "다른 오디오가 사용 중이에요. 잠시 후 다시 시도해 주세요") }
@@ -346,6 +394,9 @@ class PleosCarPlatform(context: Context) : CarPlatform {
     }
 
     override fun close() {
+        cancelSpeech()
+        sounds.close()
+        speechBusy = false
         stopLocation()
         clearArrival()
         runCatching { vehicle?.release() }
@@ -449,6 +500,7 @@ class PleosCarPlatform(context: Context) : CarPlatform {
             sdk.getBookmarkInfo()
             sdk.getRecentDestinationInfo()
             sdk.getDestinationInfo()
+            sdk.getRouteStateInfo()
         }.onFailure { naviCallFailed(sdk, it, "navi query") }
     }
 
@@ -485,22 +537,45 @@ class PleosCarPlatform(context: Context) : CarPlatform {
     private val speechEvents = object : EventListener {
         override fun onStart() {}
         override fun onReady() {}
-        override fun onDone() { audioManager.abandonAudioFocusRequest(speechFocus) }
-        override fun onError(errorType: ErrorType) { audioManager.abandonAudioFocusRequest(speechFocus) }
-        override fun onStop() { audioManager.abandonAudioFocusRequest(speechFocus) }
+        override fun onDone() { handler.post { finishSpeech() } }
+        override fun onError(errorType: ErrorType) { handler.post { finishSpeech() } }
+        override fun onStop() { handler.post { finishSpeech() } }
         override fun onUpdatedRms(rms: Double) {}
     }
 
-    /** Focus first, then a short lead-in: the SDK exposes no PCM to pad, so this is the guide's fallback. */
-    override fun speak(text: String) {
-        if (!ttsReady) return
-        if (audioManager.requestAudioFocus(speechFocus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) return
-        handler.postDelayed({
+    private fun finishSpeech() {
+        pendingSpeech?.let(handler::removeCallbacks)
+        pendingSpeech = null
+        speechBusy = false
+        audioManager.abandonAudioFocusRequest(speechFocus)
+    }
+
+    /** A lost focus request must cancel the lead-in as well as audio already playing. Never auto-resume. */
+    private fun cancelSpeech() {
+        val wasBusy = speechBusy
+        finishSpeech()
+        if (wasBusy) runCatching { tts?.stop() }
+    }
+
+    /** Navigation takes priority, including its arrival/end tail. Suppressed prompts are never queued. */
+    override fun speak(text: String) = onMain {
+        if (!navigationAudio.allowsAppAudio() || speechBusy || mutableSpeech.value.listening) return@onMain
+        sounds.stop()
+        if (!ttsReady) return@onMain
+        if (audioManager.requestAudioFocus(speechFocus) != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) return@onMain
+        speechBusy = true
+        pendingSpeech = Runnable {
+            pendingSpeech = null
+            // Navigation or focus can change during the 150ms lead-in.
+            if (!speechBusy || !ttsReady || !navigationAudio.allowsAppAudio()) {
+                cancelSpeech()
+                return@Runnable
+            }
             runCatching { tts?.speak(text, true) }.onFailure {
                 Log.w(TAG, "tts failed: ${it.javaClass.simpleName}")
-                audioManager.abandonAudioFocusRequest(speechFocus)
+                finishSpeech()
             }
-        }, SPEECH_LEAD_IN_MS)
+        }.also { handler.postDelayed(it, SPEECH_LEAD_IN_MS) }
     }
 
     private companion object {

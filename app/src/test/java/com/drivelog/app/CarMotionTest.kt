@@ -34,7 +34,7 @@ class CarMotionTest {
 
     @Test fun guidanceEndingSavesOnlyOnceParked() {
         RouteEnd.entries.forEach { end ->
-            assertEquals(RouteEndAction.ANNOUNCE, routeEndAction(end, recording = true, parked = false))
+            assertEquals(RouteEndAction.WAIT_FOR_PARK, routeEndAction(end, recording = true, parked = false))
             assertEquals(RouteEndAction.SAVE, routeEndAction(end, recording = true, parked = true))
             assertEquals(RouteEndAction.NONE, routeEndAction(end, recording = false, parked = true))
         }

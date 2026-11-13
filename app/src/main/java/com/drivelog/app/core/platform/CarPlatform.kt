@@ -101,4 +101,9 @@ interface CarPlatform {
 
     /** Gleo AI on-device TTS. A short spoken cue keeps the driver's eyes on the road; failure is silent. */
     fun speak(text: String)
+
+    /** UI cues are optional; speech remains available when effects are muted or unavailable. */
+    val soundEffectsEnabled: Boolean get() = false
+    fun setSoundEffectsEnabled(enabled: Boolean) {}
+    fun playCue(cue: SoundCue, spokenText: String? = null) { spokenText?.let(::speak) }
 }

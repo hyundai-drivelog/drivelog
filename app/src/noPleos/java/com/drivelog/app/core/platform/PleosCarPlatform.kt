@@ -5,7 +5,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 
 /** SDK-free build: no navigation or location, so only the labelled simulation can record. */
-private class NoPleosCarPlatform : CarPlatform {
+private class NoPleosCarPlatform(context: Context) : CarPlatform {
+    private val sounds = SoundEffects(context.applicationContext)
+    override val soundEffectsEnabled get() = sounds.enabled
+    override fun setSoundEffectsEnabled(enabled: Boolean) { sounds.enabled = enabled }
+    override fun playCue(cue: SoundCue, spokenText: String?) { sounds.play(cue) }
     override val navi: StateFlow<NaviState> = MutableStateFlow(NaviState())
     override val speech: StateFlow<SpeechState> = MutableStateFlow(SpeechState())
     override fun searchPlace(keyword: String) {}
@@ -15,7 +19,7 @@ private class NoPleosCarPlatform : CarPlatform {
     override fun stopListening() {}
     override fun clearSpeech() {}
     override fun connect() {}
-    override fun close() {}
+    override fun close() { sounds.close() }
     override suspend fun odometerRaw(): Float? = null
     override fun locationSupported() = false
     override fun locationPermissions() = emptyList<String>()
@@ -32,4 +36,4 @@ private class NoPleosCarPlatform : CarPlatform {
 }
 
 @Suppress("UNUSED_PARAMETER")
-fun createCarPlatform(context: Context): CarPlatform = NoPleosCarPlatform()
+fun createCarPlatform(context: Context): CarPlatform = NoPleosCarPlatform(context)

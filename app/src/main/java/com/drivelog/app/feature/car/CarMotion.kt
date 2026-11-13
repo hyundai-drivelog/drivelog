@@ -77,8 +77,8 @@ private const val LOOP_UPDATE_MS = 50L
 /** How far along the drive flow a screen sits. Moving to a higher one slides forward, to a lower one back. */
 fun routeDepth(route: Screen): Int = when (route) {
     Screen.WELCOME, Screen.HOME, Screen.LOCKED, Screen.RECOVERY -> 0
-    Screen.DESTINATION, Screen.HISTORY, Screen.DIAGNOSTICS, Screen.COMMUNITY, Screen.PRIVACY, Screen.DATA_CONSENT -> 1
-    Screen.PLACE -> 2
+    Screen.DESTINATION, Screen.HISTORY, Screen.DIAGNOSTICS, Screen.COMMUNITY, Screen.SETTINGS, Screen.DATA_CONSENT -> 1
+    Screen.PLACE, Screen.PRIVACY -> 2
     Screen.RECORD, Screen.COURSE_DETAIL, Screen.TRIP -> 2
     Screen.RECORDING, Screen.COURSE_SHARE, Screen.TRIP_EDITOR, Screen.TRIP_PICKER -> 3
     Screen.STOP -> 4

@@ -22,6 +22,7 @@ import com.drivelog.app.core.journey.TripV
 import com.drivelog.app.core.journey.TRIP_TITLE_LIMIT
 import java.util.UUID
 import com.drivelog.app.core.platform.CarGear
+import com.drivelog.app.core.platform.SoundCue
 import com.drivelog.app.core.platform.NaviPlace
 import com.drivelog.app.core.platform.RouteEnd
 import com.drivelog.app.core.recording.RecordingService
@@ -36,7 +37,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 /** RECORDING and LOCKED follow from vehicle state (see routeFor); nothing navigates to them. */
-enum class Screen { WELCOME, HOME, DESTINATION, PLACE, HISTORY, RECORD, TRIP, TRIP_EDITOR, TRIP_PICKER, STOP, SYNCING, LINK, LINK_CONSENT, PRIVACY, DATA_CONSENT, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE, COMMUNITY, COURSE_DETAIL, COURSE_SHARE, CARD_QR }
+enum class Screen { WELCOME, HOME, SETTINGS, DESTINATION, PLACE, HISTORY, RECORD, TRIP, TRIP_EDITOR, TRIP_PICKER, STOP, SYNCING, LINK, LINK_CONSENT, PRIVACY, DATA_CONSENT, DONE, OFFLINE, RECOVERY, DIAGNOSTICS, RECORDING, LOCKED, PHONE_PREVIEW_LINK, PHONE_PREVIEW_DONE, COMMUNITY, COURSE_DETAIL, COURSE_SHARE, CARD_QR }
 
 private const val PREFS = "drivelog"
 private const val PREF_WELCOMED = "welcomed"
@@ -70,16 +71,16 @@ fun mergePlaces(vararg lists: List<NaviPlace>): List<NaviPlace> =
  * What the end of guidance does to a recording. Saving waits for P: the driver may keep going after ending
  * guidance, and the rest of the drive still belongs to the record. Nothing changes on screen while moving.
  */
-enum class RouteEndAction { NONE, ANNOUNCE, SAVE }
+enum class RouteEndAction { NONE, WAIT_FOR_PARK, SAVE }
 
 fun routeEndAction(end: RouteEnd?, recording: Boolean, parked: Boolean) = when {
     end == null || !recording -> RouteEndAction.NONE
     parked -> RouteEndAction.SAVE
-    else -> RouteEndAction.ANNOUNCE
+    else -> RouteEndAction.WAIT_FOR_PARK
 }
 
 /**
- * What is said when guidance has ended the drive and it is stored: one sentence with the place, distance and time.
+ * The visual summary once the drive is stored: one sentence with the place, distance and time.
  * A simulated or barely moved drive has no figures worth saying.
  */
 fun savedSentence(record: RecordV): String {
@@ -97,6 +98,17 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     val store = app.store
     val recorder = app.recorder
     val platform = app.platform
+    var soundEffectsEnabled by mutableStateOf(platform.soundEffectsEnabled)
+        private set
+    fun toggleSoundEffects() {
+        if (!parked) return
+        soundEffectsEnabled = !soundEffectsEnabled
+        platform.setSoundEffectsEnabled(soundEffectsEnabled)
+        if (soundEffectsEnabled) cue(SoundCue.CONFIRM)
+    }
+    private fun cue(cue: SoundCue) {
+        if (parked && store.foreground) platform.playCue(cue)
+    }
     val routeMaps = app.routeMaps
     private var mapJob: Job? = null
 
@@ -242,11 +254,12 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
                             screen = Screen.STOP
                             platform.speak("거의 움직이지 않았어요. 저장할지 골라 주세요.")
                         } else {
-                            // One sentence for the event, with the figures, said once the drive is safely stored.
-                            endRecording(announce = true)
+                            // Show the saved result without talking over navigation's final sentence.
+                            saveRecording(showSummary = true)
                         }
                     }
-                    RouteEndAction.ANNOUNCE -> platform.speak("안내가 끝났어요. 정차하면 드라이브를 저장해요.")
+                    // Navigation speaks its own end-of-guidance sentence. The recording screen shows the status.
+                    RouteEndAction.WAIT_FOR_PARK -> {}
                     RouteEndAction.NONE -> {}
                 }
             }
@@ -366,7 +379,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             Screen.HOME, Screen.RECOVERY, Screen.SYNCING -> return false
             Screen.WELCOME -> finishWelcome()
             Screen.LINK, Screen.LINK_CONSENT -> leaveLink()
-            Screen.PRIVACY -> home()
+            Screen.SETTINGS -> home()
+            Screen.PRIVACY -> closePrivacy()
             Screen.DATA_CONSENT -> home()
             Screen.PHONE_PREVIEW_LINK, Screen.PHONE_PREVIEW_DONE -> leavePhonePreview()
             Screen.CARD_QR -> leaveCardQr()
@@ -452,6 +466,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         val wasSaved = isSaved(place)
         store.toggleSavedPlace(place.toPlace())
         say(if (wasSaved) "저장한 장소에서 뺐어요" else "저장한 장소에 넣었어요")
+        cue(SoundCue.CONFIRM)
     }
 
     // --- Recording --------------------------------------------------------------------------------
@@ -495,7 +510,7 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         val guiding = navi.currentDestination?.sameLocation(place) == true
         go(Screen.HOME)
         if (!simulation) RecordingService.startIfAllowed(getApplication())
-        platform.speak("${place.name} 기록을 시작했어요.")
+        platform.playCue(SoundCue.START, "${place.name} 기록을 시작했어요.")
         if (navi.available) {
             if (guiding) platform.openNavigation() else platform.requestRoute(place)
         }
@@ -527,10 +542,10 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         say("쉬는 시간을 따로 표시해요")
     }
 
-    fun endRecording() = endRecording(announce = false)
+    fun endRecording() = saveRecording(showSummary = false)
 
-    /** [announce] when guidance ended the drive: the driver may not be looking, so the result is said. */
-    private fun endRecording(announce: Boolean) {
+    /** Navigation already speaks its end result. Show a summary after the recording is durably stored. */
+    private fun saveRecording(showSummary: Boolean) {
         if (!parked || saving) return
         saving = true
         viewModelScope.launch {
@@ -542,7 +557,12 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
                 RecordingService.stop(getApplication())
                 val stored = store.addRecordDurably(record)
                 keepRecoveryUntilStored(stored)
-                if (announce) platform.speak(if (stored) savedSentence(record) else "저장 공간이 부족해 드라이브를 아직 저장하지 못했어요.")
+                val sound = if (stored) SoundCue.SAVED else SoundCue.ERROR
+                if (showSummary) {
+                    // The navigation end event can precede the end of its spoken sentence. Keep this visual.
+                    say(if (stored) savedSentence(record) else "저장 공간이 부족해 드라이브를 아직 저장하지 못했어요.")
+                }
+                cue(sound)
                 finishedRecord = record
                 fillRouteMaps()
                 continueAfterRecord()
@@ -743,10 +763,11 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val saved = store.saveTripDurably(tripDraftId, tripDraftTitle, tripDraftRecordIds, tripDraftCoverId)
                 if (store.state.value.token != connection) return@launch
-                if (saved == null) { tripError = "주행 선택과 저장 공간을 확인한 뒤 다시 저장해 주세요"; return@launch }
+                if (saved == null) { tripError = "주행 선택과 저장 공간을 확인한 뒤 다시 저장해 주세요"; cue(SoundCue.ERROR); return@launch }
                 openedTripId = saved.id
                 go(Screen.TRIP)
                 say("여행을 저장했어요")
+                cue(SoundCue.SAVED)
             } finally { tripBusy = false }
         }
     }
@@ -778,11 +799,12 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val saved = store.saveTripDurably(trip.id, trip.title, trip.recordIds + recordId, trip.coverRecordId)
-                if (saved == null) { tripError = "이 주행을 담지 못했어요. 저장 공간과 다른 여행을 확인해 주세요"; return@launch }
+                if (saved == null) { tripError = "이 주행을 담지 못했어요. 저장 공간과 다른 여행을 확인해 주세요"; cue(SoundCue.ERROR); return@launch }
                 openedTripId = saved.id
                 rememberTripReturn(returnAfterTripPicker)
                 go(Screen.TRIP)
                 say("여행에 주행을 담았어요")
+                cue(SoundCue.CONFIRM)
             } finally { tripBusy = false }
         }
     }
@@ -830,6 +852,8 @@ class CarViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openPrivacy() { if (parked) go(Screen.PRIVACY) }
+    fun openSettings() { if (parked) go(Screen.SETTINGS) }
+    fun closePrivacy() { if (parked) go(Screen.SETTINGS) }
 
     // --- Phone screens as a preview: no server, no token, and the record stays as it is --------------
 

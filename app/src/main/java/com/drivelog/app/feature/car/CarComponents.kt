@@ -52,14 +52,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -405,102 +402,34 @@ fun EmptyState(title: String, modifier: Modifier = Modifier, body: String? = nul
     }
 }
 
-enum class CarGlyph { CHEVRON_LEFT, CHEVRON_RIGHT, CHECK, PIN, INFO, CLOUD_OFF, REFRESH, DOCUMENT, PHOTO, SEARCH, CLOCK, BOOKMARK, LIST, MIC, ROUTE, STAMP }
+enum class CarGlyph { CHEVRON_LEFT, CHEVRON_RIGHT, CHECK, PIN, INFO, CLOUD_OFF, REFRESH, DOCUMENT, PHOTO, SEARCH, CLOCK, BOOKMARK, LIST, MIC, ROUTE, STAMP, SETTINGS }
 
-/**
- * System icons on the Pleos grid: drawn at 48 units and scaled, Outlined at a 3.6 unit stroke with round caps and
- * joins, Filled with 1.5 unit corners. The guide pairs icons with text labels, so an icon rarely stands alone.
- */
+/** Original DRIVELOG vectors on the Pleos 48-unit grid; labels supply accessibility text. */
 @Composable
 fun CarIcon(glyph: CarGlyph, size: Dp, color: Color, modifier: Modifier = Modifier) {
-    val surface = MaterialTheme.colorScheme.background
-    Canvas(modifier.size(size)) {
-        val u = this.size.width / 48f
-        val stroke = Stroke(3.6f * u, cap = StrokeCap.Round, join = StrokeJoin.Round)
-        fun at(x: Float, y: Float) = Offset(x * u, y * u)
-        fun poly(vararg p: Pair<Float, Float>, closed: Boolean = false) = Path().apply {
-            moveTo(p[0].first * u, p[0].second * u)
-            p.drop(1).forEach { lineTo(it.first * u, it.second * u) }
-            if (closed) close()
-        }
-        fun line(x1: Float, y1: Float, x2: Float, y2: Float, ink: Color = color) = drawLine(ink, at(x1, y1), at(x2, y2), 3.6f * u, StrokeCap.Round)
-        when (glyph) {
-            CarGlyph.CHEVRON_LEFT -> drawPath(poly(29f to 10f, 15f to 24f, 29f to 38f), color, style = stroke)
-            CarGlyph.CHEVRON_RIGHT -> drawPath(poly(19f to 10f, 33f to 24f, 19f to 38f), color, style = stroke)
-            CarGlyph.CHECK -> drawPath(poly(9f to 25f, 19.5f to 35.5f, 39f to 13f), color, style = stroke)
-            CarGlyph.PIN -> drawPin(at(24f, 45f), 42f * u, color, surface)
-            CarGlyph.INFO -> {
-                drawCircle(color, 20f * u, at(24f, 24f))
-                drawCircle(surface, 2.6f * u, at(24f, 15f))
-                line(24f, 22.5f, 24f, 34f, surface)
-            }
-            CarGlyph.CLOUD_OFF -> {
-                drawPath(Path().apply {
-                    moveTo(14f * u, 38f * u)
-                    cubicTo(4f * u, 38f * u, 3f * u, 23f * u, 13f * u, 21f * u)
-                    cubicTo(15f * u, 9f * u, 33f * u, 8f * u, 36f * u, 20f * u)
-                    cubicTo(46f * u, 20f * u, 47f * u, 38f * u, 35f * u, 38f * u)
-                    close()
-                }, color, style = stroke)
-                line(8f, 6f, 40f, 42f)
-            }
-            CarGlyph.REFRESH -> {
-                drawArc(color, 40f, 290f, false, at(7f, 7f), Size(34f * u, 34f * u), style = stroke)
-                drawPath(poly(40f to 6f, 40f to 17f, 29f to 17f), color, style = stroke)
-            }
-            CarGlyph.DOCUMENT -> {
-                drawPath(poly(11f to 5f, 29f to 5f, 38f to 14f, 38f to 43f, 11f to 43f, closed = true), color, style = stroke)
-                line(18f, 27f, 31f, 27f)
-                line(18f, 34f, 31f, 34f)
-            }
-            CarGlyph.SEARCH -> {
-                drawCircle(color, 13.2f * u, at(21f, 21f), style = stroke)
-                line(31f, 31f, 41f, 41f)
-            }
-            CarGlyph.CLOCK -> {
-                drawCircle(color, 18.2f * u, at(24f, 24f), style = stroke)
-                drawPath(poly(24f to 14f, 24f to 25f, 31f to 29.5f), color, style = stroke)
-            }
-            CarGlyph.BOOKMARK -> drawPath(poly(12f to 6f, 36f to 6f, 36f to 42f, 24f to 33f, 12f to 42f, closed = true), color, style = stroke)
-            CarGlyph.LIST -> listOf(12f, 24f, 36f).forEach { y ->
-                drawCircle(color, 2.2f * u, at(8f, y))
-                line(16f, y, 42f, y)
-            }
-            CarGlyph.PHOTO -> {
-                drawRoundRect(color, at(5f, 9f), Size(38f * u, 30f * u), CornerRadius(5f * u), style = stroke)
-                drawCircle(color, 3.2f * u, at(16f, 19f))
-                drawPath(poly(8f to 35f, 19f to 26f, 27f to 32f, 34f to 25f, 41f to 33f), color, style = stroke)
-            }
-            CarGlyph.MIC -> {
-                drawRoundRect(color, at(17f, 5f), Size(14f * u, 24f * u), CornerRadius(7f * u), style = stroke)
-                drawArc(color, 0f, 180f, false, at(10f, 9f), Size(28f * u, 28f * u), style = stroke)
-                line(24f, 37f, 24f, 43f)
-            }
-            CarGlyph.ROUTE -> {
-                // The same small departure and larger arrival motif used by the brand.
-                drawPath(Path().apply {
-                    moveTo(9f * u, 37f * u)
-                    cubicTo(10f * u, 22f * u, 29f * u, 31f * u, 28f * u, 19f * u)
-                    cubicTo(27f * u, 11f * u, 33f * u, 10f * u, 38f * u, 10f * u)
-                }, color, style = stroke)
-                drawCircle(color, 3.2f * u, at(9f, 37f))
-                drawCircle(color, 5f * u, at(38f, 10f))
-            }
-            CarGlyph.STAMP -> {
-                // A physical ink stamp, rather than a medal or competitive achievement.
-                drawPath(Path().apply {
-                    moveTo(15f * u, 29f * u)
-                    lineTo(17f * u, 24f * u)
-                    lineTo(17f * u, 14f * u)
-                    cubicTo(17f * u, 3f * u, 31f * u, 3f * u, 31f * u, 14f * u)
-                    lineTo(31f * u, 24f * u)
-                    lineTo(33f * u, 29f * u)
-                }, color, style = stroke)
-                drawRoundRect(color, at(8f, 29f), Size(32f * u, 9f * u), CornerRadius(3f * u), style = stroke)
-                line(12f, 43f, 36f, 43f)
-            }
-        }
+    val resource = when (glyph) {
+        CarGlyph.CHEVRON_LEFT -> R.drawable.ic_drive_chevron_left
+        CarGlyph.CHEVRON_RIGHT -> R.drawable.ic_drive_chevron_right
+        CarGlyph.CHECK -> R.drawable.ic_drive_check
+        CarGlyph.PIN -> R.drawable.ic_drive_pin
+        CarGlyph.INFO -> R.drawable.ic_drive_info
+        CarGlyph.CLOUD_OFF -> R.drawable.ic_drive_cloud_off
+        CarGlyph.REFRESH -> R.drawable.ic_drive_refresh
+        CarGlyph.DOCUMENT -> R.drawable.ic_drive_document
+        CarGlyph.PHOTO -> R.drawable.ic_drive_photo
+        CarGlyph.SEARCH -> R.drawable.ic_drive_search
+        CarGlyph.CLOCK -> R.drawable.ic_drive_clock
+        CarGlyph.BOOKMARK -> R.drawable.ic_drive_bookmark
+        CarGlyph.LIST -> R.drawable.ic_drive_list
+        CarGlyph.MIC -> R.drawable.ic_drive_mic
+        CarGlyph.ROUTE -> R.drawable.ic_drive_route
+        CarGlyph.STAMP -> R.drawable.ic_drive_stamp
+        CarGlyph.SETTINGS -> R.drawable.ic_drive_settings
     }
+    Image(
+        painterResource(resource), contentDescription = null, modifier = modifier.size(size),
+        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(color),
+    )
 }
 
 fun DrawScope.drawPin(tip: Offset, h: Float, color: Color, hole: Color) {
@@ -538,7 +467,7 @@ const val BRAND_NAME = "DRIVELOG"
 
 /**
  * The wordmark: heavy, slightly tracked and slanted, one style wherever it appears. Inside the app the brand is
- * this word alone; the route mark stays on the launcher icon.
+ * this word alone; the launcher uses its own font-independent outlined lettering.
  */
 @Composable
 fun BrandWordmark(size: androidx.compose.ui.unit.TextUnit, color: Color, modifier: Modifier = Modifier) {

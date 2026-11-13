@@ -1,21 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- The app's own motif, a recorded route from a small start dot to a larger mark where the drive ended, as every card draws its ends, kept inside the adaptive
-     icon's 66 unit safe zone so every brand's mask (Pleos App Icon guide) leaves it whole. -->
+<!-- Original condensed DRIVELOG lettering, outlined by hand. No font dependency.
+     Wordmark is inside the adaptive icon safe circle; the platform supplies its mask. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path
-        android:pathData="M40.5,66.5C42,52 53,60 57,50C60,43 62,41.5 67,39.5"
-        android:strokeColor="#FFFFFF"
-        android:strokeWidth="5.4"
-        android:strokeLineCap="round"
-        android:strokeLineJoin="round" />
-    <path
-        android:pathData="M40.5,66.5m-4,0a4,4 0,1 1,8 0a4,4 0,1 1,-8 0"
-        android:fillColor="#FFFFFF" />
-    <path
-        android:pathData="M69,38m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0"
-        android:fillColor="#FFFFFF" />
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd" android:pathData="M24.12,47 L28.12,47 L30.64,50 L29.36,58 L25.88,61 L21.88,61 Z M26.14,50 L27.14,50 L27.98,51 L27.02,57 L25.86,58 L24.86,58 Z" />
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd" android:pathData="M32.12,47 L37.12,47 L38.80,49 L38.00,54 L35.68,56 L37.38,61 L34.38,61 L33.18,56 L32.38,61 L29.88,61 Z M34.14,50 L36.14,50 L35.66,53 L33.66,53 Z" />
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd" android:pathData="M40.62,47 L43.62,47 L41.38,61 L38.38,61 Z" />
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd" android:pathData="M44.62,47 L47.42,47 L47.18,56 L49.82,47 L52.62,47 L47.88,61 L44.88,61 Z" />
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd" android:pathData="M53.62,47 L60.62,47 L60.14,50 L55.64,50 L55.24,52.5 L58.74,52.5 L58.26,55.5 L54.76,55.5 L54.36,58 L58.86,58 L58.38,61 L51.38,61 Z" />
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd" android:pathData="M61.62,47 L64.12,47 L62.36,58 L66.86,58 L66.38,61 L59.38,61 Z" />
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd" android:pathData="M69.30,49 L71.62,47 L74.62,47 L76.30,49 L74.70,59 L72.38,61 L69.38,61 L67.70,59 Z M71.64,50 L73.64,50 L72.36,58 L70.36,58 Z" />
+    <path android:fillColor="#FFFFFF" android:fillType="evenOdd" android:pathData="M77.30,49 L79.62,47 L84.62,47 L84.14,50 L79.64,50 L78.36,58 L80.36,58 L80.68,56 L79.68,56 L80.16,53 L83.66,53 L82.38,61 L77.38,61 L75.70,59 Z" />
 </vector>

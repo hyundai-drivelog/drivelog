@@ -31,7 +31,7 @@ import com.drivelog.app.core.journey.RecordV
 import com.drivelog.app.core.platform.NaviPlace
 
 /**
- * DRIVELOG's own front page: a short title and starting a drive lead, with the phone link in the top bar. Under them,
+ * DRIVELOG's own front page: a short title and starting a drive lead, with phone link and settings in the top bar. Under them,
  * one row of tiles opens the app's other places, each with a single line of counts. Parked only, like every screen
  * but the recording one.
  */
@@ -39,7 +39,7 @@ import com.drivelog.app.core.platform.NaviPlace
 fun HomeScreen(
     records: List<RecordV>,
     onStart: () -> Unit, onHistory: () -> Unit, onStamps: () -> Unit,
-    onCommunity: (() -> Unit)?, onPrivacy: (() -> Unit)?,
+    onCommunity: (() -> Unit)?, onSettings: (() -> Unit)?,
     onHold: (() -> Unit)?, linkControl: (@Composable () -> Unit)?,
 ) {
     val d = LocalCarDimens.current
@@ -49,6 +49,9 @@ fun HomeScreen(
         TopBar(null, onHold, {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(d.u(10))) {
                 linkControl?.invoke()
+                if (onSettings != null) SecondaryButton(
+                    "설정", "open-settings", size = ButtonSize.SMALL, icon = CarGlyph.SETTINGS, onClick = onSettings,
+                )
             }
         })
         Box(Modifier.fillMaxWidth().weight(1f).verticalScroll(rememberScrollState()), contentAlignment = Alignment.Center) {
@@ -69,10 +72,6 @@ fun HomeScreen(
                     HomeTile(CarGlyph.LIST, "내 기록", historyLine, "open-history", tile, onHistory)
                     HomeTile(CarGlyph.STAMP, "스탬프", "$stamps / ${StampPlaces.size} 모음", "open-stamps", tile, onStamps)
                     if (onCommunity != null) HomeTile(CarGlyph.ROUTE, "추천 코스", "둘러볼 드라이브 코스", "open-community", tile, onCommunity)
-                }
-                if (onPrivacy != null) {
-                    Spacer(Modifier.height(d.u(CarSpace.M)))
-                    SecondaryButton("개인정보와 데이터 사용", "open-privacy", Modifier.fillMaxWidth(), size = ButtonSize.SMALL, onClick = onPrivacy)
                 }
             }
         }
