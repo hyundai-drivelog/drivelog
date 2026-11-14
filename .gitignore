@@ -38,3 +38,20 @@ keystore.properties
 
 # Private emulator QA backups and captures; never submit app data or tokens.
 /.local-qa/
+
+# Not part of the public review repository (kept locally only).
+# AI agent instructions and session hand-off notes.
+/AGENTS.md
+/CLAUDE.md
+/docs/CURRENT_STATE.md
+# Internal mock-judge evaluations.
+/docs/review/
+# Demo video build notes (personal paths) and photos whose licence is unverified.
+/docs/video/
+/docs/assets-unverified/
+# Early development logs from 2026-11-02, superseded by README and docs/verification.
+/docs/PHASE1.md
+/docs/PHASE3.md
+/docs/PLEOS_RUNTIME_MVP.md
+/docs/verification/RESULTS.md
+/server/VERIFICATION.md

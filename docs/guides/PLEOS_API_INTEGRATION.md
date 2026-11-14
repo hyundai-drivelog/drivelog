@@ -160,7 +160,7 @@ onBackPressedDispatcher.addCallback(this) {
 - Virtual Console: `adb forward tcp:8088 tcp:8088` 후 `http://127.0.0.1:8088/`. Motion 도메인에서 기어를 바꾼다. 자동화할 때는 `POST /browser/session?client=<id>`를 1초 간격으로 보내 세션을 유지하고 `PUT /vehicle/gear?gear=Drive|Park`를 호출한다.
 - `driving_regulation` 명령의 `hmg_car_service`는 에뮬레이터에 없어 실차에서만 쓸 수 있는 것으로 보인다.
 - 위치 주입: `adb emu geo fix <경도> <위도>`.
-- 이전 기록 (`docs/PLEOS_RUNTIME_MVP.md`)의 목적지 좌표 불일치는 이번에 재현되지 않았다. 지도 타일 미표시는 여전하다.
+- 2026-11-02 런타임 검증에서 본 목적지 좌표 불일치는 이번에 재현되지 않았다. 지도 타일 미표시는 여전하다.
 - 한글 경로에서 Gradle 테스트가 클래스를 못 찾으면 build 디렉터리를 ASCII 경로로 옮긴다.
 
 ## 13. 실제 동작에서 확인한 사실 (2026-11-03, Pleos 에뮬레이터 2.1.0)

@@ -5,15 +5,15 @@
 ## 1차 제출
 
 - [ ] 실제 팀명과 접수양식·팀원 동의서 확정.
-- [ ] 기존 release 서명 키·설정 확보. 비밀을 Git이나 보고서에 기록하지 않기.
-- [ ] `packageSubmissionApk`로 차량 기본 모드 서명 APK 생성.
-- [ ] `apksigner verify` 통과, `debuggable=false`, SHA-256 기록.
-- [ ] 실제 `apk/팀명_DRIVELOG_release.apk` 또는 GitHub Release 링크를 README에 기재.
+- [x] release 서명 키·설정 확보. 2026-11-14에 새 키를 만들어 저장소 밖에 보관했다(인증서 SHA-256 `78:4C:7B:…:6A:86`, README 제출물 표). 비밀을 Git이나 보고서에 기록하지 않기. 키를 잃으면 같은 앱으로 업데이트할 수 없으므로 팀이 따로 백업한다.
+- [x] `packageSubmissionApk`로 차량 기본 모드 서명 APK 생성 (임시 팀명 `DRIVELOG`, 커밋 `c8f7850` + `local` 빌드 타입).
+- [x] `apksigner verify` 통과, `debuggable=false`, SHA-256 기록 (`bf79e0ac…a14d`).
+- [ ] 실제 `apk/팀명_DRIVELOG_release.apk` 또는 GitHub Release 링크를 README에 기재. 임시 팀명으로 기재함. 실제 팀명이 다르면 다시 패키징하고 README·SHA-256을 고친다.
 - [ ] 심사용 계정의 저장소·APK 접근 확인.
 - [ ] 새 APK 기준 핵심 흐름 캡처와 90초 시연 영상.
 - [ ] 앱 카테고리·DO 허용 범위 확인. 승인 문서가 없으면 승인 완료라고 쓰지 않기.
 - [ ] 운영자·개인정보처리방침·문의 창구 확정.
-- [ ] 공개 소스에 포함할 사진·지도·기타 자산 사용권 확인. `docs/assets-unverified/`는 미검증 보관물이며 공개 사용 허가가 아님.
+- [ ] 공개 소스에 포함할 사진·지도·기타 자산 사용권 확인. 출처 미확인 사진은 로컬 `docs/assets-unverified/`(git 제외)에만 보관하며 공개하지 않음.
 
 1차 APK는 선택 가산점 제출물이다. GitHub 저장소 제출 시 소스와 APK를 함께 제공한다. [공식 제출 안내](https://appdevchallenge.auto-hmg.io/guide/submission)
 

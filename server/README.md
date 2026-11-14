@@ -163,8 +163,7 @@ POST 예시 (모두 명시적인 Mock 데이터):
 일반 Android Emulator의 호스트 PC 주소는 `10.0.2.2:8080`이며, 기기 안 localhost는 기기 자신이다.
 Pleos Connect AVD의 같은 주소 접근은 별도 검증이 필요하다.
 실제 차량 배포는 HTTPS를 사용하며 HTTP는 Android debug에서 10.0.2.2에만 허용한다.
-Android 구현·실행 결과와 Pleos 제한은 [통합 Phase 3 기록](../docs/PHASE3.md)을 참고한다.
-기존 Phase 2 결과는 VERIFICATION.md에 이력으로 보존했다.
+앱 설치·실행과 차량↔휴대폰 로컬 연동 절차는 [저장소 README](../README.md)를 참고한다.
 
 기존 루트 및 server에 새 Git 저장소를 만들지 않았다. 현재 루트는 Git 저장소로 인식되지 않으므로
 실제 추적 상태/커밋 여부는 기존 checkout을 확인해야 한다. Wrapper 파일/JAR는 버전 관리 대상이다.
