@@ -77,6 +77,14 @@ android {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+        // Local phone-link trial: release behaviour (no debug mockups or simulation) against the demo server on the
+        // host, which the emulator reaches as 10.0.2.2. Not the submission APK.
+        create("local") {
+            initWith(getByName("release"))
+            matchingFallbacks += "release"
+            buildConfigField("boolean", "PHONE_LINK_ENABLED", "true")
+            buildConfigField("String", "API_BASE_URL", "\"http://10.0.2.2:8080/\"")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
